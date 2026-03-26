@@ -1,0 +1,2152 @@
+\documentclass[11pt,twocolumn]{article}
+
+% ---- packages ----
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{stmaryrd}
+\usepackage{mathpartir}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{natbib}
+\usepackage{microtype}
+
+% ---- theorem environments ----
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{remark}[theorem]{Remark}
+
+% ---- listings config ----
+\definecolor{japlkw}{RGB}{0,100,170}
+\definecolor{japlstr}{RGB}{170,55,30}
+\definecolor{japlcmt}{RGB}{90,130,90}
+\definecolor{japltype}{RGB}{130,50,140}
+\definecolor{codebg}{RGB}{248,248,248}
+
+\lstdefinelanguage{japl}{
+  keywords={fn,let,match,with,type,if,then,else,module,import,use,
+            assert,receive,test,property,forall,loop,while,do,continue,
+            own,ref,opaque,trait,impl,deriving,foreign,unsafe,bench,
+            packed,signature,where},
+  keywordstyle=\color{japlkw}\bfseries,
+  keywords=[2]{Result,Ok,Err,Option,Some,None,Int,Float,Bool,String,
+               Bytes,Unit,Never,List,Map,Pid,Process,Io,Net,State,
+               Fail,Async,Pure,True,False,Permanent,Transient,Temporary,
+               OneForOne,AllForOne,RestForOne,Normal},
+  keywordstyle=[2]\color{japltype},
+  comment=[l]{--},
+  commentstyle=\color{japlcmt}\itshape,
+  string=[b]",
+  stringstyle=\color{japlstr},
+  sensitive=true,
+  showstringspaces=false,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{codebg},
+  xleftmargin=2pt,
+  xrightmargin=2pt,
+  aboveskip=6pt,
+  belowskip=4pt,
+  columns=flexible,
+  literate={->}{$\rightarrow$}2 {=>}{$\Rightarrow$}2 {|>}{$\triangleright$}2 {>>}{$\gg$}2 {!=}{$\neq$}2 {<=}{$\leq$}2 {>=}{$\geq$}2,
+}
+
+\lstset{language=japl}
+
+% ---- macros ----
+\newcommand{\japl}{\textsc{Japl}}
+\newcommand{\ie}{\emph{i.e.}}
+\newcommand{\eg}{\emph{e.g.}}
+\newcommand{\cf}{\emph{cf.}}
+\newcommand{\etal}{\emph{et~al.}}
+\newcommand{\Fail}{\texttt{Fail}}
+\newcommand{\Result}{\texttt{Result}}
+\newcommand{\Eff}{\mathcal{E}}
+\newcommand{\Type}{\mathsf{Type}}
+\newcommand{\Proc}{\mathsf{Proc}}
+\newcommand{\crash}{\mathsf{crash}}
+\newcommand{\restart}{\mathsf{restart}}
+\newcommand{\OK}{\ensuremath{\mathsf{Ok}}}
+\newcommand{\Err}{\ensuremath{\mathsf{Err}}}
+\newcommand{\inmark}{\mathsf{in}}
+\newcommand{\Kleisli}{\mathbf{Kl}}
+\newcommand{\Set}{\ensuremath{\mathbf{Set}}}
+\newcommand{\Partial}{\mathbf{Par}}
+
+\title{\textbf{Failures Are Normal and Typed:}\\
+A Unified Theory of Error Handling Combining\\
+Typed Recoverable Errors with Crash-and-Restart Semantics}
+
+\author{
+  JAPL Language Research Group\\
+  \texttt{matthew@yonedaai.com}
+}
+
+\date{March 2026}
+
+\begin{document}
+
+\maketitle
+
+% ==================================================================
+\begin{abstract}
+% ==================================================================
+
+Error handling remains one of the most contested design decisions in programming language theory and practice. Existing approaches fragment into incompatible philosophies: exceptions (Java, Python) conflate control flow with failure signaling; error codes (C, Go) lack compositional structure; monadic result types (Rust, Haskell) demand exhaustive handling of every failure mode; and crash-and-restart semantics (Erlang/OTP) abandon fine-grained error typing in favor of process isolation. No single approach is complete.
+
+We present \japl{}'s \emph{dual error model}, which unifies typed recoverable errors with process-level crash semantics into a coherent whole. The model distinguishes two fundamentally different failure modes: \emph{domain errors}, represented as typed \Result{} values that flow through an algebraic effect system, and \emph{process failures}, which trigger process termination and supervisory restart. We formalize this distinction using sum types, Kleisli categories over the exception monad, algebraic effects, and process algebra with crash actions. We prove three key properties: \emph{error safety} (well-typed programs cannot silently discard domain errors), \emph{crash containment} (a process failure cannot corrupt the state of other processes), and \emph{supervision liveness} (permanent processes are eventually restarted after crash). Through extensive comparison with Rust, Go, Erlang, Haskell, and Java, and through case studies of an HTTP server, a database connection pool, and a distributed task worker, we demonstrate that the dual model covers all practical failure modes with minimal ceremony and maximal type safety.
+
+\end{abstract}
+
+% ==================================================================
+\section{Introduction}\label{sec:intro}
+% ==================================================================
+
+Every program encounters failure. Files go missing, networks drop packets, users submit malformed input, hardware degrades, and bugs escape testing. How a programming language handles these failures shapes the reliability, readability, and maintainability of the software written in it.
+
+The history of error handling in programming languages is a history of trade-offs. Each approach optimizes for certain failure modes while leaving others poorly served:
+
+\paragraph{Exceptions (Java, Python, C++).} Exceptions provide a mechanism for non-local control flow transfer, allowing functions deep in the call stack to signal failures to distant callers. Java's checked exceptions~\cite{gosling2014java} attempt to bring static typing to this mechanism, requiring callers to either handle or propagate declared exception types. In practice, checked exceptions have been widely criticized~\cite{eckel2003thinking,bloch2008effective}: they create coupling between implementation details and interface signatures, encourage catching overly broad exception types, and scale poorly in the presence of higher-order functions and generics.
+
+\paragraph{Error codes and values (C, Go).} C's convention of returning integer error codes and Go's explicit \texttt{error} return values~\cite{pike2012go} keep failure in the value domain, making it visible at every call site. However, neither language enforces that errors are inspected. In C, a forgotten \texttt{errno} check is a silent bug. In Go, the \texttt{if err != nil} pattern introduces substantial syntactic noise and, lacking sum types, cannot express the \emph{type} of the error with the same precision as an algebraic data type.
+
+\paragraph{Result types (Rust, Haskell).} Rust's \texttt{Result<T, E>}~\cite{matsakis2014rust} and Haskell's \texttt{Either a b}~\cite{marlow2010haskell} embed failure in the type system as sum types. The compiler enforces that callers handle both success and failure cases. Rust's \texttt{?} operator provides syntactic sugar for propagation. This approach is compositionally elegant but can be onerous: converting between error types, chaining fallible operations, and handling errors at appropriate levels of abstraction all require careful design. More fundamentally, Rust lacks a clean answer for truly unexpected failures---\texttt{panic!} exists but is designed as a last resort, not a systematic recovery mechanism.
+
+\paragraph{Crash-and-restart semantics (Erlang/OTP).} Erlang takes a radically different approach: rather than preventing or carefully handling every failure, it embraces failure as normal~\cite{armstrong2003thesis}. Processes are lightweight and isolated. When a process encounters an unexpected condition, it crashes. A \emph{supervisor} process detects the crash and restarts the failed process with fresh state. This ``let it crash'' philosophy~\cite{armstrong2007history} has proven remarkably effective for building fault-tolerant telecommunications and distributed systems. However, Erlang's dynamic typing means that error types are not checked at compile time, and the boundary between errors that should be handled locally and errors that should trigger a crash is left to programmer convention.
+
+\paragraph{The gap.} No existing language satisfactorily unifies these approaches. Rust handles domain errors beautifully but has no process-level crash recovery. Erlang handles unexpected failures gracefully but provides no compile-time error typing. Go has neither sum types nor supervision. Java's checked exceptions were the right instinct---making failure visible in types---executed with the wrong mechanism.
+
+\japl{} addresses this gap with a \emph{dual error model} that cleanly separates two fundamentally different kinds of failure:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Domain errors} (\Result{} types + \Fail{} effect): Expected, recoverable failures such as parse errors, validation failures, and not-found conditions. These are values, tracked by the type system and the effect system, that must be handled by the caller.
+
+  \item \textbf{Process failures} (crash + supervision): Unexpected failures such as invariant violations, corrupted state, and unrecoverable resource loss. These terminate the enclosing process, and a supervisor restarts it with fresh state.
+\end{enumerate}
+
+This paper formalizes the dual model, proves its key safety and liveness properties, and demonstrates its practical advantages through comparison and case study.
+
+\paragraph{Contributions.}
+\begin{itemize}[leftmargin=*]
+  \item A formal framework for dual-mode error handling combining sum types, algebraic effects, and process algebra (\Cref{sec:formal}).
+  \item The design and specification of \japl{}'s dual error model, including the \Fail{} effect and its integration with supervision (\Cref{sec:dual,sec:boundary,sec:effects,sec:supervision}).
+  \item Proofs of error safety, crash containment, and supervision liveness (\Cref{sec:formal-properties}).
+  \item Comprehensive comparison with five major error handling paradigms (\Cref{sec:comparison}).
+  \item Implementation strategies and performance analysis (\Cref{sec:implementation}).
+  \item Three detailed case studies demonstrating the model in practice (\Cref{sec:case-studies}).
+\end{itemize}
+
+% ==================================================================
+\section{Background and Related Work}\label{sec:background}
+% ==================================================================
+
+\subsection{Exception Safety and the C++ Legacy}
+
+Stroustrup introduced exceptions to C++ as a mechanism for signaling errors across abstraction boundaries~\cite{stroustrup1994design}. The subsequent development of \emph{exception safety} guarantees---basic, strong, and no-throw---by Abrahams~\cite{abrahams2000exception} and Sutter~\cite{sutter1999exceptional} revealed the deep interaction between exceptions and resource management. The RAII (Resource Acquisition Is Initialization) pattern emerged as the C++ community's solution to ensuring resource cleanup in the presence of exceptions, a concern that \japl{} addresses through ownership types and linear resource management.
+
+\subsection{Monadic Error Handling}
+
+Moggi's seminal work on monads as a structuring mechanism for computational effects~\cite{moggi1991notions} provided the theoretical foundation for treating errors as first-class values. Wadler~\cite{wadler1992essence,wadler1995monads} popularized the application of monads in functional programming, showing how the \emph{exception monad} $T(A) = A + E$ (for a fixed error type $E$) could structure error-handling code. Haskell's \texttt{Either} monad and its \texttt{MonadError} typeclass~\cite{jones1995functional} realize this approach, enabling compositional error handling through \texttt{do}-notation.
+
+However, the monadic approach in Haskell suffers from practical limitations. The ``monad transformer'' stack needed to combine multiple effects (errors, state, IO) introduces complexity and performance overhead~\cite{kiselyov2013extensible}. More fundamentally, Haskell also has a separate, dynamically-typed exception system for IO errors~\cite{marlow2001asynchronous}, creating a dualism that is acknowledged but not cleanly resolved.
+
+\subsection{Rust's Result and Panic}
+
+Rust~\cite{matsakis2014rust,klabnik2019rust} made the deliberate decision to separate \emph{recoverable} errors (represented by \texttt{Result<T, E>}) from \emph{unrecoverable} errors (represented by \texttt{panic!}). The \texttt{?} operator provides ergonomic error propagation. The \texttt{From} trait enables automatic error type conversion during propagation.
+
+Rust's approach is the closest antecedent to \japl{}'s dual model. However, Rust lacks several features that \japl{} provides: (1) Rust has no built-in lightweight process model, so \texttt{panic!} typically aborts the entire program or unwinds a single thread---there is no supervision. Libraries such as \texttt{tokio}~(asynchronous task runtime) and \texttt{rayon}~(data-parallel work-stealing) provide lightweight tasks, but these are library abstractions that lack the isolation and crash-containment primitives of a language runtime: a panic in a \texttt{tokio} task can poison shared state, and neither library provides supervision trees or typed crash reasons; (2) Rust's error handling is not integrated with an effect system, so the compiler does not track which functions can fail with which error types as a composable annotation; (3) Rust's \texttt{panic!} is designed as a last resort, not as a deliberate recovery strategy.
+
+\subsection{Go's Error Values}
+
+Go~\cite{pike2012go,donovan2015go} represents errors as values implementing the \texttt{error} interface. Functions return \texttt{(T, error)} tuples. This approach is explicit but lacks algebraic structure: Go has no sum types, so error handling cannot benefit from exhaustive pattern matching. The \texttt{if err != nil} pattern is pervasive and syntactically heavy. Go's \texttt{panic}/\texttt{recover} mechanism exists but is discouraged for normal error handling.
+
+Recent additions to Go's error handling---\texttt{errors.Is}, \texttt{errors.As}, and error wrapping with \texttt{fmt.Errorf("\%w", err)}---are runtime-typed approximations of what algebraic data types provide at compile time.
+
+\subsection{Erlang's ``Let It Crash'' Philosophy}
+
+Armstrong's doctoral thesis~\cite{armstrong2003thesis} formalized the philosophy that has made Erlang/OTP the gold standard for fault-tolerant systems. The key insights are:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Process isolation}: Processes share no memory. A bug in one process cannot corrupt another.
+  \item \textbf{Crash as recovery}: Rather than attempting to handle every conceivable failure, a process that encounters unexpected state simply terminates. A supervisor detects this and restarts the process with known-good initial state.
+  \item \textbf{Error kernel pattern}: The system is structured so that a small, well-tested ``error kernel'' of supervisor processes manages the lifecycle of a larger population of worker processes that may fail~\cite{armstrong2007history}.
+  \item \textbf{Supervision trees}: Supervisors are organized hierarchically, with strategies (one-for-one, all-for-one, rest-for-one) governing how failures propagate and how restarts occur~\cite{logan2010erlang}.
+\end{enumerate}
+
+Erlang's limitation is the absence of static typing for errors. A process may crash with any term as the ``reason,'' and supervisors make restart decisions based on runtime pattern matching against crash reasons. This works in practice but leaves significant error-handling logic invisible to static analysis.
+
+\subsection{Algebraic Effects and Handlers}
+
+Plotkin and Pretnar's algebraic effects and handlers~\cite{plotkin2009handlers,plotkin2013handling} provide a principled framework for structuring computational effects. An algebraic effect declares a set of operations; a handler provides interpretations for those operations. Leijen~\cite{leijen2017type} demonstrated practical effect systems with row-polymorphic effect typing in the Koka language.
+
+\japl{}'s \Fail{} effect is an instance of the exception effect in this framework. The algebraic effects perspective is crucial because it makes error-handling capability \emph{compositional}: functions declare which error effects they require, and handlers can interpret these effects at appropriate boundaries.
+
+\subsection{Failure Detectors}
+
+Chandra and Toueg~\cite{chandra1996unreliable} formalized the notion of failure detectors in distributed systems, classifying them by completeness and accuracy properties. This work is relevant to \japl{}'s supervision model: a supervisor acts as a local failure detector for its children, and the completeness guarantee (every crashed process is eventually detected) is essential for the supervision liveness property we prove in \Cref{sec:formal-properties}.
+
+\subsection{Process Algebras}
+
+The $\pi$-calculus~\cite{milner1999communicating} and CSP~\cite{hoare1985communicating} provide formal foundations for reasoning about concurrent processes and message passing. We extend these frameworks with explicit crash and restart actions to model \japl{}'s supervision semantics.
+
+% ==================================================================
+\section{Formal Framework}\label{sec:formal}
+% ==================================================================
+
+We develop a formal framework that unifies typed error handling with crash semantics. The framework has three components: (1) an algebraic treatment of error types as sum types, (2) categorical semantics of failure using Kleisli categories, and (3) a process algebra extended with crash actions.
+
+\subsection{Error Types as Sum Types}
+
+\begin{definition}[Error type]
+An \emph{error type} $E$ is an algebraic data type (sum type) whose constructors represent distinct failure modes:
+\[
+  E = C_1(\tau_1) \mid C_2(\tau_2) \mid \cdots \mid C_n(\tau_n)
+\]
+where each $C_i$ is a constructor carrying data of type $\tau_i$.
+\end{definition}
+
+\begin{definition}[Result type]
+The \emph{result type} $\Result\langle A, E\rangle$ is a binary sum type:
+\[
+  \Result\langle A, E\rangle = \OK(A) + \Err(E)
+\]
+\end{definition}
+
+The result type forms a \emph{monad}, which we call the exception monad for error type $E$.
+
+\begin{definition}[Exception monad]
+For a fixed error type $E$, the exception monad $T_E$ is defined by:
+\begin{align*}
+  T_E(A) &= A + E \\
+  \eta_A(a) &= \OK(a) \\
+  \mu_A(\OK(\OK(a))) &= \OK(a) \\
+  \mu_A(\OK(\Err(e))) &= \Err(e) \\
+  \mu_A(\Err(e)) &= \Err(e)
+\end{align*}
+The monadic bind (Kleisli composition) is:
+\[
+  m \mathbin{>\!\!>\!\!=} f = \begin{cases}
+    f(a) & \text{if } m = \OK(a) \\
+    \Err(e) & \text{if } m = \Err(e)
+  \end{cases}
+\]
+\end{definition}
+
+\begin{proposition}[Monad laws]
+$T_E$ satisfies the monad laws:
+\begin{enumerate}
+  \item Left identity: $\eta(a) \mathbin{>\!\!>\!\!=} f = f(a)$
+  \item Right identity: $m \mathbin{>\!\!>\!\!=} \eta = m$
+  \item Associativity: $(m \mathbin{>\!\!>\!\!=} f) \mathbin{>\!\!>\!\!=} g = m \mathbin{>\!\!>\!\!=} (\lambda a.\, f(a) \mathbin{>\!\!>\!\!=} g)$
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+By case analysis on the structure of $m$. For (1): $\eta(a) \mathbin{>\!\!>\!\!=} f = \OK(a) \mathbin{>\!\!>\!\!=} f = f(a)$. For (2): if $m = \OK(a)$, then $m \mathbin{>\!\!>\!\!=} \eta = \eta(a) = \OK(a) = m$; if $m = \Err(e)$, then $m \mathbin{>\!\!>\!\!=} \eta = \Err(e) = m$. For (3): the proof proceeds by case analysis on $m$: if $m = \Err(e)$, both sides reduce to $\Err(e)$; if $m = \OK(a)$, both sides reduce to $f(a) \mathbin{>\!\!>\!\!=} g$.
+\end{proof}
+
+\subsection{Kleisli Categories and Partial Functions}
+
+The categorical semantics of error handling can be understood through the Kleisli category of the exception monad.
+
+\begin{definition}[Kleisli category]
+The Kleisli category $\Kleisli(T_E)$ for the exception monad $T_E$ has:
+\begin{itemize}
+  \item Objects: types $A, B, C, \ldots$
+  \item Morphisms $A \to B$: functions $A \to T_E(B) = A \to (B + E)$
+  \item Identity: $\eta_A : A \to A + E$
+  \item Composition: $g \circ_K f = \lambda a.\, f(a) \mathbin{>\!\!>\!\!=} g$
+\end{itemize}
+\end{definition}
+
+The Kleisli category $\Kleisli(T_E)$ is isomorphic to a category of \emph{partial functions} with typed partiality. A morphism $f : A \to B + E$ in $\Kleisli(T_E)$ is a function that either produces a $B$ or fails with a reason from $E$. This gives us a precise categorical characterization of \japl{}'s fallible functions.
+
+\begin{proposition}
+Kleisli composition of fallible functions is associative and preserves error propagation: if $f : A \to B + E$ fails, then $g \circ_K f$ fails with the same error, regardless of $g$.
+\end{proposition}
+
+This property corresponds directly to \japl{}'s \texttt{?} operator semantics: error propagation is short-circuiting.
+
+\subsection{Algebraic Effects for Errors}
+
+We model \japl{}'s \Fail{} effect using the framework of algebraic effects and handlers~\cite{plotkin2009handlers}.
+
+\begin{definition}[Fail effect]
+The $\Fail\langle E\rangle$ effect is an algebraic effect with a single operation:
+\[
+  \mathsf{fail} : E \to \bot
+\]
+The operation $\mathsf{fail}(e)$ signals a failure with reason $e : E$ and does not return (indicated by the return type $\bot$).
+\end{definition}
+
+\begin{definition}[Fail handler]
+A handler for $\Fail\langle E\rangle$ interprets the effect, converting an effectful computation into a \Result{} value:
+\[
+  \mathsf{catch} : (\forall \alpha.\, (\Fail\langle E\rangle \Rightarrow \alpha) \to \Result\langle \alpha, E\rangle)
+\]
+Specifically:
+\begin{align*}
+  \mathsf{catch}(\mathsf{return}\;v) &= \OK(v) \\
+  \mathsf{catch}(\mathsf{fail}\;e\;k) &= \Err(e)
+\end{align*}
+where $k$ is the (discarded) continuation.
+\end{definition}
+
+The algebraic effects framework provides several advantages over the monadic approach:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Composition}: Multiple \Fail{} effects with different error types compose naturally via row-polymorphic effect rows, without the need for monad transformers.
+  \item \textbf{Separation of concern}: The code that \emph{raises} an error and the code that \emph{handles} it are decoupled; the handler can be installed at any point in the call chain.
+  \item \textbf{Compiler tracking}: The effect system tracks which functions may fail and with which error types, enabling static analysis.
+\end{enumerate}
+
+\subsection{Process Algebra with Crash Actions}
+
+To model process failures and supervision, we extend a process algebra with explicit crash and restart actions.
+
+\begin{definition}[Extended process algebra]
+A process $P$ is defined by the grammar:
+\begin{align*}
+  P ::=\; & \mathbf{0} && \text{(terminated)} \\
+  \mid\; & \alpha.P && \text{(action prefix)} \\
+  \mid\; & P_1 \parallel P_2 && \text{(parallel composition)} \\
+  \mid\; & P_1 + P_2 && \text{(choice)} \\
+  \mid\; & \crash(r) && \text{(crash with reason } r\text{)} \\
+  \mid\; & \mathsf{sup}(S, [P_1, \ldots, P_n]) && \text{(supervision)} \\
+  \mid\; & !P && \text{(replication)}
+\end{align*}
+where $\alpha$ ranges over actions (send, receive, internal), $r$ is a crash reason, and $S$ is a supervision strategy.
+\end{definition}
+
+\begin{definition}[Crash transition]
+A process may transition to a crashed state:
+\[
+  \frac{}{\crash(r) \xrightarrow{\crash(r)} \mathbf{0}}
+\]
+\end{definition}
+
+\begin{definition}[Supervision transition]
+A supervisor observes a child crash and restarts it:
+\[
+  \frac{P_i \xrightarrow{\crash(r)} \mathbf{0} \quad S(i, r) = \restart}
+       {\mathsf{sup}(S, [\ldots, P_i, \ldots]) \xrightarrow{\tau} \mathsf{sup}(S, [\ldots, P_i^0, \ldots])}
+\]
+where $P_i^0$ is the initial state of process $i$.
+\end{definition}
+
+The supervision strategy $S$ determines the restart behavior:
+
+\begin{definition}[Supervision strategies]
+\begin{align*}
+  \mathsf{OneForOne}(i, r) &= \restart(i) \\
+  \mathsf{AllForOne}(i, r) &= \restart(1), \ldots, \restart(n) \\
+  \mathsf{RestForOne}(i, r) &= \restart(i), \restart(i+1), \ldots, \restart(n)
+\end{align*}
+\end{definition}
+
+\subsection{Connecting the Two Layers}
+
+The key insight of \japl{}'s dual model is that the two formalisms---Kleisli categories for domain errors and process algebra for crashes---operate at different levels of abstraction with a well-defined boundary between them.
+
+\begin{definition}[Error/crash boundary]
+A \emph{boundary function} $\beta$ maps from the domain error level to the process level:
+\[
+  \beta : \Result\langle A, E\rangle \to \Proc
+\]
+such that:
+\begin{align*}
+  \beta(\OK(a)) &= \text{continue with } a \\
+  \beta(\Err(e)) &= \text{continue with error handling for } e \\
+  \text{(invariant violation)} &\to \crash(r)
+\end{align*}
+\end{definition}
+
+The boundary is asymmetric: domain errors can always be converted to process actions (either handling the error or choosing to crash), but crashes cannot be converted back to domain errors within the crashed process. Recovery from crashes happens at the \emph{supervisor} level, not within the failed process itself.
+
+% ==================================================================
+\section{JAPL's Dual Error Model}\label{sec:dual}
+% ==================================================================
+
+\japl{} provides two complementary mechanisms for handling failure, each appropriate for a different class of errors.
+
+\subsection{Recoverable Domain Errors: Result Types}
+
+Domain errors represent expected failure modes---conditions that are part of the normal operation of a system. A database query may not find a matching row. A JSON parser may encounter malformed input. A user may submit an invalid form. These are not bugs; they are anticipated outcomes that the program must handle.
+
+In \japl{}, domain errors are represented as typed sum types and propagated through the \Fail{} effect:
+
+\begin{lstlisting}
+type AppError =
+  | NotFound
+  | Unauthorized
+  | InvalidInput(String)
+  | DbError(String)
+
+fn get_user(id: UserId) -> User
+    with Io, Fail[AppError] =
+  let row = db_find_user(id)?
+  decode_user(row)?
+\end{lstlisting}
+
+Several design properties are notable:
+
+\paragraph{Exhaustive handling.} Because error types are algebraic data types, pattern matching on errors is checked for exhaustiveness by the compiler:
+
+\begin{lstlisting}
+fn handle_error(err: AppError) -> Response =
+  match err with
+  | NotFound -> response(404, "not found")
+  | Unauthorized -> response(401, "unauthorized")
+  | InvalidInput(msg) ->
+      response(400, "bad input: " ++ msg)
+  | DbError(msg) ->
+      log_error(msg)
+      response(500, "internal error")
+\end{lstlisting}
+
+If a new variant is added to \texttt{AppError}, every match expression is flagged as incomplete until updated. This is the same exhaustiveness checking that Rust and Haskell provide, applied to error handling.
+
+\paragraph{Compositional propagation.} The \texttt{?} operator propagates errors through the call chain:
+
+\begin{lstlisting}
+fn process_order(req: Request) -> OrderResult
+    with Io, Net, Fail[OrderError] =
+  let user = get_user(req.user_id)?
+  let items = validate_items(req.items)?
+  let payment = charge_payment(user, items)?
+  create_order(user, items, payment)?
+\end{lstlisting}
+
+Each \texttt{?} invocation is syntactic sugar for pattern matching on the result: if \OK{}, unwrap; if \Err{}, propagate immediately. The type system ensures that the propagated error type is compatible with the function's declared \Fail{} effect.
+
+\paragraph{Error type composition.} When a function calls subfunctions with different error types, conversion is required. The idiomatic \japl{} approach uses a \texttt{handle} block, which leverages the effect system to intercept and re-raise with a different error type:
+
+\begin{lstlisting}
+fn get_user_profile(id: UserId) -> Profile
+    with Io, Fail[AppError] =
+  let user = get_user(id)?
+  let prefs = handle get_preferences(id) with
+    | Fail(e) -> Fail.raise(DbError(show(e)))
+  { user, preferences = prefs }
+\end{lstlisting}
+
+The \texttt{handle} block intercepts the \Fail{} effect from \texttt{get\_preferences} and re-raises it as an \texttt{AppError}, keeping the conversion visible and explicit. For simple cases, the pipeline form \texttt{|> map\_err(fn e -> DbError(show(e)))?} is also available and resembles Rust's \texttt{From} trait. In both cases, \japl{}'s effect system tracks the error type as part of the function's signature.
+
+\subsection{Process Failures: Crash and Restart}
+
+Process failures represent unexpected conditions---situations where the process's internal state may be corrupted, where an invariant has been violated, or where a resource has been irreparably lost. The appropriate response is not to attempt recovery within the process, but to terminate the process and let a supervisor start a fresh instance.
+
+\begin{lstlisting}
+fn critical_worker(state: State)
+    -> Never with Process[WorkerMsg] =
+  match Process.receive() with
+  | ProcessTask(task) ->
+      -- If the invariant is violated, the
+      -- process crashes. The supervisor
+      -- restarts it with fresh state.
+      assert valid_invariant(state)
+      let new_state = handle_task(state, task)
+      critical_worker(new_state)
+  | Shutdown ->
+      cleanup(state)
+      Process.exit(Normal)
+\end{lstlisting}
+
+Key properties of crash semantics in \japl{}:
+
+\paragraph{Process isolation.} Processes do not share mutable state. A crash in one process cannot corrupt the memory of another. This is enforced by the language's type system: values sent between processes must be immutable (and therefore safely shareable) or ownership must be explicitly transferred.
+
+\paragraph{Typed crash reasons.} Unlike Erlang, where a process can crash with any term, \japl{} provides structured crash reasons:
+
+\begin{lstlisting}
+type CrashReason =
+  | Normal
+  | AssertionFailed(String, Location)
+  | ResourceExhausted(String)
+  | InvariantViolation(String)
+  | Timeout
+  | Custom(String)
+\end{lstlisting}
+
+This allows supervisors to make informed restart decisions based on the crash reason's type, not just runtime string matching.
+
+\paragraph{Deterministic cleanup.} When a process crashes, all its owned resources (file handles, network connections, etc.) are deterministically released through \japl{}'s ownership system. The linear type system guarantees that every resource is consumed exactly once, even on the crash path.
+
+\subsection{The Complementarity Principle}
+
+The two error modes are complementary, not overlapping. They address different questions:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+& \textbf{Domain Errors} & \textbf{Process Failures} \\
+\midrule
+\textbf{Nature} & Expected & Unexpected \\
+\textbf{Mechanism} & \Result{} + \Fail{} & \texttt{crash} + supervision \\
+\textbf{Scope} & Function/call chain & Process \\
+\textbf{Recovery} & Caller handles & Supervisor restarts \\
+\textbf{State} & Preserved & Discarded \\
+\textbf{Examples} & Not found, invalid & Corrupted state, \\
+& input, timeout & hardware fault, bug \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A well-designed \japl{} application uses domain errors for all anticipated failure modes and reserves crashes for conditions where the process's state can no longer be trusted.
+
+% ==================================================================
+\section{The Error/Crash Boundary}\label{sec:boundary}
+% ==================================================================
+
+The most important design decision in \japl{}'s error model is determining when to use \Result{} types and when to crash. This section provides principled guidance.
+
+\subsection{The Decision Criterion}
+
+\begin{definition}[Error/Crash Criterion]
+A failure should be handled as a domain error (\Result{}) if and only if:
+\begin{enumerate}
+  \item The failure is \emph{anticipated}: it represents a known failure mode of the operation.
+  \item The caller can \emph{meaningfully respond}: there exists a sensible action the caller can take.
+  \item The process state remains \emph{consistent}: the failure does not indicate state corruption.
+\end{enumerate}
+If any of these conditions is not met, the failure should trigger a process crash.
+\end{definition}
+
+\medskip
+
+The following decision table summarizes the criterion for common failure scenarios:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lcccl@{}}
+\toprule
+\textbf{Failure scenario} & \textbf{Anticipated?} & \textbf{Actionable?} & \textbf{State OK?} & \textbf{Mode} \\
+\midrule
+Not-found query        & \checkmark & \checkmark & \checkmark & \Result{} \\
+Parse error            & \checkmark & \checkmark & \checkmark & \Result{} \\
+Auth rejected          & \checkmark & \checkmark & \checkmark & \Result{} \\
+Network timeout        & \checkmark & \checkmark & \checkmark & \Result{} \\
+Invalid user input     & \checkmark & \checkmark & \checkmark & \Result{} \\
+\midrule
+Assertion failure      & $\times$ & $\times$ & $\times$ & Crash \\
+Corrupted state        & $\times$ & $\times$ & $\times$ & Crash \\
+Unrecoverable resource & $\times$ & $\times$ & $\times$ & Crash \\
+Index out of bounds    & $\times$ & $\times$ & $\times$ & Crash \\
+\midrule
+DB conn lost mid-txn   & $\sim$ & $\sim$ & $\times$ & Crash \\
+OOM in subsystem       & $\sim$ & $\times$ & $\times$ & Crash \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+\textbf{Decision rule (informal).} Ask: ``Can the caller do something sensible with this failure, and is my state still trustworthy?'' If yes, return a \Result{}. If no, crash and let the supervisor restore a known-good state.
+
+\begin{example}[Database query]
+A ``not found'' result from a database query satisfies all three criteria: it is anticipated (queries may not match), the caller can respond (return a 404, use a default value, etc.), and the state is consistent (the database connection is fine). This is a domain error.
+
+A database \emph{connection loss} during a transaction may violate condition (3): if the process was tracking transaction state, that state is now inconsistent with the database. The appropriate response is to crash and let the supervisor restart with a fresh connection.
+\end{example}
+
+\subsection{The Error Kernel Pattern}
+
+Armstrong's \emph{error kernel} pattern~\cite{armstrong2003thesis} structures a system so that a small, well-tested core manages the lifecycle of larger, more complex subsystems:
+
+\begin{lstlisting}
+-- The error kernel: simple, well-tested,
+-- rarely crashes
+fn app_supervisor() -> Never
+    with Process[SupervisorMsg] =
+  Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = 10,
+    max_seconds = 60,
+    children = [
+      { id = "db_pool"
+      , start = fn -> db_pool_supervisor()
+      , restart = Permanent
+      , shutdown = Timeout(5000)
+      },
+      { id = "web"
+      , start = fn -> web_supervisor()
+      , restart = Permanent
+      , shutdown = Timeout(10000)
+      },
+    ]
+  )
+
+-- Worker processes: may crash, will be
+-- restarted by supervisors
+fn request_handler(conn: TcpConn) -> Never
+    with Process[HttpMsg], Io =
+  let req = Http.parse_request(conn)
+  let resp = match route(req) with
+    | Ok(handler) ->
+        match handler(req) with
+        | Ok(resp) -> resp
+        | Err(e) -> error_response(e)
+    | Err(_) -> response(404, "not found")
+  Http.send_response(conn, resp)
+  request_handler(conn)
+\end{lstlisting}
+
+In this architecture:
+\begin{itemize}[leftmargin=*]
+  \item The \texttt{app\_supervisor} and \texttt{db\_pool\_supervisor} form the error kernel. They are simple, well-tested, and their only job is to supervise children.
+  \item The \texttt{request\_handler} processes do the complex work. If one crashes (due to a bug, a malformed request that bypasses validation, or a resource issue), the supervisor restarts it.
+  \item Within each request handler, \emph{domain errors} are handled with \Result{} types: routing failures return 404, handler errors return appropriate HTTP status codes.
+\end{itemize}
+
+\subsection{Design Principles for the Boundary}
+
+We articulate five principles for managing the error/crash boundary:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Domain errors at API boundaries.} Public-facing APIs (HTTP endpoints, library functions, message handlers) should return \Result{} types so callers can respond appropriately.
+
+  \item \textbf{Crashes for invariant violations.} If a condition is reached that ``should never happen'' according to the system's design, crash. An \texttt{assert} that fails indicates a bug, not a user error.
+
+  \item \textbf{Convert at boundaries.} When calling a subsystem that may crash, wrap the call at the boundary: spawn a process, send the request, and handle the possible \texttt{ProcessDown} message as a domain error.
+
+  \item \textbf{Narrow the error kernel.} Keep the supervision hierarchy simple and the supervisor code minimal. Complexity belongs in worker processes, which can crash safely.
+
+  \item \textbf{Escalate when uncertain.} If a process encounters a condition it does not know how to handle, crashing is safer than continuing with potentially corrupted state. The supervisor has a broader view and can make a better recovery decision.
+\end{enumerate}
+
+\begin{lstlisting}
+-- Principle 3: Converting crashes to
+-- domain errors at a boundary
+fn safe_compute(input: Data) -> Result[Output, ComputeError]
+    with Process, Io =
+  let worker = Process.spawn(fn ->
+    let result = dangerous_computation(input)
+    Process.send(Process.self_parent(), Done(result))
+  )
+  Process.monitor(worker)
+  match Process.receive_with_timeout(5000) with
+  | Done(result) -> Ok(result)
+  | ProcessDown(^worker, reason) ->
+      Err(ComputeFailed(show(reason)))
+  | _ -> Err(ComputeTimeout)
+\end{lstlisting}
+
+% ==================================================================
+\section{Effect System Integration}\label{sec:effects}
+% ==================================================================
+
+\japl{}'s effect system is central to its error handling model. The \Fail{} effect makes failure a tracked, composable property of function signatures.
+
+\subsection{The Fail Effect}
+
+The \texttt{Fail[E]} effect indicates that a function may fail with an error of type $E$. It is one of \japl{}'s built-in effects:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Effect} & \textbf{Meaning} \\
+\midrule
+\texttt{Pure} & No effects (identity) \\
+\texttt{Io} & File system, console, clock \\
+\texttt{Net} & Network access \\
+\texttt{State[s]} & Mutable state of type $s$ \\
+\texttt{Process} & Process operations \\
+\texttt{Fail[e]} & May fail with error type $e$ \\
+\texttt{Async} & Asynchronous operations \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The \texttt{Fail[E]} effect is parameterized by the error type $E$, enabling the compiler to track not just \emph{that} a function can fail, but \emph{how} it can fail.
+
+\subsection{Effect Composition}
+
+Effects in \japl{} form a commutative, idempotent monoid under union:
+\begin{align*}
+  \Eff_1 \cup \Eff_2 &= \Eff_2 \cup \Eff_1 && \text{(commutativity)} \\
+  \Eff \cup \Eff &= \Eff && \text{(idempotency)} \\
+  \Eff \cup \mathtt{Pure} &= \Eff && \text{(identity)}
+\end{align*}
+
+When a function calls subfunctions, its effect set is the union of all callee effects:
+
+\begin{lstlisting}
+-- Effect inference: the compiler computes
+-- the union of all effects in the body
+fn process_request(req: Request) -> Response
+    with Io, Net, Fail[AppError] =
+  -- read_config: Io, Fail[ConfigError]
+  let config = read_config("/etc/app.conf")
+    |> map_err(to_app_error)?
+  -- http_fetch: Net
+  let data = Http.get(config.api_url)?
+  -- parse_response: Fail[ParseError]
+  let parsed = parse_response(data)
+    |> map_err(to_app_error)?
+  to_response(parsed)
+\end{lstlisting}
+
+The declared effects \texttt{Io, Net, Fail[AppError]} must be a superset of the inferred effects. If the programmer omits a required effect, the compiler reports an error.
+
+\subsection{Multiple Fail Effects}
+
+A function may have multiple \Fail{} effects with different error types. This is supported through effect row polymorphism:
+
+\begin{lstlisting}
+fn validate_and_store(input: RawInput)
+    -> StoredData
+    with Io, Fail[ValidationError],
+         Fail[StorageError] =
+  let validated = validate(input)?
+    -- raises Fail[ValidationError]
+  store(validated)?
+    -- raises Fail[StorageError]
+\end{lstlisting}
+
+The caller must handle (or propagate) both error types. This is more precise than a single unified error type, enabling callers to handle different failure modes differently:
+
+\begin{lstlisting}
+fn handle_input(input: RawInput)
+    -> Response with Io =
+  match Fail.catch(fn ->
+    Fail.catch(fn ->
+      validate_and_store(input)
+    )
+  ) with
+  | Ok(Ok(data)) -> json(200, data)
+  | Ok(Err(storage_err)) ->
+      log_error(storage_err)
+      response(503, "storage unavailable")
+  | Err(validation_err) ->
+      response(400, show(validation_err))
+\end{lstlisting}
+
+Alternatively, the caller can unify the error types:
+
+\begin{lstlisting}
+type InputError =
+  | Validation(ValidationError)
+  | Storage(StorageError)
+
+fn handle_input_unified(input: RawInput)
+    -> Response with Io =
+  let result = Fail.catch(fn ->
+    validate_and_store(input)
+      |> map_fail(Validation)
+      |> map_fail(Storage)
+  )
+  match result with
+  | Ok(data) -> json(200, data)
+  | Err(Validation(e)) -> response(400, show(e))
+  | Err(Storage(e)) -> response(503, show(e))
+\end{lstlisting}
+
+\subsection{Effect Handlers as Error Boundaries}
+
+The \texttt{Fail.catch} handler serves as an error boundary, converting an effectful computation into a pure \Result{} value. This is the primary mechanism for discharging the \Fail{} effect:
+
+\begin{lstlisting}
+-- Type: Fail.catch :
+--   (fn() -> a with Fail[e]) -> Result[a, e]
+fn main() -> Unit with Io =
+  let result = Fail.catch(fn ->
+    complex_fallible_computation()
+  )
+  match result with
+  | Ok(value) ->
+      Io.println("Success: " ++ show(value))
+  | Err(e) ->
+      Io.println("Error: " ++ show(e))
+\end{lstlisting}
+
+The handler eliminates the \Fail{} effect from the computation's effect set, converting it into a \Result{} value in a context with strictly fewer effects. This gives precise control over where in the call chain errors are handled.
+
+\subsection{Compiler Tracking}
+
+The \Fail{} effect enables several static analyses:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Unhandled errors}: If a function's effect set includes \texttt{Fail[E]} but no handler discharges it, the compiler requires the caller to either handle or propagate the effect.
+
+  \item \textbf{Dead error branches}: If an error variant is never constructed by any reachable code path, the compiler can warn that a match branch is unreachable.
+
+  \item \textbf{Error documentation}: The effect signature serves as machine-checked documentation of all failure modes, visible in IDEs, generated documentation, and type signatures.
+
+  \item \textbf{Error compatibility}: When composing modules, the compiler checks that error types are compatible across module boundaries.
+\end{enumerate}
+
+% ==================================================================
+\section{Supervision as Error Recovery}\label{sec:supervision}
+% ==================================================================
+
+While domain errors are handled within function call chains, process failures are handled by the supervision hierarchy. Supervision is \japl{}'s mechanism for systematic recovery from unexpected failures.
+
+\subsection{Supervision Trees}
+
+A supervision tree is a hierarchical organization of processes where each non-leaf node is a supervisor that monitors and manages its children:
+
+\begin{lstlisting}
+fn start_application() -> Pid[SupervisorMsg]
+    with Process =
+  Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = 5,
+    max_seconds = 60,
+    children = [
+      { id = "db_pool"
+      , start = fn -> DbPool.start(db_config)
+      , restart = Permanent
+      , shutdown = Timeout(5000)
+      },
+      { id = "cache"
+      , start = fn -> Cache.start(cache_config)
+      , restart = Permanent
+      , shutdown = Timeout(3000)
+      },
+      { id = "web_server"
+      , start = fn -> WebServer.start(web_config)
+      , restart = Permanent
+      , shutdown = Timeout(10000)
+      },
+    ]
+  )
+\end{lstlisting}
+
+\subsection{Restart Strategies}
+
+\japl{} provides three restart strategies, following Erlang/OTP:
+
+\paragraph{OneForOne.} Only the failed child is restarted. This is appropriate when children are independent.
+
+\paragraph{AllForOne.} All children are restarted when any one fails. This is appropriate when children are interdependent and their states must be consistent.
+
+\paragraph{RestForOne.} The failed child and all children started after it are restarted. This is appropriate when later children depend on earlier ones.
+
+\subsection{Typed Crash Reasons}
+
+\japl{}'s typed crash reasons enable supervisors to make informed decisions:
+
+\begin{lstlisting}
+fn custom_supervisor(children: List[ChildSpec])
+    -> Never with Process[SupervisorMsg] =
+  match Process.receive() with
+  | ChildCrashed(child_id, reason) ->
+      match reason with
+      | Normal ->
+          -- Normal exit, do not restart
+          custom_supervisor(
+            remove_child(children, child_id))
+      | AssertionFailed(_, _) ->
+          -- Bug detected, restart with
+          -- fresh state
+          restart_child(children, child_id)
+          custom_supervisor(children)
+      | ResourceExhausted(_) ->
+          -- Resource issue, wait before
+          -- restarting
+          Process.sleep(1000)
+          restart_child(children, child_id)
+          custom_supervisor(children)
+      | InvariantViolation(_) ->
+          -- Serious issue, escalate
+          log_critical(child_id, reason)
+          Process.exit(reason)
+\end{lstlisting}
+
+This is a significant improvement over Erlang, where crash reasons are untyped terms. The compiler ensures that the supervisor handles all crash reason variants.
+
+\subsection{Restart Limits}
+
+Supervisors enforce restart limits to prevent infinite restart loops:
+
+\begin{lstlisting}
+-- If more than max_restarts occur within
+-- max_seconds, the supervisor itself crashes,
+-- escalating to its parent supervisor.
+Supervisor.start(
+  strategy = OneForOne,
+  max_restarts = 5,
+  max_seconds = 60,
+  children = [...]
+)
+\end{lstlisting}
+
+This creates a natural escalation mechanism: if a subsystem cannot recover by restarting, the failure propagates upward through the supervision tree until a higher-level supervisor can respond (perhaps by restarting the entire subsystem with different configuration, or by shutting down gracefully).
+
+\subsection{Child Specifications}
+
+Each child process is described by a specification that governs its lifecycle:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Restart type} & \textbf{Meaning} \\
+\midrule
+\texttt{Permanent} & Always restarted \\
+\texttt{Transient} & Restarted only on abnormal exit \\
+\texttt{Temporary} & Never restarted \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Shutdown type} & \textbf{Meaning} \\
+\midrule
+\texttt{Timeout(ms)} & Send shutdown signal, wait up to $ms$ \\
+\texttt{Brutal} & Terminate immediately \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The combination of restart type, shutdown type, and crash reason gives supervisors fine-grained control over the recovery process.
+
+\subsection{Supervision and the Effect System}
+
+Supervision interacts with the effect system through the \texttt{Process} effect. Functions that spawn, monitor, or communicate with processes must declare the \texttt{Process} effect. This makes the presence of concurrent, potentially-failing subcomputations visible in the type signature:
+
+\begin{lstlisting}
+-- The Process effect signals that this
+-- function participates in the process model
+fn start_worker_pool(config: PoolConfig)
+    -> WorkerPool
+    with Process, Io =
+  let sup = Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = config.max_restarts,
+    max_seconds = config.max_seconds,
+    children = List.map(
+      List.range(1, config.pool_size),
+      fn i -> {
+        id = "worker-" ++ Int.to_string(i),
+        start = fn -> worker(config.worker_config),
+        restart = Permanent,
+        shutdown = Timeout(5000),
+      }
+    )
+  )
+  { supervisor = sup, config }
+\end{lstlisting}
+
+% ==================================================================
+\section{Comparison with Existing Approaches}\label{sec:comparison}
+% ==================================================================
+
+We now compare \japl{}'s dual error model with the error handling approaches of five major languages.
+
+\subsection{Rust: Result Without Supervision}
+
+Rust's \texttt{Result<T, E>} is the direct inspiration for \japl{}'s domain error handling. The comparison reveals what Rust lacks:
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Feature} & \textbf{Rust} & \textbf{\japl{}} \\
+\midrule
+Typed recoverable errors & \checkmark & \checkmark \\
+\texttt{?} propagation & \checkmark & \checkmark \\
+Exhaustive matching & \checkmark & \checkmark \\
+Effect tracking for errors & $\times$ & \checkmark \\
+Lightweight processes & $\times$ & \checkmark \\
+Supervision trees & $\times$ & \checkmark \\
+Typed crash reasons & $\times$ & \checkmark \\
+Crash $\to$ restart recovery & $\times$ & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Rust's \texttt{panic!} unwinds the thread stack and either aborts the program or is caught by \texttt{std::panic::catch\_unwind}, which is explicitly documented as not a general-purpose error recovery mechanism. There is no equivalent of supervision---a panicked thread is simply gone.
+
+In \japl{}, the equivalent of Rust's \texttt{Result} handles the same domain errors with equal type safety. The difference is that \japl{} also provides a systematic answer for Rust's \texttt{panic!} cases: crash the process, let the supervisor restart it.
+
+\subsection{Go: Error Values Without Structure}
+
+Go's approach is characterized by simplicity and explicitness, but lacks algebraic structure:
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Feature} & \textbf{Go} & \textbf{\japl{}} \\
+\midrule
+Errors as values & \checkmark & \checkmark \\
+Sum types for errors & $\times$ & \checkmark \\
+Exhaustive matching & $\times$ & \checkmark \\
+Propagation operator & $\times$ & \checkmark \\
+Effect tracking & $\times$ & \checkmark \\
+Error type composition & $\times$ & \checkmark \\
+Process supervision & $\times$ & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Go's error handling suffers from two key weaknesses that \japl{} addresses: (1) the \texttt{if err != nil} boilerplate, which \japl{} eliminates with the \texttt{?} operator, and (2) the inability to express error types precisely, which \japl{} solves with algebraic data types and the \Fail{} effect.
+
+Go does have \texttt{goroutines}, which are lightweight like \japl{} processes, but Go provides no built-in supervision mechanism. A crashed goroutine is simply lost, and any \texttt{panic} in a goroutine that is not recovered will crash the entire program.
+
+\subsection{Erlang: Crash Semantics Without Typed Errors}
+
+Erlang is the inspiration for \japl{}'s process model and supervision. The comparison highlights what static typing adds:
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Feature} & \textbf{Erlang} & \textbf{\japl{}} \\
+\midrule
+Lightweight processes & \checkmark & \checkmark \\
+Process isolation & \checkmark & \checkmark \\
+Supervision trees & \checkmark & \checkmark \\
+``Let it crash'' & \checkmark & \checkmark \\
+Typed error values & $\times$ & \checkmark \\
+Exhaustive error matching & $\times$ & \checkmark \\
+Typed crash reasons & $\times$ & \checkmark \\
+Compile-time error tracking & $\times$ & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Erlang's dynamic typing means that error handling relies on runtime conventions. Common patterns like \texttt{\{ok, Value\}} and \texttt{\{error, Reason\}} are not enforced by the type system. Dialyzer~\cite{lindahl2006practical} provides some static analysis but cannot match the guarantees of \japl{}'s type system.
+
+\japl{} preserves Erlang's supervision model while adding compile-time guarantees about error types, crash reasons, and error handling completeness.
+
+\subsection{Java: Checked Exceptions---Right Idea, Wrong Mechanism}
+
+Java's checked exceptions~\cite{gosling2014java} share \japl{}'s goal of making failure visible in function signatures. The execution was flawed:
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Feature} & \textbf{Java} & \textbf{\japl{}} \\
+\midrule
+Failure in type signature & \checkmark & \checkmark \\
+Non-local control flow & \checkmark & $\times$\textsuperscript{*} \\
+Composable error types & $\times$ & \checkmark \\
+No hidden exceptions & $\times$ & \checkmark \\
+Works with generics & $\times$ & \checkmark \\
+Works with lambdas & $\times$ & \checkmark \\
+Process supervision & $\times$ & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textsuperscript{*}\japl{}'s \Fail{} effect uses early return, not stack unwinding.
+
+\medskip
+
+Java's checked exceptions fail with higher-order functions because Java's type system cannot express ``this lambda may throw \texttt{IOException}.'' The result is pervasive \texttt{try-catch} blocks inside lambdas, or the use of unchecked (runtime) exceptions that bypass the checking system entirely. \japl{}'s effect system integrates naturally with higher-order functions and generics: a function parameter can carry a \Fail{} effect, and the compiler propagates it correctly.
+
+\subsection{Haskell: Pure but Complex}
+
+Haskell's approach is the most theoretically principled but also the most complex:
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Feature} & \textbf{Haskell} & \textbf{\japl{}} \\
+\midrule
+Typed error values & \checkmark & \checkmark \\
+Monadic composition & \checkmark & \checkmark \\
+Effect tracking & Partial\textsuperscript{*} & \checkmark \\
+Simple error propagation & $\times$ & \checkmark \\
+No hidden IO exceptions & $\times$ & \checkmark \\
+Process supervision & $\times$\textsuperscript{$\dagger$} & \checkmark \\
+Reduced syntactic ceremony & $\times$ & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textsuperscript{*}Haskell's \texttt{IO} type bundles all effects, including exceptions, into a single opaque monad. Libraries like \texttt{polysemy}~\cite{king2019polysemy} and \texttt{fused-effects}~\cite{wu2019effect} provide finer-grained tracking but are not part of the standard language.
+
+\textsuperscript{$\dagger$}Cloud Haskell~\cite{epstein2011towards} provides Erlang-style distribution and supervision, but it is a library, not a language feature.
+
+\medskip
+
+Haskell's primary weakness for error handling is the coexistence of multiple, incompatible error mechanisms: \texttt{Either}, \texttt{Maybe}, \texttt{ExceptT}, IO exceptions (\texttt{throwIO}/\texttt{catch}), pure exceptions (\texttt{error}/\texttt{undefined}), and asynchronous exceptions. A Haskell programmer must understand all of these and choose appropriately. \japl{} provides exactly two mechanisms---\Result{} and crash---with clear guidance on when to use each.
+
+\subsection{Summary}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+& \rotatebox{60}{\textbf{Typed errors}}
+& \rotatebox{60}{\textbf{Exhaustive}}
+& \rotatebox{60}{\textbf{Effect tracked}}
+& \rotatebox{60}{\textbf{Supervision}}
+& \rotatebox{60}{\textbf{Typed crashes}} \\
+\midrule
+\textbf{Rust} & \checkmark & \checkmark & $\times$ & $\times$ & $\times$ \\
+\textbf{Go} & $\sim$ & $\times$ & $\times$ & $\times$ & $\times$ \\
+\textbf{Erlang} & $\times$ & $\times$ & $\times$ & \checkmark & $\times$ \\
+\textbf{Java} & \checkmark & $\times$ & $\sim$ & $\times$ & $\times$ \\
+\textbf{Haskell} & \checkmark & \checkmark & $\sim$ & $\times$ & $\times$ \\
+\textbf{\japl{}} & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\japl{} is the only language that achieves all five properties: typed errors, exhaustive matching, effect-tracked failures, supervision trees, and typed crash reasons.
+
+% ==================================================================
+\section{Implementation}\label{sec:implementation}
+% ==================================================================
+
+Implementing the dual error model requires careful runtime design. This section discusses the key implementation considerations.
+
+\subsection{Domain Error Implementation}
+
+Domain errors (\Result{} types) are implemented as tagged unions in memory. A \texttt{Result[A, E]} value occupies $1 + \max(|A|, |E|)$ words: one tag word plus space for the larger of the two payloads. This is the standard algebraic data type representation, identical to Rust's approach.
+
+The \texttt{?} operator compiles to a conditional branch:
+
+\begin{lstlisting}
+-- Source
+let x = fallible_call()?
+
+-- Desugared (conceptual)
+let x = match fallible_call() with
+  | Ok(v) -> v
+  | Err(e) -> return Err(e)
+\end{lstlisting}
+
+This is a local transformation with no runtime overhead beyond the branch. There is no stack unwinding, no exception table lookup, and no dynamic dispatch. The cost of error propagation is exactly one conditional branch per \texttt{?} invocation.
+
+\subsection{Process Failure Implementation}
+
+Process crashes are implemented through a combination of mechanisms:
+
+\paragraph{Assertion failures and panics.} When an \texttt{assert} fails or a \texttt{panic} is invoked, the runtime:
+\begin{enumerate}
+  \item Captures the crash reason (a structured \texttt{CrashReason} value).
+  \item Unwinds the process's call stack, running cleanup for any owned resources (similar to C++ RAII or Rust drop).
+  \item Marks the process as terminated with the given crash reason.
+  \item Notifies all monitors and linked processes.
+\end{enumerate}
+
+\paragraph{Stack unwinding vs.\ process termination.} Unlike C++ or Rust, where stack unwinding is the mechanism for both resource cleanup and non-local control flow, \japl{} uses unwinding \emph{only} for resource cleanup on the crash path. Domain errors never unwind the stack; they use normal return-value propagation. This simplifies the runtime: the unwinding mechanism need only handle the crash case, and it always terminates the process.
+
+\paragraph{Resource cleanup.} \japl{}'s ownership system ensures that resources are cleaned up deterministically:
+
+\begin{itemize}[leftmargin=*]
+  \item On the normal path: resources are consumed by explicit calls (\texttt{File.close}, \texttt{Buffer.freeze}).
+  \item On the crash path: the unwinder invokes drop handlers for all live owned resources on the stack.
+  \item The linear type system guarantees that every resource has exactly one cleanup path, whether normal or crash.
+\end{itemize}
+
+\subsection{Supervision Implementation}
+
+Supervisors are implemented as ordinary \japl{} processes with special runtime support:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Monitoring}: The runtime maintains a table of monitor relationships. When a process terminates, the runtime sends a \texttt{ProcessDown} message to all monitors.
+
+  \item \textbf{Restart logic}: The supervisor process receives \texttt{ProcessDown} messages and applies the configured restart strategy. This is ordinary message-handling code, not special runtime machinery.
+
+  \item \textbf{Restart limits}: The supervisor tracks restart timestamps in a circular buffer. If the number of restarts in the configured time window exceeds the limit, the supervisor itself crashes, escalating to its parent.
+\end{enumerate}
+
+\subsection{Performance Characteristics}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Operation} & \textbf{Cost} & \textbf{Notes} \\
+\midrule
+\Result{} creation & $O(1)$ & Tag + payload \\
+\texttt{?} propagation & $O(1)$ & Conditional branch \\
+\texttt{match} on error & $O(1)$ & Tag comparison \\
+Process crash & $O(s)$ & $s$ = stack depth \\
+Resource cleanup & $O(r)$ & $r$ = owned resources \\
+Supervisor restart & $O(1)$ & Message send \\
+Monitor notification & $O(m)$ & $m$ = monitor count \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The key performance insight is that domain errors (the common case) are zero-overhead beyond the branch prediction cost. Process crashes (the uncommon case) have a cost proportional to the amount of cleanup required, which is acceptable for an exceptional event. Supervisor restarts involve only message passing and process creation, both of which are designed to be lightweight.
+
+\subsection{Comparison with Exception-Based Implementations}
+
+Traditional exception implementations use either \emph{table-based} or \emph{setjmp/longjmp-based} unwinding:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Table-based (C++, Java)}: Zero cost on the non-exception path, but exceptions are extremely expensive (hundreds of microseconds) due to table lookup and stack unwinding.
+  \item \textbf{setjmp/longjmp (some C)}: Moderate cost on both paths due to register saving and restoration.
+\end{itemize}
+
+\japl{}'s approach avoids both of these costs for domain errors. The \texttt{?} operator is a conditional branch, costing nanoseconds. Only process crashes incur unwinding cost, and since crash recovery creates a fresh process, the total recovery time is dominated by process creation, not unwinding.
+
+% ==================================================================
+\section{Case Studies}\label{sec:case-studies}
+% ==================================================================
+
+We present three case studies demonstrating \japl{}'s dual error model in realistic scenarios.
+
+\subsection{Case Study 1: HTTP Server}
+
+An HTTP server encounters many failure modes: malformed requests, missing resources, authentication failures, database errors, and network issues. The dual model cleanly separates these:
+
+\begin{lstlisting}
+type HttpError =
+  | BadRequest(String)
+  | NotFound
+  | Unauthorized
+  | Forbidden
+  | InternalError(String)
+
+type AppError =
+  | Http(HttpError)
+  | Db(DbError)
+  | Validation(List[FieldError])
+
+fn handle_get_user(req: Request) -> Response
+    with Io =
+  match parse_user_id(req) with
+  | Err(_) -> response(400, "bad user id")
+  | Ok(id) ->
+      match Fail.catch(fn -> get_user(id)) with
+      | Ok(user) -> json(200, user)
+      | Err(NotFound) ->
+          response(404, "not found")
+      | Err(Unauthorized) ->
+          response(401, "unauthorized")
+      | Err(InvalidInput(msg)) ->
+          response(400, msg)
+      | Err(DbError(msg)) ->
+          log_error("db error: " ++ msg)
+          response(500, "internal error")
+
+fn get_user(id: UserId) -> User
+    with Io, Fail[AppError] =
+  let row = db_find_user(id)?
+  decode_user(row)?
+\end{lstlisting}
+
+Each HTTP request is handled in its own process. If a handler process crashes (due to a bug, not a domain error), the supervisor restarts the request-handling infrastructure:
+
+\begin{lstlisting}
+fn http_listener(port: Int) -> Never
+    with Process, Io =
+  let listener = Tcp.listen(port)
+  accept_loop(listener)
+
+fn accept_loop(listener: TcpListener) -> Never
+    with Process, Io =
+  let conn = Tcp.accept(listener)
+  -- Each connection gets its own process
+  let _ = Process.spawn(fn ->
+    handle_connection(conn)
+  )
+  accept_loop(listener)
+
+fn handle_connection(conn: TcpConn) -> Unit
+    with Io =
+  let req = Http.parse_request(conn)
+  let resp = route_and_handle(req)
+  Http.send_response(conn, resp)
+  Tcp.close(conn)
+\end{lstlisting}
+
+If \texttt{handle\_connection} crashes, only that one connection is affected. The listener process continues accepting new connections. If the listener itself crashes, its supervisor restarts it.
+
+\subsection{Case Study 2: Database Connection Pool}
+
+A database connection pool must handle connection failures gracefully while providing a reliable interface to consumers:
+
+\begin{lstlisting}
+type PoolError =
+  | NoAvailableConnection
+  | QueryFailed(String)
+  | ConnectionLost
+
+type PoolMsg =
+  | Checkout(Reply[DbConn])
+  | Return(DbConn)
+  | HealthCheck
+
+fn pool_manager(state: PoolState) -> Never
+    with Process[PoolMsg], Io =
+  match Process.receive() with
+  | Checkout(reply) ->
+      match find_available(state) with
+      | Some(conn) ->
+          Reply.send(reply, Ok(conn))
+          pool_manager(mark_in_use(state, conn))
+      | None ->
+          Reply.send(reply, Err(NoAvailableConnection))
+          pool_manager(state)
+  | Return(conn) ->
+      match validate_connection(conn) with
+      | Ok(_) ->
+          pool_manager(mark_available(state, conn))
+      | Err(_) ->
+          -- Connection is broken, create new one
+          let new_conn = Db.connect(state.config)
+          pool_manager(mark_available(state, new_conn))
+  | HealthCheck ->
+      let state = check_all_connections(state)
+      pool_manager(state)
+\end{lstlisting}
+
+The pool manager handles connection validation failures as domain errors (creating replacement connections). If the pool manager itself encounters an invariant violation (e.g., the pool state becomes inconsistent), it crashes and the supervisor restarts it:
+
+\begin{lstlisting}
+fn db_pool_supervisor(config: DbConfig)
+    -> Never with Process =
+  Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = 3,
+    max_seconds = 30,
+    children = [
+      { id = "pool_manager"
+      , start = fn ->
+          let conns = initialize_connections(config)
+          pool_manager(initial_state(conns))
+      , restart = Permanent
+      , shutdown = Timeout(5000)
+      },
+      { id = "health_checker"
+      , start = fn -> health_check_loop(config)
+      , restart = Permanent
+      , shutdown = Timeout(1000)
+      },
+    ]
+  )
+\end{lstlisting}
+
+\subsection{Case Study 3: Distributed Task Worker}
+
+A distributed task worker receives tasks from a coordinator, executes them, and reports results. It must handle task failures, network partitions, and coordinator unavailability:
+
+\begin{lstlisting}
+type TaskError =
+  | InvalidTask(String)
+  | ExecutionFailed(String)
+  | DependencyMissing(String)
+
+type WorkerMsg =
+  | ExecuteTask(Task, Reply[TaskResult])
+  | CancelTask(TaskId)
+  | UpdateConfig(WorkerConfig)
+
+fn task_worker(state: WorkerState) -> Never
+    with Process[WorkerMsg], Io, Net =
+  match Process.receive() with
+  | ExecuteTask(task, reply) ->
+      let result = Fail.catch(fn ->
+        validate_task(task)?
+        fetch_dependencies(task)?
+        execute(task)?
+      )
+      match result with
+      | Ok(output) ->
+          Reply.send(reply, TaskSuccess(output))
+      | Err(InvalidTask(msg)) ->
+          Reply.send(reply, TaskRejected(msg))
+      | Err(ExecutionFailed(msg)) ->
+          Reply.send(reply, TaskFailed(msg))
+      | Err(DependencyMissing(dep)) ->
+          Reply.send(reply, TaskPending(dep))
+      task_worker(state)
+  | CancelTask(id) ->
+      let state = cancel_if_running(state, id)
+      task_worker(state)
+  | UpdateConfig(config) ->
+      task_worker({ state | config })
+\end{lstlisting}
+
+The worker uses \Result{} types for task-level failures (which are reported to the coordinator) and relies on supervision for worker-level failures (which trigger a restart):
+
+\begin{lstlisting}
+fn worker_supervisor(config: WorkerConfig)
+    -> Never with Process =
+  Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = 10,
+    max_seconds = 60,
+    children = List.map(
+      List.range(1, config.worker_count),
+      fn i -> {
+        id = "worker-" ++ Int.to_string(i),
+        start = fn ->
+          let state = WorkerState.init(config)
+          task_worker(state),
+        restart = Permanent,
+        shutdown = Timeout(10000),
+      }
+    )
+  )
+
+-- Coordinator connection with reconnection
+fn coordinator_link(url: String) -> Never
+    with Process, Io, Net =
+  match Fail.catch(fn -> connect_coordinator(url)) with
+  | Ok(conn) ->
+      register_with_coordinator(conn)
+      message_loop(conn)
+  | Err(e) ->
+      log_warning("coordinator connection "
+        ++ "failed: " ++ show(e))
+      Process.sleep(5000)
+      coordinator_link(url)
+\end{lstlisting}
+
+In this design:
+\begin{itemize}[leftmargin=*]
+  \item Task validation, dependency resolution, and execution failures are domain errors, reported back to the coordinator via typed \texttt{TaskResult} messages.
+  \item Worker crashes (due to bugs or resource exhaustion) are handled by the supervisor, which restarts the worker with fresh state.
+  \item Coordinator connectivity issues are handled by the \texttt{coordinator\_link} process, which retries connection. If it fails too many times, it crashes and escalates to its supervisor.
+\end{itemize}
+
+% ==================================================================
+\section{Formal Properties}\label{sec:formal-properties}
+% ==================================================================
+
+We now state and prove three key properties of \japl{}'s dual error model.
+
+\subsection{Error Safety Theorem}
+
+\begin{theorem}[Error Safety]\label{thm:error-safety}
+In a well-typed \japl{} program, every domain error is either:
+\begin{enumerate}
+  \item Explicitly handled (matched and acted upon), or
+  \item Explicitly propagated (via \texttt{?} or effect signature).
+\end{enumerate}
+No domain error can be silently discarded.
+\end{theorem}
+
+\begin{proof}
+The proof proceeds by structural induction on the typing derivation.
+
+\textbf{Base case:} A function that calls a fallible operation (one with a \texttt{Fail[E]} effect) must either:
+\begin{itemize}
+  \item Use \texttt{?} to propagate the error, which requires the calling function's effect signature to include \texttt{Fail[E]} (or a supertype).
+  \item Use \texttt{Fail.catch} to handle the error, which eliminates the \texttt{Fail[E]} effect and produces a \texttt{Result[A, E]} value.
+  \item Use \texttt{match} on the \texttt{Result} value, which requires exhaustive coverage of both \texttt{Ok} and \texttt{Err} variants.
+\end{itemize}
+
+In all three cases, the error is either propagated or handled. The type system prevents ignoring a \texttt{Result} value: the \texttt{Result} type is not \texttt{Unit}, so assigning it to an unused binding triggers a compiler warning, and the \texttt{Fail[E]} effect prevents calling the function in a context that does not expect failure.
+
+\textbf{Inductive step:} If function $f$ calls function $g$ with effect \texttt{Fail[E]}, then $f$'s effect signature must include \texttt{Fail[E]} (propagation) or $f$ must handle the effect (handling). By the inductive hypothesis, $g$'s errors are properly handled or propagated. The composition preserves the property.
+
+\textbf{Boundary condition:} At the top level (\texttt{main} or a process entry point), if \texttt{Fail[E]} remains in the effect set, the compiler reports an error: unhandled failure effect. The programmer must install a handler before the program is accepted.
+
+Therefore, in any well-typed program, every domain error is either handled or propagated, with no possibility of silent discard. \qed
+\end{proof}
+
+\subsection{Crash Containment Theorem}
+
+\begin{theorem}[Crash Containment]\label{thm:crash-containment}
+If process $P_i$ crashes in a system of processes $P_1 \parallel P_2 \parallel \cdots \parallel P_n$, the state of every other process $P_j$ ($j \neq i$) is unaffected by the crash.
+\end{theorem}
+
+\begin{proof}
+The proof relies on three properties enforced by \japl{}'s type system and runtime:
+
+\textbf{Property 1: Memory isolation.} Processes do not share mutable state. Values passed between processes are either:
+\begin{itemize}
+  \item Immutable values on the shared heap (which cannot be modified by any process), or
+  \item Linearly-typed resources whose ownership is transferred (the sending process loses access).
+\end{itemize}
+
+By construction, no process can hold a mutable reference to memory owned by another process.
+
+\textbf{Property 2: Communication isolation.} Processes communicate exclusively through typed message passing. Messages are values (immutable or ownership-transferred). The runtime's message delivery mechanism copies immutable values and transfers ownership atomically.
+
+\textbf{Property 3: Crash scope.} When $P_i$ crashes:
+\begin{enumerate}
+  \item The runtime terminates $P_i$'s execution.
+  \item All resources owned by $P_i$ are released (deterministic cleanup).
+  \item Monitor notifications are sent as messages to monitoring processes.
+  \item No write is performed to any memory accessible by $P_j$.
+\end{enumerate}
+
+Since $P_j$'s state consists of its local stack, its owned resources, and its mailbox, and since the crash of $P_i$ can only add a \texttt{ProcessDown} message to $P_j$'s mailbox (if $P_j$ monitors $P_i$), the operational state of $P_j$ is unaffected.
+
+The only observable effect of $P_i$'s crash on $P_j$ is the arrival of a \texttt{ProcessDown} message, which is a normal message that $P_j$ processes through its regular message-handling logic. \qed
+\end{proof}
+
+\subsection{Supervision Liveness Theorem}
+
+\begin{theorem}[Supervision Liveness]\label{thm:supervision-liveness}
+For a process $P$ with restart type \texttt{Permanent} supervised by a supervisor $S$ with restart limit $(m, t)$ (at most $m$ restarts in $t$ seconds): if $P$ crashes and fewer than $m$ restarts have occurred in the last $t$ seconds, then $P$ is restarted within a bounded time.
+\end{theorem}
+
+\begin{proof}
+We model the supervisor as a process $S$ that repeatedly performs:
+\begin{enumerate}
+  \item Wait for a \texttt{ProcessDown} message (blocking receive).
+  \item Check the restart counter against the limit.
+  \item If within limits, spawn a new instance of the child process.
+  \item If limits exceeded, crash (escalate to parent supervisor).
+\end{enumerate}
+
+\textbf{Crash detection}: The runtime guarantees that when $P$ terminates, a \texttt{ProcessDown} message is enqueued in $S$'s mailbox. This follows from the completeness property of \japl{}'s monitoring mechanism, which is implemented in the runtime scheduler.
+
+\textbf{Message delivery}: The runtime guarantees that messages in a process's mailbox are eventually delivered (processes are fairly scheduled). Therefore, $S$ will eventually receive the \texttt{ProcessDown} message.
+
+\textbf{Restart execution}: Upon receiving the message and determining that restart limits are not exceeded, $S$ invokes the child's start function, creating a new process. Process creation is an $O(1)$ runtime operation (allocate a process structure, add to the scheduler's run queue).
+
+\textbf{Bounded time}: The total time from crash to restart is bounded by:
+\[
+  T_{\mathit{restart}} \leq T_{\mathit{detect}} + T_{\mathit{schedule}} + T_{\mathit{start}}
+\]
+where $T_{\mathit{detect}}$ is the monitor notification time (one scheduler tick), $T_{\mathit{schedule}}$ is the time until the supervisor is scheduled (bounded by the scheduler's fairness guarantee), and $T_{\mathit{start}}$ is the child creation time (bounded by process allocation cost).
+
+Under the assumption that the scheduler provides fair scheduling with bounded delay, $T_{\mathit{restart}}$ is bounded.
+
+\textbf{Caveat ($T_{\mathit{schedule}}$ under load).} The bound on $T_{\mathit{schedule}}$ depends on the scheduler's fairness guarantee, which is sensitive to system load. Under heavy load, the number of runnable processes may cause $T_{\mathit{schedule}}$ to grow, becoming effectively non-deterministic from the application's perspective. In the worst case, a slow supervisor response can itself trigger cascading timeouts: if a child's clients time out while waiting for the restart, those clients may themselves fail, causing their supervisors to restart them, amplifying the load. \japl{}'s runtime mitigates this by giving supervisor processes elevated scheduling priority (supervisors are scheduled before workers), but the liveness bound should be understood as holding under a well-provisioned scheduler, not as an absolute real-time guarantee. Deployers should account for scheduler latency when choosing restart-limit windows. \qed
+\end{proof}
+
+\begin{corollary}[Escalation termination]
+The escalation chain (child $\to$ supervisor $\to$ parent supervisor $\to \cdots$) terminates: either a supervisor successfully restarts the failed subtree, or the escalation reaches the root supervisor, which terminates the application.
+\end{corollary}
+
+\begin{proof}
+The supervision tree has finite depth $d$. At each level, a supervisor either restarts (terminating the escalation) or exceeds its restart limit and crashes (escalating). Since the tree has finite depth, escalation terminates in at most $d$ steps.
+\end{proof}
+
+\subsection{Composability of Error Safety}
+
+\begin{proposition}[Compositional error safety]
+If modules $M_1$ and $M_2$ independently satisfy error safety, then their composition $M_1 \circ M_2$ (where $M_1$ calls functions from $M_2$) also satisfies error safety.
+\end{proposition}
+
+\begin{proof}
+By the effect system's composition rules: if $M_2$ exports a function $f$ with effect \texttt{Fail[E]}, then any function in $M_1$ that calls $f$ must either handle \texttt{Fail[E]} or include it in its own effect signature. The type checker enforces this at the module boundary. Since both modules independently satisfy error safety (all their internal error handling is complete), the composition inherits this property. \qed
+\end{proof}
+
+% ==================================================================
+\section{Discussion}\label{sec:discussion}
+% ==================================================================
+
+\subsection{When the Model Breaks Down}
+
+No error model is perfect. We acknowledge several limitations:
+
+\paragraph{FFI boundaries and asynchronous exceptions.} When \japl{} calls foreign functions via FFI, the type system cannot track errors in the foreign code. Foreign functions may throw C++ exceptions, segfault, or corrupt memory in ways that violate process isolation. \japl{} mitigates this through capability-gated FFI (requiring the \texttt{Unsafe} capability) and by running FFI calls in dedicated processes that can crash without affecting the rest of the system.
+
+A subtle hazard arises when a supervisor decides to kill a child process that is currently executing inside an FFI call. The foreign code may hold external resources (file locks, GPU memory, database transactions) that the \japl{} runtime cannot release through its normal ownership-based cleanup. To address this, \japl{} enforces the following protocol at the unsafe FFI boundary: (1)~the runtime marks the process as ``in-FFI'' for the duration of the foreign call, during which asynchronous kill signals are \emph{deferred} rather than delivered immediately; (2)~when the foreign call returns, the runtime checks for a pending kill signal and, if present, invokes a user-supplied \texttt{ffi\_cleanup} callback before crashing the process; (3)~if the foreign call does not return within a configurable timeout, the runtime forcibly terminates the process and logs a resource-leak warning---the Crash Containment theorem (\Cref{thm:crash-containment}) holds for \japl{}-managed resources but \emph{not} for external resources held across a stuck FFI boundary. Programmers must therefore treat long-running or resource-holding FFI calls as inherently unsafe and design their cleanup callbacks accordingly.
+
+\paragraph{Divergence (non-termination).} The dual error model addresses failures that produce a value (\Result{}) and failures that terminate a process (crash), but a third failure mode exists: \emph{divergence}, where a computation enters an infinite loop and produces neither a result nor a crash. A divergent process bypasses both the \Fail{} effect and the crash mechanism, silently consuming resources while its supervisor receives no \texttt{ProcessDown} notification. \japl{} addresses this through two BEAM-inspired mechanisms. First, each process has a configurable \emph{watchdog timer}: if a process does not yield (via message receive, explicit yield, or function return) within a configurable time bound, the runtime forces a crash with reason \texttt{Timeout}. Second, the runtime employs \emph{reduction counting}: each function call and loop iteration consumes a ``reduction credit,'' and when the credit is exhausted the process is preempted, giving the scheduler an opportunity to detect runaway computation. Together, these mechanisms convert divergence into a detectable crash, bringing it within the scope of supervision. However, divergence detection is inherently best-effort---a process that performs useful work slowly is indistinguishable from one that is divergent---and the watchdog timeout must be tuned to the application's expected latency profile.
+
+\paragraph{Resource exhaustion.} System-level resource exhaustion (out of memory, file descriptor limits) can affect all processes simultaneously, potentially violating crash containment. \japl{}'s runtime attempts to reserve emergency memory for crash handling, but this is a best-effort mechanism.
+
+\paragraph{Error type proliferation.} In large systems, the number of distinct error types can grow, leading to complex error type hierarchies. \japl{} mitigates this through error type composition (wrapping sub-errors in higher-level types) and the \texttt{map\_err} pattern, but discipline is still required.
+
+\subsection{Relationship to Algebraic Effects Research}
+
+\japl{}'s \Fail{} effect is a specific instance of the general algebraic effects framework~\cite{plotkin2009handlers,plotkin2013handling}. The effect handlers for \Fail{} are relatively simple (the handler either returns the error or discards the continuation), which means that \japl{} does not require the full generality of effect handlers with resumable continuations.
+
+This restriction is deliberate: the full algebraic effects model with multi-shot continuations introduces complexity (both conceptual and in implementation) that is not justified by the error handling use case. \japl{} uses one-shot continuations for error handling, which can be implemented without heap-allocated continuation frames.
+
+Future work may extend \japl{}'s effect system with more general algebraic effects for other use cases (generators, async/await, transactional memory), using the \Fail{} effect as a proving ground.
+
+\subsection{The Category-Theoretic Perspective}
+
+The Kleisli category perspective provides more than just a formal framework; it suggests design principles. In $\Kleisli(T_E)$:
+
+\begin{itemize}[leftmargin=*]
+  \item Composition of fallible functions is automatically associative.
+  \item Error propagation is a natural consequence of the monad structure.
+  \item The relationship between pure functions (in \Set{}) and fallible functions (in $\Kleisli(T_E)$) is captured by the adjunction between the free and forgetful functors.
+\end{itemize}
+
+The process algebra layer adds a second category: the category of processes and communication channels. The boundary between the two categories (domain errors and process failures) is not a functor---there is no structure-preserving map from process crashes to domain errors---which reinforces the design decision to keep them separate.
+
+\subsection{Educational Considerations}
+
+One of \japl{}'s goals is accessibility. The dual error model is designed to be explainable without category theory:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Domain errors}: ``Sometimes things don't work out. Your function says so in its return type, and you have to deal with it.'' This is familiar to Rust and Go programmers.
+  \item \textbf{Process crashes}: ``Sometimes things go really wrong. Your process dies, and a supervisor starts a fresh one.'' This is familiar to Erlang programmers and to anyone who has restarted a crashed application.
+\end{enumerate}
+
+The effect system adds the compiler-checked documentation aspect: ``The type signature tells you exactly what can go wrong and how.'' This is the lesson of Java's checked exceptions, done correctly.
+
+% ==================================================================
+\section{Related Work: Extended Discussion}\label{sec:extended-related}
+% ==================================================================
+
+\subsection{Algebraic Effects in Practice}
+
+Koka~\cite{leijen2017type} demonstrates that algebraic effects can be practical in a general-purpose language. Koka's effect system tracks all computational effects including exceptions, divergence, and IO. \japl{}'s effect system is inspired by Koka's but differs in two important ways: (1) \japl{} adds process-level effects (\texttt{Process}), and (2) \japl{}'s \Fail{} effect is specialized for error handling rather than being a general exception effect.
+
+The Eff programming language~\cite{bauer2015programming} provides a direct implementation of algebraic effects and handlers with a clean operational semantics. Frank~\cite{lindley2017frank} explores effect typing with a focus on multi-handler patterns. Helium~\cite{biernacki2019abstracting} and Effekt~\cite{brachthaeuser2020effects} explore efficient implementations of effect handlers.
+
+\subsection{Process Calculi and Typed Communication}
+
+The $\pi$-calculus~\cite{milner1999communicating} provides the foundation for reasoning about mobile processes and name-passing. Session types~\cite{honda1993types,honda1998language} extend this with typed communication protocols, ensuring that processes follow agreed-upon message exchange patterns. \japl{}'s typed mailboxes can be viewed as a simplified form of session typing where the session protocol is determined by the mailbox type.
+
+Singularity OS~\cite{hunt2007singularity} explored software-isolated processes with typed channels in a systems programming context, demonstrating that process isolation can be enforced by the type system rather than hardware memory protection.
+
+\subsection{Error Handling in Distributed Systems}
+
+The eight fallacies of distributed computing~\cite{deutsch1994eight} highlight that network failures are fundamentally different from local failures. Waldo \etal{}~\cite{waldo1997note} argue that distributed computing cannot be made transparent---the programmer must be aware of distribution boundaries.
+
+\japl{} takes this critique seriously: the \texttt{Net} effect explicitly marks functions that involve network communication, and network failures are domain errors (represented as \Result{} types) rather than crashes, since they are anticipated and recoverable. However, \japl{} allows process IDs to be location-transparent, accepting Waldo's critique for failure handling while maintaining uniformity for the communication model.
+
+\subsection{Gradual Typing and Error Handling}
+
+Gradual typing~\cite{siek2006gradual} offers a middle ground between static and dynamic typing. Similarly, one could imagine a ``gradual error handling'' approach where error types are optionally specified. \japl{} deliberately does not take this path: the value of the \Fail{} effect comes precisely from its completeness. A ``gradual'' \Fail{} effect that allows untracked errors would undermine the error safety theorem.
+
+% ==================================================================
+\section{Future Work}\label{sec:future}
+% ==================================================================
+
+Several directions for future research emerge from this work:
+
+\paragraph{Automatic error type inference across module boundaries.} Currently, \japl{} requires explicit error type annotations at module boundaries. Research into inferring error types across modules while maintaining modular compilation could reduce annotation burden.
+
+\paragraph{Supervision strategy verification.} Given typed crash reasons and supervision strategies, it may be possible to statically verify that a supervision tree handles all crash scenarios appropriately---that no crash reason goes unhandled and no restart strategy is inappropriately permissive.
+
+\paragraph{Performance-guided error mode selection.} Profiling data could guide the compiler in optimizing error handling paths---for example, converting \Result{} checks to branch-free code when profiling shows the error path is extremely rare.
+
+\paragraph{Cross-node supervision.} Extending the supervision model to distributed settings, where supervisor and child may be on different nodes, introduces new challenges around failure detection timing and network partition handling.
+
+\paragraph{Error type evolution.} As systems evolve, error types change. Research into backward-compatible error type evolution (adding variants without breaking existing handlers) could leverage \japl{}'s row-polymorphic type system.
+
+\paragraph{Integration with property-based testing.} \japl{}'s built-in property testing could be extended to automatically generate test cases that exercise error paths, using the \Fail{} effect annotations to guide test generation.
+
+% ==================================================================
+\section{Conclusion}\label{sec:conclusion}
+% ==================================================================
+
+Error handling is not a peripheral concern---it is central to the design of reliable software. The history of programming languages shows that no single error handling mechanism is sufficient. Exceptions conflate control flow with failure signaling. Error codes lack algebraic structure. Result types handle domain errors well but provide no answer for unexpected failures. Crash-and-restart semantics handle unexpected failures well but lack compile-time error typing.
+
+\japl{}'s dual error model synthesizes the best insights from each tradition:
+
+\begin{itemize}[leftmargin=*]
+  \item From \textbf{Rust}: typed result values for recoverable errors, the \texttt{?} propagation operator, exhaustive pattern matching on error types.
+  \item From \textbf{Erlang}: process isolation, crash-and-restart semantics, supervision trees, the error kernel pattern.
+  \item From \textbf{algebraic effects}: the \Fail{} effect for compiler-tracked, composable failure handling.
+  \item From \textbf{Java} (corrected): the insight that failure should be visible in type signatures, implemented through effects rather than checked exceptions.
+\end{itemize}
+
+The key contribution is the principled boundary between domain errors and process failures. Domain errors are expected, handled as values, tracked by the effect system, and resolved within the call chain. Process failures are unexpected, handled by supervision, and resolved by restarting with fresh state. The two modes are complementary, not competing.
+
+We have shown that this model satisfies three important formal properties: error safety (domain errors cannot be silently discarded), crash containment (a process crash cannot corrupt another process), and supervision liveness (crashed permanent processes are eventually restarted). These properties hold compositionally, enabling modular reasoning about error handling in large systems.
+
+Through case studies of an HTTP server, a database connection pool, and a distributed task worker, we have demonstrated that the dual model handles real-world error scenarios with minimal ceremony and maximal type safety. The result is a language that makes failure a first-class, well-typed, well-understood aspect of program design---because failures are normal, and they should be typed.
+
+% ==================================================================
+% References
+% ==================================================================
+
+\bibliographystyle{plainnat}
+
+\begin{thebibliography}{40}
+
+\bibitem[Abrahams(2000)]{abrahams2000exception}
+D.~Abrahams.
+\newblock Exception safety in generic components.
+\newblock In \emph{Generic Programming}, volume 1766 of \emph{LNCS}, pages 69--79. Springer, 2000.
+
+\bibitem[Armstrong(2003)]{armstrong2003thesis}
+J.~Armstrong.
+\newblock \emph{Making Reliable Distributed Systems in the Presence of Software Errors}.
+\newblock PhD thesis, Royal Institute of Technology, Stockholm, 2003.
+
+\bibitem[Armstrong(2007)]{armstrong2007history}
+J.~Armstrong.
+\newblock A history of Erlang.
+\newblock In \emph{Proceedings of the Third ACM SIGPLAN Conference on History of Programming Languages (HOPL III)}, pages 6-1--6-26, 2007.
+
+\bibitem[Bauer and Pretnar(2015)]{bauer2015programming}
+A.~Bauer and M.~Pretnar.
+\newblock Programming with algebraic effects and handlers.
+\newblock \emph{Journal of Logical and Algebraic Methods in Programming}, 84(1):108--123, 2015.
+
+\bibitem[Biernacki et~al.(2019)]{biernacki2019abstracting}
+D.~Biernacki, M.~Pir{\'o}g, P.~Polesiuk, and F.~Sieczkowski.
+\newblock Abstracting algebraic effects.
+\newblock \emph{Proceedings of the ACM on Programming Languages}, 3(POPL):6:1--6:28, 2019.
+
+\bibitem[Bloch(2008)]{bloch2008effective}
+J.~Bloch.
+\newblock \emph{Effective Java}.
+\newblock Addison-Wesley, 2nd edition, 2008.
+
+\bibitem[Brachth{\"a}user et~al.(2020)]{brachthaeuser2020effects}
+J.~I. Brachth{\"a}user, P.~Schuster, and K.~Ostermann.
+\newblock Effects as capabilities: Effect handlers and lightweight effect polymorphism.
+\newblock \emph{Proceedings of the ACM on Programming Languages}, 4(OOPSLA):126:1--126:30, 2020.
+
+\bibitem[Chandra and Toueg(1996)]{chandra1996unreliable}
+T.~D. Chandra and S.~Toueg.
+\newblock Unreliable failure detectors for reliable distributed systems.
+\newblock \emph{Journal of the ACM}, 43(2):225--267, 1996.
+
+\bibitem[Deutsch(1994)]{deutsch1994eight}
+P.~Deutsch.
+\newblock The eight fallacies of distributed computing.
+\newblock Technical report, Sun Microsystems, 1994.
+
+\bibitem[Donovan and Kernighan(2015)]{donovan2015go}
+A.~A. Donovan and B.~W. Kernighan.
+\newblock \emph{The Go Programming Language}.
+\newblock Addison-Wesley, 2015.
+
+\bibitem[Eckel(2003)]{eckel2003thinking}
+B.~Eckel.
+\newblock Does Java need checked exceptions?
+\newblock \url{http://www.mindview.net/Etc/Discussions/CheckedExceptions}, 2003.
+
+\bibitem[Epstein et~al.(2011)]{epstein2011towards}
+J.~Epstein, A.~P. Black, and S.~Peyton~Jones.
+\newblock Towards Haskell in the cloud.
+\newblock In \emph{Proceedings of the 4th ACM Symposium on Haskell}, pages 118--129, 2011.
+
+\bibitem[Gosling et~al.(2014)]{gosling2014java}
+J.~Gosling, B.~Joy, G.~Steele, G.~Bracha, and A.~Buckley.
+\newblock \emph{The Java Language Specification, Java SE 8 Edition}.
+\newblock Addison-Wesley, 2014.
+
+\bibitem[Hoare(1985)]{hoare1985communicating}
+C.~A.~R. Hoare.
+\newblock \emph{Communicating Sequential Processes}.
+\newblock Prentice Hall, 1985.
+
+\bibitem[Honda(1993)]{honda1993types}
+K.~Honda.
+\newblock Types for dyadic interaction.
+\newblock In \emph{CONCUR'93}, volume 715 of \emph{LNCS}, pages 509--523. Springer, 1993.
+
+\bibitem[Honda et~al.(1998)]{honda1998language}
+K.~Honda, V.~T. Vasconcelos, and M.~Kubo.
+\newblock Language primitives and type discipline for structured communication-based programming.
+\newblock In \emph{ESOP'98}, volume 1381 of \emph{LNCS}, pages 122--138. Springer, 1998.
+
+\bibitem[Hunt and Larus(2007)]{hunt2007singularity}
+G.~C. Hunt and J.~R. Larus.
+\newblock Singularity: Rethinking the software stack.
+\newblock \emph{ACM SIGOPS Operating Systems Review}, 41(2):37--49, 2007.
+
+\bibitem[Jones(1995)]{jones1995functional}
+M.~P. Jones.
+\newblock Functional programming with overloading and higher-order polymorphism.
+\newblock In \emph{Advanced Functional Programming}, volume 925 of \emph{LNCS}, pages 97--136. Springer, 1995.
+
+\bibitem[King(2019)]{king2019polysemy}
+S.~King.
+\newblock polysemy: Higher-order, no-boilerplate, zero-cost free monads.
+\newblock Hackage library, 2019.
+
+\bibitem[Kiselyov et~al.(2013)]{kiselyov2013extensible}
+O.~Kiselyov, A.~Sabry, and C.~Swords.
+\newblock Extensible effects: An alternative to monad transformers.
+\newblock In \emph{Proceedings of the 2013 ACM SIGPLAN Symposium on Haskell}, pages 59--70, 2013.
+
+\bibitem[Klabnik and Nichols(2019)]{klabnik2019rust}
+S.~Klabnik and C.~Nichols.
+\newblock \emph{The Rust Programming Language}.
+\newblock No Starch Press, 2019.
+
+\bibitem[Leijen(2017)]{leijen2017type}
+D.~Leijen.
+\newblock Type directed compilation of row-typed algebraic effects.
+\newblock In \emph{Proceedings of the 44th ACM SIGPLAN Symposium on Principles of Programming Languages (POPL)}, pages 486--499, 2017.
+
+\bibitem[Lindahl and Sagonas(2006)]{lindahl2006practical}
+T.~Lindahl and K.~Sagonas.
+\newblock Practical type inference based on success typings.
+\newblock In \emph{Proceedings of the 8th ACM SIGPLAN International Conference on Principles and Practice of Declarative Programming}, pages 167--178, 2006.
+
+\bibitem[Lindley et~al.(2017)]{lindley2017frank}
+S.~Lindley, C.~McBride, and C.~McLaughlin.
+\newblock Do be do be do.
+\newblock In \emph{Proceedings of the 44th ACM SIGPLAN Symposium on Principles of Programming Languages (POPL)}, pages 500--514, 2017.
+
+\bibitem[Logan et~al.(2010)]{logan2010erlang}
+M.~Logan, E.~Merritt, and R.~Carlsson.
+\newblock \emph{Erlang and OTP in Action}.
+\newblock Manning Publications, 2010.
+
+\bibitem[Marlow(2010)]{marlow2010haskell}
+S.~Marlow, editor.
+\newblock \emph{Haskell 2010 Language Report}.
+\newblock \url{https://www.haskell.org/onlinereport/haskell2010/}, 2010.
+
+\bibitem[Marlow et~al.(2001)]{marlow2001asynchronous}
+S.~Marlow, S.~Peyton~Jones, A.~Moran, and J.~Reppy.
+\newblock Asynchronous exceptions in Haskell.
+\newblock In \emph{Proceedings of the ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)}, pages 274--285, 2001.
+
+\bibitem[Matsakis and Klock(2014)]{matsakis2014rust}
+N.~D. Matsakis and F.~S. Klock~II.
+\newblock The Rust language.
+\newblock In \emph{Proceedings of the 2014 ACM SIGAda Annual Conference on High Integrity Language Technology}, pages 103--104, 2014.
+
+\bibitem[Milner(1999)]{milner1999communicating}
+R.~Milner.
+\newblock \emph{Communicating and Mobile Systems: the $\pi$-Calculus}.
+\newblock Cambridge University Press, 1999.
+
+\bibitem[Moggi(1991)]{moggi1991notions}
+E.~Moggi.
+\newblock Notions of computation and monads.
+\newblock \emph{Information and Computation}, 93(1):55--92, 1991.
+
+\bibitem[Pike(2012)]{pike2012go}
+R.~Pike.
+\newblock Go at Google: Language design in the service of software engineering.
+\newblock In \emph{Proceedings of the 3rd Annual Conference on Systems, Programming, and Applications: Software for Humanity (SPLASH)}, 2012.
+
+\bibitem[Plotkin and Pretnar(2009)]{plotkin2009handlers}
+G.~D. Plotkin and M.~Pretnar.
+\newblock Handlers of algebraic effects.
+\newblock In \emph{Programming Languages and Systems (ESOP)}, volume 5502 of \emph{LNCS}, pages 80--94. Springer, 2009.
+
+\bibitem[Plotkin and Pretnar(2013)]{plotkin2013handling}
+G.~D. Plotkin and M.~Pretnar.
+\newblock Handling algebraic effects.
+\newblock \emph{Logical Methods in Computer Science}, 9(4):1--36, 2013.
+
+\bibitem[Siek and Taha(2006)]{siek2006gradual}
+J.~G. Siek and W.~Taha.
+\newblock Gradual typing for functional languages.
+\newblock In \emph{Scheme and Functional Programming Workshop}, pages 81--92, 2006.
+
+\bibitem[Stroustrup(1994)]{stroustrup1994design}
+B.~Stroustrup.
+\newblock \emph{The Design and Evolution of C++}.
+\newblock Addison-Wesley, 1994.
+
+\bibitem[Sutter(1999)]{sutter1999exceptional}
+H.~Sutter.
+\newblock \emph{Exceptional C++: 47 Engineering Puzzles, Programming Problems, and Solutions}.
+\newblock Addison-Wesley, 1999.
+
+\bibitem[Wadler(1992)]{wadler1992essence}
+P.~Wadler.
+\newblock The essence of functional programming.
+\newblock In \emph{Proceedings of the 19th ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL)}, pages 1--14, 1992.
+
+\bibitem[Wadler(1995)]{wadler1995monads}
+P.~Wadler.
+\newblock Monads for functional programming.
+\newblock In \emph{Advanced Functional Programming}, volume 925 of \emph{LNCS}, pages 24--52. Springer, 1995.
+
+\bibitem[Waldo et~al.(1997)]{waldo1997note}
+J.~Waldo, G.~Wyant, A.~Wollrath, and S.~Kendall.
+\newblock A note on distributed computing.
+\newblock In \emph{Mobile Object Systems: Towards the Programmable Internet}, volume 1222 of \emph{LNCS}, pages 49--64. Springer, 1997.
+
+\bibitem[Wu et~al.(2019)]{wu2019effect}
+N.~Wu, T.~Schrijvers, and R.~Hinze.
+\newblock Effect handlers in scope.
+\newblock \emph{Journal of Functional Programming}, 29:e16, 2019.
+
+\end{thebibliography}
+
+% ==================================================================
+\appendix
+\section{Extended Typing Rules}\label{app:typing}
+% ==================================================================
+
+We present the full typing rules for \japl{}'s error handling constructs.
+
+\subsection{Judgment Forms}
+
+The main typing judgment has the form:
+\[
+  \Gamma \vdash e : \tau \mid \Eff
+\]
+where $\Gamma$ is the type environment, $e$ is an expression, $\tau$ is the result type, and $\Eff$ is the effect set.
+
+\subsection{Rules for Fail}
+
+\paragraph{Fail introduction.}
+\[
+  \inferrule
+    {\Gamma \vdash e : E}
+    {\Gamma \vdash \mathsf{fail}(e) : \tau \mid \Eff \cup \{\texttt{Fail}[E]\}}
+\]
+
+\paragraph{Fail propagation (\texttt{?} operator).}
+\[
+  \inferrule
+    {\Gamma \vdash e : \Result\langle A, E\rangle \mid \Eff}
+    {\Gamma \vdash e\texttt{?} : A \mid \Eff \cup \{\texttt{Fail}[E]\}}
+\]
+
+\paragraph{Fail handling.}
+\[
+  \inferrule
+    {\Gamma \vdash e : A \mid \Eff \cup \{\texttt{Fail}[E]\}}
+    {\Gamma \vdash \mathsf{Fail.catch}(\lambda().\, e) : \Result\langle A, E\rangle \mid \Eff}
+\]
+
+\paragraph{Effect subsumption.}
+\[
+  \inferrule
+    {\Gamma \vdash e : \tau \mid \Eff_1 \quad \Eff_1 \subseteq \Eff_2}
+    {\Gamma \vdash e : \tau \mid \Eff_2}
+\]
+
+\subsection{Rules for Processes and Crashes}
+
+\paragraph{Process spawn.}
+\[
+  \inferrule
+    {\Gamma \vdash e : \mathsf{Never} \mid \Eff \cup \{\texttt{Process}[M]\}}
+    {\Gamma \vdash \mathsf{Process.spawn}(\lambda().\, e) : \mathsf{Pid}[M] \mid \Eff' \cup \{\texttt{Process}\}}
+\]
+
+\paragraph{Assert (crash on failure).}
+\[
+  \inferrule
+    {\Gamma \vdash e : \mathsf{Bool}}
+    {\Gamma \vdash \mathsf{assert}\; e : \mathsf{Unit} \mid \Eff}
+\]
+Note: \texttt{assert} does not add an effect---it either succeeds (producing \texttt{Unit}) or crashes the process. Process crashes are not tracked in the effect system because they are by definition unexpected.
+
+\paragraph{Process monitor.}
+\[
+  \inferrule
+    {\Gamma \vdash p : \mathsf{Pid}[M]}
+    {\Gamma \vdash \mathsf{Process.monitor}(p) : \mathsf{MonitorRef} \mid \Eff \cup \{\texttt{Process}\}}
+\]
+
+\subsection{Linear Resource Typing Rules}
+
+The following rules formalize the linear typing discipline that underpins deterministic resource cleanup and the Crash Containment proof (\Cref{thm:crash-containment}). A \emph{linear type} $\tau^{!}$ denotes a resource that must be consumed (used or released) exactly once.
+
+\paragraph{Resource acquisition.}
+\[
+  \inferrule
+    {\Gamma \vdash e_{\mathit{args}} : \tau_{\mathit{args}} \mid \Eff \cup \{\texttt{Io}\}}
+    {\Gamma \vdash \mathsf{acquire}(e_{\mathit{args}}) : \tau^{!} \mid \Eff \cup \{\texttt{Io}\}}
+\]
+The $\mathsf{acquire}$ operation produces a linearly-typed resource handle. The handle must appear in exactly one subsequent consumption site.
+
+\paragraph{Resource release.}
+\[
+  \inferrule
+    {\Gamma, x : \tau^{!} \vdash e_{\mathit{body}} : \sigma \mid \Eff}
+    {\Gamma \vdash \mathsf{release}(x, e_{\mathit{body}}) : \sigma \mid \Eff}
+\]
+The $\mathsf{release}$ operation consumes the linear resource $x$, removing it from the environment. After release, $x$ is no longer available.
+
+\paragraph{Linear variable usage.}
+\[
+  \inferrule
+    {x : \tau^{!} \in \Gamma}
+    {\Gamma \vdash x : \tau^{!} \mid \Eff}
+    \quad\text{(exactly once in } \Gamma\text{)}
+\]
+A linearly-typed binding must be used exactly once. The type checker rejects programs that use a linear variable zero times (resource leak) or more than once (use-after-free).
+
+\paragraph{Ownership transfer (send).}
+\[
+  \inferrule
+    {\Gamma_1 \vdash p : \mathsf{Pid}[M] \quad \Gamma_2 \vdash v : \tau^{!} \quad \Gamma_1 \cap \Gamma_2 \text{ contains no linear bindings}}
+    {\Gamma_1, \Gamma_2 \vdash \mathsf{Process.send}(p, v) : \mathsf{Unit} \mid \Eff \cup \{\texttt{Process}\}}
+\]
+Sending a linearly-typed value to another process transfers ownership: the sender's environment no longer contains the binding, and the receiver becomes the sole owner.
+
+\paragraph{Crash cleanup obligation.}
+When a process crashes, the runtime walks its stack and invokes the drop handler for every live linear binding. The type system guarantees that every $\tau^{!}$ in scope has a corresponding drop handler registered at allocation time. This is the formal basis for the ``deterministic cleanup'' claim in the Crash Containment proof: no resource is leaked, because every live linear binding is released by the unwinder.
+
+\subsection{Result Type Rules}
+
+\paragraph{Ok introduction.}
+\[
+  \inferrule
+    {\Gamma \vdash e : A}
+    {\Gamma \vdash \OK(e) : \Result\langle A, E\rangle \mid \Eff}
+\]
+
+\paragraph{Err introduction.}
+\[
+  \inferrule
+    {\Gamma \vdash e : E}
+    {\Gamma \vdash \Err(e) : \Result\langle A, E\rangle \mid \Eff}
+\]
+
+\paragraph{Match elimination.}
+\[
+  \inferrule
+    {\Gamma \vdash e : \Result\langle A, E\rangle \mid \Eff \\
+     \Gamma, x : A \vdash e_1 : \tau \mid \Eff \\
+     \Gamma, y : E \vdash e_2 : \tau \mid \Eff}
+    {\Gamma \vdash \mathsf{match}\; e\; \{\OK(x) \Rightarrow e_1;\; \Err(y) \Rightarrow e_2\} : \tau \mid \Eff}
+\]
+
+% ==================================================================
+\section{Supervision State Machine}\label{app:supervision-fsm}
+% ==================================================================
+
+A supervisor process can be modeled as a finite state machine with the following states:
+
+\begin{enumerate}
+  \item \textbf{Running}: All children are alive and operational.
+  \item \textbf{Restarting}: A child has crashed and is being restarted.
+  \item \textbf{Escalating}: Restart limits have been exceeded; the supervisor is crashing.
+  \item \textbf{ShuttingDown}: The supervisor has received a shutdown signal and is terminating children.
+\end{enumerate}
+
+The transitions are:
+\begin{align*}
+  \mathsf{Running} &\xrightarrow{\mathsf{ChildCrash}(i)} \mathsf{Restarting}(i) \\
+  \mathsf{Restarting}(i) &\xrightarrow{\mathsf{WithinLimits}} \mathsf{Running} \\
+  \mathsf{Restarting}(i) &\xrightarrow{\mathsf{LimitsExceeded}} \mathsf{Escalating} \\
+  \mathsf{Running} &\xrightarrow{\mathsf{Shutdown}} \mathsf{ShuttingDown} \\
+  \mathsf{Escalating} &\xrightarrow{\tau} \crash(\mathsf{MaxRestartsExceeded})
+\end{align*}
+
+The restart limit check uses a sliding window:
+
+\begin{lstlisting}
+fn check_restart_limit(
+  history: List[Timestamp],
+  max_restarts: Int,
+  max_seconds: Int,
+  now: Timestamp
+) -> Bool =
+  let recent = List.filter(history,
+    fn t -> Timestamp.diff(now, t) < max_seconds)
+  List.length(recent) < max_restarts
+\end{lstlisting}
+
+% ==================================================================
+\section{Error Handling Patterns Catalog}\label{app:patterns}
+% ==================================================================
+
+We catalog common error handling patterns in \japl{}.
+
+\subsection{Pattern: Error Mapping}
+
+Convert between error types at module boundaries:
+
+\begin{lstlisting}
+fn get_user(id: UserId) -> User
+    with Io, Fail[AppError] =
+  let row = db_query(id)
+    |> map_err(fn e -> DbError(show(e)))?
+  decode_user(row)
+    |> map_err(fn e -> InvalidInput(show(e)))?
+\end{lstlisting}
+
+\subsection{Pattern: Error Accumulation}
+
+Collect multiple errors instead of failing at the first one:
+
+\begin{lstlisting}
+fn validate_form(form: Form)
+    -> Result[ValidForm, List[FieldError]] =
+  let errors = []
+  let errors = match validate_name(form.name) with
+    | Err(e) -> [e, ..errors]
+    | Ok(_) -> errors
+  let errors = match validate_email(form.email) with
+    | Err(e) -> [e, ..errors]
+    | Ok(_) -> errors
+  let errors = match validate_age(form.age) with
+    | Err(e) -> [e, ..errors]
+    | Ok(_) -> errors
+  if List.is_empty(errors) then
+    Ok(to_valid_form(form))
+  else
+    Err(List.reverse(errors))
+\end{lstlisting}
+
+\subsection{Pattern: Retry with Backoff}
+
+Retry a fallible operation with exponential backoff:
+
+\begin{lstlisting}
+fn retry(
+  max_attempts: Int,
+  base_delay_ms: Int,
+  action: fn() -> a with Io, Fail[e]
+) -> a with Io, Fail[e] =
+  fn go(attempt: Int) -> a with Io, Fail[e] =
+    match Fail.catch(action) with
+    | Ok(result) -> result
+    | Err(e) ->
+        if attempt >= max_attempts then
+          Fail.raise(e)
+        else
+          let delay = base_delay_ms
+            * Int.pow(2, attempt)
+          Process.sleep(delay)
+          go(attempt + 1)
+  go(0)
+\end{lstlisting}
+
+\subsection{Pattern: Circuit Breaker}
+
+Prevent cascading failures by stopping calls to a failing service:
+
+\begin{lstlisting}
+type CircuitState =
+  | Closed(failure_count: Int)
+  | Open(until: Timestamp)
+  | HalfOpen
+
+fn circuit_breaker(
+  state: CircuitState,
+  threshold: Int,
+  timeout_ms: Int,
+  action: fn() -> a with Io, Net, Fail[e]
+) -> a with Io, Net, Fail[CircuitError[e]] =
+  match state with
+  | Open(until) ->
+      if Timestamp.now() < until then
+        Fail.raise(CircuitOpen)
+      else
+        circuit_breaker(HalfOpen,
+          threshold, timeout_ms, action)
+  | HalfOpen ->
+      match Fail.catch(action) with
+      | Ok(result) -> result
+      | Err(e) ->
+          Fail.raise(ServiceError(e))
+  | Closed(count) ->
+      match Fail.catch(action) with
+      | Ok(result) -> result
+      | Err(e) ->
+          if count + 1 >= threshold then
+            Fail.raise(CircuitOpen)
+          else
+            Fail.raise(ServiceError(e))
+\end{lstlisting}
+
+\subsection{Pattern: Crash Boundary}
+
+Convert between domain errors and process crashes at a well-defined boundary:
+
+\begin{lstlisting}
+-- Wrap a potentially-crashing computation
+-- as a domain error
+fn safe_call(f: fn() -> a with Io)
+    -> Result[a, String] with Process, Io =
+  let worker = Process.spawn(fn ->
+    let result = f()
+    Process.send(Process.self_parent(),
+      WorkerDone(result))
+  )
+  Process.monitor(worker)
+  match Process.receive_with_timeout(10000) with
+  | WorkerDone(result) -> Ok(result)
+  | ProcessDown(^worker, reason) ->
+      Err("worker crashed: " ++ show(reason))
+  | _ -> Err("timeout waiting for worker")
+\end{lstlisting}
+
+\end{document}

@@ -1,0 +1,3172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Concurrency Is Process-Based: Typed Processes, Supervised Mailboxes, and Categorical Semantics in JAPL — JAPL Research</title>
+  <meta name="description" content="Concurrency Is Process-Based: Typed Processes, Supervised Mailboxes, and Categorical Semantics in JAPL — Part of the JAPL programming language research series.">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Concurrency Is Process-Based: Typed Processes, Supervised Mailboxes, and Categorical Semantics in JAPL — JAPL Research">
+  <meta property="og:description" content="Part of the JAPL programming language research series. Just Another Programming Language.">
+  <meta property="og:url" content="https://japl-nine.vercel.app/papers/process-concurrency.html">
+  <meta property="og:image" content="https://japl-nine.vercel.app/og-image.png">
+  <meta property="og:site_name" content="JAPL">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Concurrency Is Process-Based: Typed Processes, Supervised Mailboxes, and Categorical Semantics in JAPL — JAPL Research">
+  <meta name="twitter:description" content="Part of the JAPL programming language research series.">
+  <meta name="twitter:image" content="https://japl-nine.vercel.app/og-image.png">
+
+  <!-- KaTeX for math -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      if (typeof renderMathInElement !== "undefined") {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: "\\[", right: "\\]", display: true},
+            {left: "\\(", right: "\\)", display: false}
+          ]
+        });
+      }
+    });
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e17;
+      --surface: #141922;
+      --surface-2: #1a1f2e;
+      --accent: #7c5cfc;
+      --accent-dim: rgba(124, 92, 252, 0.15);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --dim: #64748b;
+      --code-bg: #1a1f2e;
+      --border: #1e293b;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 17px;
+    }
+
+    /* Top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 23, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    .topbar a:hover { color: var(--accent); }
+    .topbar .logo { color: var(--text); font-weight: 700; font-size: 1.1rem; }
+    .topbar .logo span { color: var(--accent); }
+    .topbar-links { display: flex; gap: 1.5rem; }
+
+    /* Layout */
+    .wrapper {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Sidebar TOC */
+    .sidebar {
+      position: sticky;
+      top: 60px;
+      width: 260px;
+      min-width: 260px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+      padding: 2rem 1rem 2rem 2rem;
+      border-right: 1px solid var(--border);
+    }
+    .sidebar h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      margin-bottom: 1rem;
+    }
+    .sidebar ul { list-style: none; }
+    .sidebar li { margin-bottom: 0.4rem; }
+    .sidebar a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      display: block;
+      padding: 0.2rem 0;
+      transition: color 0.2s;
+    }
+    .sidebar a:hover { color: var(--accent); }
+    .sidebar .toc-h3 { padding-left: 1rem; font-size: 0.8rem; }
+
+    /* Main content */
+    .content {
+      flex: 1;
+      min-width: 0;
+      padding: 2.5rem 3rem 4rem;
+      max-width: 800px;
+    }
+
+    /* Paper header */
+    .paper-header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .paper-part {
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+    .paper-header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 1rem;
+    }
+    .paper-author {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .paper-links-bar {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+    }
+    .paper-links-bar a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .paper-links-bar a:hover {
+      background: var(--accent-dim);
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--text);
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+      line-height: 1.3;
+    }
+    h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h3 { font-size: 1.2rem; color: var(--muted); }
+    h4 { font-size: 1.05rem; }
+    p { margin-bottom: 1rem; }
+    a { color: var(--accent); }
+
+    /* Abstract */
+    .abstract {
+      background: var(--surface);
+      border-left: 3px solid var(--accent);
+      padding: 1.5rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 2rem;
+    }
+    .abstract p { margin-bottom: 0; }
+
+    /* Code */
+    pre, code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.6rem 0.8rem;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      background: var(--surface);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:nth-child(even) { background: rgba(20, 25, 34, 0.5); }
+
+    /* Small caps */
+    .smallcaps { font-variant: small-caps; }
+
+    /* Lists */
+    ul, ol { margin: 1rem 0; padding-left: 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+
+    /* Blockquote */
+    blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 1rem;
+      color: var(--muted);
+      margin: 1.5rem 0;
+    }
+
+    /* Figures */
+    figure { margin: 2rem 0; text-align: center; }
+    figcaption { color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* Math */
+    .math.display { overflow-x: auto; padding: 0.5rem 0; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .content { padding: 1.5rem; }
+      .topbar { padding: 0.75rem 1rem; }
+    }
+
+    /* Footer */
+    .paper-footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 0.85rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="../index.html" class="logo">JAPL<span>.</span></a>
+  <div class="topbar-links">
+    <a href="../index.html#papers">All Papers</a>
+    <a href="pdf/process-concurrency.pdf">Download PDF</a>
+    <a href="https://github.com/YonedaAI/japl" target="_blank">GitHub</a>
+  </div>
+</div>
+
+<div class="wrapper">
+  <nav class="sidebar" id="sidebar">
+    <h4>Contents</h4>
+    <ul id="toc"></ul>
+  </nav>
+
+  <main class="content">
+    <div class="paper-header">
+      <div class="paper-part">Part III</div>
+      <h1><strong>Concurrency Is Process-Based, Not
+Shared-Memory-First:</strong><br />
+Typed Processes, Supervised Mailboxes, and Categorical<br />
+Semantics in the JAPL Programming Language</h1>
+      <div class="paper-author">Matthew Long — The JAPL Research Collaboration<br>YonedaAI Research Collective, Chicago, IL</div>
+      <div class="paper-links-bar">
+        <a href="pdf/process-concurrency.pdf">PDF</a>
+        <a href="latex/process-concurrency.tex">LaTeX Source</a>
+        <a href="../index.html#papers">Series Index</a>
+      </div>
+    </div>
+
+    <p><strong>Keywords:</strong> process-based concurrency, typed
+    mailboxes, supervision trees, session types, actor model, <span
+    class="math inline">\(\pi\)</span>-calculus, effect systems,
+    functional programming, fault tolerance</p>
+    <h1 data-number="1" id="sec:intro"><span
+    class="header-section-number">1</span> Introduction</h1>
+    <p>The past two decades have witnessed an extraordinary expansion in
+    concurrent and distributed computing. Multi-core processors are
+    universal, cloud services routinely span thousands of nodes, and
+    applications are expected to remain responsive under load while
+    tolerating partial failures gracefully. Yet the dominant programming
+    model for concurrency—shared mutable memory protected by locks—has
+    failed to keep pace with these demands.</p>
+    <h2 data-number="1.1" id="the-shared-memory-crisis"><span
+    class="header-section-number">1.1</span> The Shared-Memory
+    Crisis</h2>
+    <p>Shared-memory concurrency is notoriously difficult to reason
+    about. The fundamental problem is compositional: two correct,
+    independently developed components, when composed in a shared-memory
+    setting, may exhibit behaviors that neither component exhibits in
+    isolation. This failure of compositionality manifests in several
+    well-known pathologies:</p>
+    <div class="description">
+    <p>When two threads access the same memory location concurrently and
+    at least one access is a write, the resulting behavior is undefined
+    in languages like C and C++, and merely unpredictable in languages
+    with a defined memory model like Java <span class="citation"
+    data-cites="manson2005java"></span>. Data races are notoriously
+    difficult to reproduce, diagnose, and test.</p>
+    <p>Lock-based synchronization creates the possibility of circular
+    wait conditions. The classic Coffman conditions <span
+    class="citation" data-cites="coffman1971system"></span> are
+    necessary and sufficient, but preventing them in practice requires
+    either global lock ordering disciplines that do not compose, or
+    detection mechanisms that add runtime overhead.</p>
+    <p>When a low-priority thread holds a lock needed by a high-priority
+    thread, the high-priority thread is effectively demoted. The Mars
+    Pathfinder incident <span class="citation"
+    data-cites="reeves1997mars"></span> demonstrated that this pathology
+    can affect even carefully engineered real-time systems.</p>
+    <p>Optimistic concurrency schemes based on compare-and-swap (CAS)
+    operations can livelock under contention, and lock-free data
+    structures, while avoiding deadlock, introduce their own complexity
+    around memory reclamation (the ABA problem) and progress
+    guarantees <span class="citation"
+    data-cites="michael2004hazard"></span>.</p>
+    <p>Modern hardware memory models are weak: processors reorder loads
+    and stores, caches introduce visibility delays, and compilers
+    perform optimizations that assume single-threaded execution. The
+    resulting “memory model” specifications (e.g., the Java Memory
+    Model <span class="citation" data-cites="manson2005java"></span>,
+    the C++11 memory model <span class="citation"
+    data-cites="boehm2008foundations"></span>) are themselves a source
+    of bugs, as even experts routinely misunderstand the guarantees
+    provided <span class="citation"
+    data-cites="sewell2010x86"></span>.</p>
+    </div>
+    <h2 data-number="1.2" id="the-process-alternative"><span
+    class="header-section-number">1.2</span> The Process
+    Alternative</h2>
+    <p>An alternative tradition, originating in Hoare’s Communicating
+    Sequential Processes (CSP) <span class="citation"
+    data-cites="hoare1978communicating"></span>, Milner’s Calculus of
+    Communicating Systems (CCS) <span class="citation"
+    data-cites="milner1980calculus"></span> and <span
+    class="math inline">\(\pi\)</span>-calculus <span class="citation"
+    data-cites="milner1992calculus"></span>, and Hewitt’s Actor
+    model <span class="citation"
+    data-cites="hewitt1973universal"></span>, proposes a fundamentally
+    different approach: concurrent entities do not share memory.
+    Instead, they are isolated processes that communicate by passing
+    messages. This model has been realized most successfully in
+    Erlang/OTP <span class="citation"
+    data-cites="armstrong2003making"></span>, which has powered
+    telecommunications infrastructure with “nine nines” (99.9999999%)
+    availability for over three decades.</p>
+    <p>The process-based model eliminates data races <em>by
+    construction</em>: there is no shared mutable state to race on.
+    Deadlocks are addressed not by prevention but by
+    <em>supervision</em>: if a process gets stuck or crashes, its
+    supervisor detects the failure and takes corrective action
+    (typically restarting the process with fresh state). This approach
+    treats failures as normal, expected events rather than exceptional
+    catastrophes—a philosophy that aligns with the reality of
+    large-scale distributed systems.</p>
+    <h2 data-number="1.3" id="contributions"><span
+    class="header-section-number">1.3</span> Contributions</h2>
+    <p>JAPL adopts process-based concurrency as its core model, but
+    extends the Erlang tradition with insights from modern type
+    theory:</p>
+    <ol>
+    <li><p><strong>Typed mailboxes</strong>: every process has a
+    statically typed mailbox, preventing a large class of
+    message-protocol errors at compile time (<a
+    href="#sec:typed-mailboxes" data-reference-type="ref+Label"
+    data-reference="sec:typed-mailboxes">5</a>).</p></li>
+    <li><p><strong>Typed supervision trees</strong>: supervision
+    strategies, restart policies, and crash reasons are integrated into
+    the type system, enabling compositional reasoning about fault
+    tolerance (<a href="#sec:supervision"
+    data-reference-type="ref+Label"
+    data-reference="sec:supervision">6</a>).</p></li>
+    <li><p><strong>Effect-tracked concurrency</strong>: the
+    <code>Process</code> effect integrates with JAPL’s effect system,
+    making concurrency operations visible in function signatures and
+    enabling safe composition with pure code (<a
+    href="#sec:process-model" data-reference-type="ref+Label"
+    data-reference="sec:process-model">4</a>).</p></li>
+    <li><p><strong>Formal foundations</strong>: we provide categorical
+    semantics for JAPL’s process model using presheaf categories over
+    time, connect typed mailboxes to session types, and prove typed
+    message safety and deadlock freedom (<a
+    href="#sec:formal,sec:properties" data-reference-type="ref+Label"
+    data-reference="sec:formal,sec:properties">[sec:formal,sec:properties]</a>).</p></li>
+    <li><p><strong>Implementation</strong>: we describe a work-stealing
+    scheduler, per-process heaps, and mailbox data structures that
+    achieve Erlang-class scalability (millions of processes per node)
+    with stronger static guarantees (<a href="#sec:implementation"
+    data-reference-type="ref+Label"
+    data-reference="sec:implementation">9</a>).</p></li>
+    </ol>
+    <p>The remainder of this paper is organized as follows. <a
+    href="#sec:background" data-reference-type="ref+Label"
+    data-reference="sec:background">2</a> surveys related work in
+    concurrent language design and process calculi. <a
+    href="#sec:formal" data-reference-type="ref+Label"
+    data-reference="sec:formal">3</a> develops the formal framework. <a
+    href="#sec:process-model" data-reference-type="ref+Label"
+    data-reference="sec:process-model">4</a> presents JAPL’s process
+    model in detail. <a href="#sec:typed-mailboxes"
+    data-reference-type="ref+Label"
+    data-reference="sec:typed-mailboxes">5</a> describes typed
+    mailboxes. <a href="#sec:supervision"
+    data-reference-type="ref+Label"
+    data-reference="sec:supervision">6</a> covers supervision trees. <a
+    href="#sec:lifecycle" data-reference-type="ref+Label"
+    data-reference="sec:lifecycle">7</a> defines the process lifecycle.
+    <a href="#sec:comparison" data-reference-type="ref+Label"
+    data-reference="sec:comparison">8</a> compares JAPL with existing
+    approaches. <a href="#sec:implementation"
+    data-reference-type="ref+Label"
+    data-reference="sec:implementation">9</a> discusses implementation.
+    <a href="#sec:properties" data-reference-type="ref+Label"
+    data-reference="sec:properties">10</a> proves formal properties. <a
+    href="#sec:discussion" data-reference-type="ref+Label"
+    data-reference="sec:discussion">11</a> discusses limitations and
+    future work. <a href="#sec:conclusion"
+    data-reference-type="ref+Label"
+    data-reference="sec:conclusion">12</a> concludes.</p>
+    <h1 data-number="2" id="sec:background"><span
+    class="header-section-number">2</span> Background and Related
+    Work</h1>
+    <h2 data-number="2.1" id="the-actor-model"><span
+    class="header-section-number">2.1</span> The Actor Model</h2>
+    <p>The Actor model, introduced by Hewitt, Bishop, and Steiger <span
+    class="citation" data-cites="hewitt1973universal"></span> and
+    formalized by Agha <span class="citation"
+    data-cites="agha1986actors"></span>, posits that the fundamental
+    unit of computation is the <em>actor</em>: an entity that, in
+    response to a message, can (1) send a finite number of messages to
+    other actors, (2) create a finite number of new actors, and (3)
+    designate the behavior to be used for the next message it receives.
+    Actors encapsulate state and communicate exclusively through
+    asynchronous message passing.</p>
+    <p>The Actor model provides a clean mathematical foundation for
+    concurrency, but its original formulation leaves several practical
+    questions open: how are actors supervised? How are message types
+    enforced? How are actors distributed across nodes? JAPL’s process
+    model can be seen as a <em>typed, supervised</em> refinement of the
+    Actor model, informed by three decades of practical experience with
+    Erlang/OTP.</p>
+    <h2 data-number="2.2" id="communicating-sequential-processes"><span
+    class="header-section-number">2.2</span> Communicating Sequential
+    Processes</h2>
+    <p>Hoare’s CSP <span class="citation"
+    data-cites="hoare1978communicating roscoe1998theory"></span> models
+    concurrent systems as processes that communicate through
+    <em>synchronous</em> channels. Unlike the Actor model, CSP
+    communication is rendezvous-based: both sender and receiver must be
+    ready simultaneously. CSP’s algebraic framework—with operators for
+    sequential composition, parallel composition, choice, and
+    hiding—enables powerful equational reasoning about concurrent
+    systems.</p>
+    <p>CSP’s synchronous semantics make it well-suited to modeling
+    hardware and tightly-coupled concurrent systems, but less natural
+    for distributed systems where asynchronous communication is the
+    norm. Go’s goroutines and channels <span class="citation"
+    data-cites="pike2012concurrency"></span> are a practical realization
+    of CSP ideas, though without the formal algebraic framework.</p>
+    <h2 data-number="2.3" id="the-pi-calculus"><span
+    class="header-section-number">2.3</span> The Pi-Calculus</h2>
+    <p>Milner’s <span class="math inline">\(\pi\)</span>-calculus <span
+    class="citation"
+    data-cites="milner1992calculus milner1999communicating"></span>
+    extends CCS <span class="citation"
+    data-cites="milner1980calculus"></span> with <em>name passing</em>:
+    channel names themselves can be communicated, enabling the modeling
+    of systems with dynamic communication topologies. The <span
+    class="math inline">\(\pi\)</span>-calculus has become the standard
+    formal foundation for concurrent and mobile computation.</p>
+    <p>The key constructs of the <span
+    class="math inline">\(\pi\)</span>-calculus are: <span
+    class="math display">\[\begin{align}
+    P, Q ::= \quad &amp; \overline{x}\langle y \rangle.P &amp;&amp;
+    \text{(output: send $y$ on channel $x$)} \notag \\
+    \mid \quad &amp; x(y).P &amp;&amp; \text{(input: receive $y$ on
+    channel $x$)} \notag \\
+    \mid \quad &amp; P \;\|\;Q &amp;&amp; \text{(parallel composition)}
+    \notag \\
+    \mid \quad &amp; (\nu\, x) P &amp;&amp; \text{(restriction: create
+    fresh channel $x$)} \notag \\
+    \mid \quad &amp; !P &amp;&amp; \text{(replication)} \notag \\
+    \mid \quad &amp; \mathbf{0}&amp;&amp; \text{(inaction)} \notag
+    \end{align}\]</span></p>
+    <p>The <span class="math inline">\(\pi\)</span>-calculus, equipped
+    with typed channels <span class="citation"
+    data-cites="vasconcelos1998language"></span>, provides the formal
+    backbone for JAPL’s typed mailbox system, as we develop in <a
+    href="#sec:formal" data-reference-type="ref+Label"
+    data-reference="sec:formal">3</a>.</p>
+    <h2 data-number="2.4" id="erlangotp"><span
+    class="header-section-number">2.4</span> Erlang/OTP</h2>
+    <p>Erlang <span class="citation"
+    data-cites="armstrong2003making armstrong2007programming"></span> is
+    the most successful realization of process-based concurrency in a
+    general-purpose programming language. The BEAM virtual machine
+    supports millions of lightweight processes per node, each with its
+    own heap and mailbox. The OTP framework provides supervision trees,
+    generic server behaviors, and a rich set of patterns for building
+    fault-tolerant distributed systems.</p>
+    <p>Erlang’s primary limitation, from the perspective of JAPL’s
+    design, is its dynamic type system. Messages are untyped: any term
+    can be sent to any process, and protocol violations are detected
+    only at runtime (if at all). This means that a large class of
+    errors—sending the wrong message type to a process, forgetting to
+    handle a message variant, protocol state machine violations—cannot
+    be caught by the compiler. Dialyzer <span class="citation"
+    data-cites="lindahl2006practical"></span> provides optional type
+    annotations and success typing, but its analysis is necessarily
+    conservative and cannot enforce the full range of protocol
+    invariants that session types provide.</p>
+    <h2 data-number="2.5" id="go-goroutines-and-channels"><span
+    class="header-section-number">2.5</span> Go: Goroutines and
+    Channels</h2>
+    <p>Go <span class="citation"
+    data-cites="pike2012concurrency donovan2015go"></span> takes
+    CSP-inspired channels as its concurrency primitive. Goroutines are
+    lightweight threads multiplexed onto OS threads, and channels
+    provide typed, synchronous (or buffered) communication. Go’s
+    concurrency model is syntactically lightweight and practically
+    effective.</p>
+    <p>However, Go does not enforce process isolation: goroutines can
+    (and routinely do) share memory. The <code>go vet</code> tool and
+    the race detector <span class="citation"
+    data-cites="serebryany2012threadsanitizer"></span> catch some data
+    races dynamically, but Go does not prevent them statically. Go also
+    lacks supervision: a panicking goroutine crashes the entire program
+    unless manually recovered with
+    <code>defer</code>/<code>recover</code>. There is no built-in
+    mechanism for monitoring goroutine health or automatically
+    restarting failed computations.</p>
+    <h2 data-number="2.6" id="akka-actors-on-the-jvm"><span
+    class="header-section-number">2.6</span> Akka: Actors on the
+    JVM</h2>
+    <p>Akka <span class="citation"
+    data-cites="lightbend2023akka"></span> implements the Actor model on
+    the JVM, providing location-transparent actors, supervision, and
+    cluster sharding. Akka Typed <span class="citation"
+    data-cites="roestenburg2016akka"></span> introduced typed actor
+    references, partially addressing the message-typing problem.
+    However, Akka operates within the JVM ecosystem, which means actors
+    share a heap and can bypass the actor abstraction via shared mutable
+    state. Supervision in Akka is a library concern rather than a
+    language primitive, and the complexity of the JVM class hierarchy
+    adds substantial cognitive overhead.</p>
+    <h2 data-number="2.7" id="pony-reference-capabilities"><span
+    class="header-section-number">2.7</span> Pony: Reference
+    Capabilities</h2>
+    <p>Pony <span class="citation" data-cites="clebsch2015deny"></span>
+    takes a novel approach to actor safety through <em>reference
+    capabilities</em>: a system of permissions (iso, val, ref, box, tag,
+    trn) that statically guarantee data-race freedom. Pony actors
+    communicate by passing messages, with the type system ensuring that
+    mutable data is never aliased across actors. This is a powerful
+    approach, but the cognitive burden of managing reference
+    capabilities is significant, and the language has not achieved
+    widespread adoption.</p>
+    <h2 data-number="2.8" id="session-types"><span
+    class="header-section-number">2.8</span> Session Types</h2>
+    <p>Session types, introduced by Honda <span class="citation"
+    data-cites="honda1993types"></span> and developed extensively by
+    Honda, Vasconcelos, and Kubo <span class="citation"
+    data-cites="honda1998language"></span>, Caires and Pfenning <span
+    class="citation" data-cites="caires2010session"></span>, and
+    Wadler <span class="citation"
+    data-cites="wadler2012propositions"></span>, provide a
+    type-theoretic framework for specifying and verifying communication
+    protocols. A session type describes the sequence of messages
+    exchanged between two parties, including message types, directions,
+    branching, and recursion.</p>
+    <p>The Curry-Howard correspondence between linear logic and session
+    types <span class="citation"
+    data-cites="caires2010session wadler2012propositions"></span>
+    provides a deep theoretical foundation: propositions in linear logic
+    correspond to session types, proofs correspond to processes, and cut
+    elimination corresponds to communication. JAPL’s typed mailboxes
+    draw on this tradition, adapting multiparty session types <span
+    class="citation" data-cites="honda2008multiparty"></span> to the
+    supervision context.</p>
+    <h2 data-number="2.9"
+    id="the-e-language-and-capability-based-security"><span
+    class="header-section-number">2.9</span> The E Language and
+    Capability-Based Security</h2>
+    <p>The E programming language <span class="citation"
+    data-cites="miller2006robust"></span> pioneered capability-based
+    security in the context of distributed object computing. E’s
+    “eventually” references and promise pipelining influenced JAPL’s
+    approach to asynchronous communication, while its capability
+    discipline informs JAPL’s integration of process spawning with the
+    capability type system.</p>
+    <h2 data-number="2.10" id="gleam-typed-erlang"><span
+    class="header-section-number">2.10</span> Gleam: Typed Erlang</h2>
+    <p>Gleam <span class="citation" data-cites="gleam2023"></span>
+    compiles to Erlang bytecode and provides static typing for the BEAM
+    ecosystem. Gleam’s approach validates the thesis that adding types
+    to Erlang-style concurrency is both possible and valuable, but Gleam
+    inherits BEAM’s runtime semantics wholesale rather than co-designing
+    the type system and runtime as JAPL does.</p>
+    <h1 data-number="3" id="sec:formal"><span
+    class="header-section-number">3</span> Formal Framework</h1>
+    <p>We develop a formal framework for JAPL’s process model that draws
+    on three traditions: process algebra (providing operational
+    semantics), type theory (providing static guarantees), and category
+    theory (providing compositional semantics).</p>
+    <h2 data-number="3.1" id="process-algebra-foundation"><span
+    class="header-section-number">3.1</span> Process Algebra
+    Foundation</h2>
+    <p>We define a typed <span
+    class="math inline">\(\pi\)</span>-calculus variant, <span
+    class="math inline">\(\pi_{\text{JAPL}}\)</span>, that captures
+    JAPL’s process primitives.</p>
+    <div id="def:syntax" class="definition">
+    <p><strong>Definition 1</strong> (Syntax of <span
+    class="math inline">\(\pi_{\text{JAPL}}\)</span>). <em>The processes
+    of <span class="math inline">\(\pi_{\text{JAPL}}\)</span> are
+    defined by the grammar: <span class="math display">\[\begin{align}
+    P, Q ::= \quad &amp; \mathsf{spawn}{x}{A}{P}{Q} &amp;&amp;
+    \text{spawn process $P$ at name $x$ with type $A$, continue as $Q$}
+    \notag \\
+    \mid \quad &amp; \mathsf{send}{x}{v}.P &amp;&amp; \text{send value
+    $v$ on channel $x$, continue as $P$} \notag \\
+    \mid \quad &amp; \mathsf{receive}{x}{y}.P &amp;&amp; \text{receive
+    value $y$ from mailbox of $x$, continue as $P$} \notag \\
+    \mid \quad &amp; P \;\|\;Q &amp;&amp; \text{parallel composition}
+    \notag \\
+    \mid \quad &amp; (\nu\, x : A) P &amp;&amp; \text{create fresh typed
+    channel} \notag \\
+    \mid \quad &amp; \mathsf{done}&amp;&amp; \text{successful
+    termination} \notag \\
+    \mid \quad &amp; \mathsf{fail}{r} &amp;&amp; \text{failure with
+    reason $r$} \notag \\
+    \mid \quad &amp; \mathsf{Sup}{s}{\overline{P_i}} &amp;&amp;
+    \text{supervision with strategy $s$ over children $P_i$} \notag \\
+    \mid \quad &amp; \mathsf{match}\; v\; \{\overline{p_i \Rightarrow
+    P_i}\} &amp;&amp; \text{pattern matching on received messages}
+    \notag
+    \end{align}\]</span></em></p>
+    </div>
+    <div id="def:msgtypes" class="definition">
+    <p><strong>Definition 2</strong> (Message types). <em>A message type
+    <span class="math inline">\(A\)</span> in <span
+    class="math inline">\(\pi_{\text{JAPL}}\)</span> is an algebraic
+    data type: <span class="math display">\[A ::= \sum_{i \in I}
+    C_i(\overline{T_i})\]</span> where each <span
+    class="math inline">\(C_i\)</span> is a constructor and <span
+    class="math inline">\(\overline{T_i}\)</span> is a sequence of
+    payload types. The special type <span
+    class="math inline">\(\mathsf{Reply}[T]\)</span> represents a
+    one-shot reply channel carrying values of type <span
+    class="math inline">\(T\)</span>.</em></p>
+    </div>
+    <div id="def:typing" class="definition">
+    <p><strong>Definition 3</strong> (Typing contexts). <em>A typing
+    context <span class="math inline">\(\Gamma\)</span> maps channel
+    names to message types: <span class="math display">\[\Gamma ::=
+    \emptyset \mid \Gamma, x : \mathsf{Pid}[A]\]</span> where <span
+    class="math inline">\(\mathsf{Pid}[A]\)</span> is the type of a
+    process identifier whose mailbox accepts messages of type <span
+    class="math inline">\(A\)</span>.</em></p>
+    </div>
+    <h2 data-number="3.2" id="operational-semantics"><span
+    class="header-section-number">3.2</span> Operational Semantics</h2>
+    <p>We give a labeled transition system (LTS) for <span
+    class="math inline">\(\pi_{\text{JAPL}}\)</span>.</p>
+    <div id="def:reduction" class="definition">
+    <p><strong>Definition 4</strong> (Reduction rules). <em>The
+    reduction relation <span class="math inline">\(\rightarrow\)</span>
+    is the smallest relation satisfying:</em></p>
+    <dl>
+    <dt>R-Comm:</dt>
+    <dd>
+    <p><em>Communication between a sender and a receiver: <span
+    class="math display">\[\mathsf{send}{x}{v}.P
+    \;\|\;\mathsf{receive}{x}{y}.Q \;\rightarrow\; P
+    \;\|\;Q[v/y]\]</span></em></p>
+    </dd>
+    <dt>R-Spawn:</dt>
+    <dd>
+    <p><em>Process creation: <span
+    class="math display">\[\mathsf{spawn}{x}{A}{P}{Q} \;\rightarrow\;
+    (\nu\, x : \mathsf{Pid}[A])(P \;\|\;Q)\]</span></em></p>
+    </dd>
+    <dt>R-Match:</dt>
+    <dd>
+    <p><em>Pattern matching on a received message <span
+    class="math inline">\(v = C_j(\overline{w})\)</span>: <span
+    class="math display">\[\mathsf{match}\; C_j(\overline{w})\;
+    \{\overline{C_i(\overline{y_i}) \Rightarrow P_i}\} \;\rightarrow\;
+    P_j[\overline{w}/\overline{y_j}]\]</span></em></p>
+    </dd>
+    <dt>R-Fail:</dt>
+    <dd>
+    <p><em>Failure propagation under supervision: <span
+    class="math display">\[\mathsf{Sup}{s}{P_1 \;\|\;\cdots
+    \;\|\;\mathsf{fail}{r} \;\|\;\cdots \;\|\;P_n} \;\rightarrow\;
+    \mathsf{restart}(s, r, \overline{P_i})\]</span> where <span
+    class="math inline">\(\mathsf{restart}\)</span> applies the
+    supervision strategy <span
+    class="math inline">\(s\)</span>.</em></p>
+    </dd>
+    <dt>R-Par:</dt>
+    <dd>
+    <p><em>Structural rule for parallel composition: <span
+    class="math display">\[\frac{P \rightarrow P&#39;}{P \;\|\;Q
+    \rightarrow P&#39; \;\|\;Q}\]</span></em></p>
+    </dd>
+    <dt>R-New:</dt>
+    <dd>
+    <p><em>Structural rule for restriction: <span
+    class="math display">\[\frac{P \rightarrow P&#39;}{(\nu\, x:A) P
+    \rightarrow (\nu\, x:A) P&#39;}\]</span></em></p>
+    </dd>
+    </dl>
+    </div>
+    <h2 data-number="3.3" id="type-system"><span
+    class="header-section-number">3.3</span> Type System</h2>
+    <div id="def:typejudge" class="definition">
+    <p><strong>Definition 5</strong> (Typing judgment). <em>The typing
+    judgment <span class="math inline">\(\Gamma \vdash P\)</span>
+    asserts that process <span class="math inline">\(P\)</span> is
+    well-typed under context <span
+    class="math inline">\(\Gamma\)</span>. The key rules are:</em></p>
+    <dl>
+    <dt>T-Send:</dt>
+    <dd>
+    <p><em><span class="math display">\[\frac{\Gamma \vdash x :
+    \mathsf{Pid}[A] \quad \Gamma \vdash v : A \quad \Gamma \vdash
+    P}{\Gamma \vdash \mathsf{send}{x}{v}.P}\]</span></em></p>
+    </dd>
+    <dt>T-Recv:</dt>
+    <dd>
+    <p><em><span class="math display">\[\frac{\Gamma, y : A \vdash P
+    \quad \Gamma \vdash \mathsf{self} : \mathsf{Pid}[A]}{\Gamma \vdash
+    \mathsf{receive}{\mathsf{self}}{y}.P}\]</span></em></p>
+    </dd>
+    <dt>T-Spawn:</dt>
+    <dd>
+    <p><em><span class="math display">\[\frac{\Gamma, x :
+    \mathsf{Pid}[A] \vdash P : \mathsf{Process}[A] \quad \Gamma, x :
+    \mathsf{Pid}[A] \vdash Q}{\Gamma \vdash
+    \mathsf{spawn}{x}{A}{P}{Q}}\]</span></em></p>
+    </dd>
+    <dt>T-Sup:</dt>
+    <dd>
+    <p><em><span class="math display">\[\frac{s : \mathsf{Strategy}
+    \quad \forall i.\; \Gamma \vdash P_i}{\Gamma \vdash
+    \mathsf{Sup}{s}{\overline{P_i}}}\]</span></em></p>
+    </dd>
+    </dl>
+    </div>
+    <h2 data-number="3.4" id="categorical-semantics"><span
+    class="header-section-number">3.4</span> Categorical Semantics</h2>
+    <p>We provide denotational semantics for <span
+    class="math inline">\(\pi_{\text{JAPL}}\)</span> using category
+    theory, following the tradition of presheaf models for
+    concurrency <span class="citation"
+    data-cites="joyal1996bisimulation cattani1997presheaf"></span>.</p>
+    <div id="def:timecat" class="definition">
+    <p><strong>Definition 6</strong> (Time category). <em>Let <span
+    class="math inline">\(\mathbf{T}\)</span> be the category whose
+    objects are natural numbers (representing discrete time steps) and
+    whose morphisms <span class="math inline">\(m \leq n\)</span> are
+    the unique arrows witnessing <span class="math inline">\(m \leq
+    n\)</span> in the natural order. This is the poset <span
+    class="math inline">\((\mathbb{N}, \leq)\)</span> viewed as a
+    category.</em></p>
+    </div>
+    <div id="def:procpresheaf" class="definition">
+    <p><strong>Definition 7</strong> (Process presheaf). <em>A
+    <em>process presheaf</em> is a functor <span class="math inline">\(F
+    : \mathbf{T}^{\mathrm{op}} \to \mathbf{Set}\)</span>. For each time
+    <span class="math inline">\(t\)</span>, <span
+    class="math inline">\(F(t)\)</span> is the set of possible states of
+    the process at time <span class="math inline">\(t\)</span>. For each
+    <span class="math inline">\(m \leq n\)</span>, the restriction map
+    <span class="math inline">\(F(m \leq n) : F(n) \to F(m)\)</span>
+    captures the idea that the state at time <span
+    class="math inline">\(n\)</span> determines (by restriction)
+    information about the state at time <span
+    class="math inline">\(m\)</span>.</em></p>
+    </div>
+    <p>The following diagram illustrates how an internal <span
+    class="math inline">\(\tau\)</span>-reduction (a silent step that
+    does not involve external communication) maps into the presheaf
+    structure. A process in state <span class="math inline">\(\sigma \in
+    F(t)\)</span> that performs a <span
+    class="math inline">\(\tau\)</span>-reduction transitions to state
+    <span class="math inline">\(\sigma&#39; \in F(t+1)\)</span>, while
+    the restriction map recovers the earlier state:</p>
+    <figure id="fig:tau-presheaf" data-latex-placement="H">
+
+    <figcaption><span class="math inline">\(\tau\)</span>-reduction in
+    the presheaf model. A silent transition advances the process from
+    time <span class="math inline">\(t\)</span> to <span
+    class="math inline">\(t+1\)</span>. The restriction map <span
+    class="math inline">\(F(t \leq t{+}1)\)</span> projects back,
+    ensuring that the presheaf coherence condition <span
+    class="math inline">\(F(s \leq t) \circ F(t \leq u) = F(s \leq
+    u)\)</span> is maintained across all internal
+    reductions.</figcaption>
+    </figure>
+    <div id="def:typedproccat" class="definition">
+    <p><strong>Definition 8</strong> (Typed process category). <em>The
+    category <span class="math inline">\(\mathbf{TProc}\)</span>
+    has:</em></p>
+    <ul>
+    <li><p><em><strong>Objects:</strong> Pairs <span
+    class="math inline">\((P, A)\)</span> where <span
+    class="math inline">\(P\)</span> is a process presheaf and <span
+    class="math inline">\(A\)</span> is a message type.</em></p></li>
+    <li><p><em><strong>Morphisms:</strong> <span
+    class="math inline">\((P, A) \to (Q, B)\)</span> are natural
+    transformations <span class="math inline">\(\alpha : P \Rightarrow
+    Q\)</span> together with a message translation function <span
+    class="math inline">\(f : A \to B\)</span> such that the following
+    diagram commutes for all times <span
+    class="math inline">\(t\)</span>: <span
+    class="math display">\[\begin{array}{ccc}
+    P(t) \times A & \xrightarrow{\alpha_t \times f} & Q(t) \times B \\
+    \downarrow\scriptstyle{\mathsf{recv}_P} & & \downarrow\scriptstyle{\mathsf{recv}_Q} \\
+    P(t+1) & \xrightarrow{\alpha_{t+1}} & Q(t+1)
+    \end{array}\]</span> where <span
+    class="math inline">\(\mathsf{recv}\)</span> denotes the message
+    reception transition.</em></p></li>
+    </ul>
+    </div>
+    <div id="prop:yoneda" class="proposition">
+    <p><strong>Proposition 9</strong> (Yoneda embedding). <em>The Yoneda
+    embedding <span class="math inline">\(\mathbf{T} \hookrightarrow
+    [\mathbf{T}^{\mathrm{op}}, \mathbf{Set}]\)</span> maps each time
+    point <span class="math inline">\(t\)</span> to the representable
+    presheaf <span class="math inline">\(\mathrm{Hom}_{\mathbf{T}}(-,
+    t)\)</span>. A process <span class="math inline">\(P\)</span> at
+    time <span class="math inline">\(t\)</span> is characterized by the
+    natural transformations <span
+    class="math inline">\(\mathrm{Hom}_{\mathbf{T}}(-, t) \Rightarrow
+    P\)</span>, which by the Yoneda lemma are in bijection with elements
+    of <span class="math inline">\(P(t)\)</span>—i.e., the states of the
+    process at time <span class="math inline">\(t\)</span>.</em></p>
+    </div>
+    <div id="def:profunctor" class="definition">
+    <p><strong>Definition 10</strong> (Communication as profunctor).
+    <em>A <em>communication channel</em> between process categories
+    <span class="math inline">\(\mathbf{C}\)</span> and <span
+    class="math inline">\(\mathbf{D}\)</span> is a profunctor <span
+    class="math inline">\(H : \mathbf{C}^{\mathrm{op}} \times \mathbf{D}
+    \to \mathbf{Set}\)</span>. For processes <span
+    class="math inline">\(c \in \mathbf{C}\)</span> and <span
+    class="math inline">\(d \in \mathbf{D}\)</span>, the set <span
+    class="math inline">\(H(c, d)\)</span> represents the possible
+    messages that can flow from <span class="math inline">\(c\)</span>
+    to <span class="math inline">\(d\)</span>. Typed mailboxes
+    correspond to profunctors <span class="math inline">\(H\)</span>
+    that factor through the message type: <span
+    class="math display">\[H(c, d) = \mathrm{Hom}_A(\mathsf{out}(c),
+    \mathsf{in}(d))\]</span> where <span
+    class="math inline">\(\mathsf{out}(c)\)</span> and <span
+    class="math inline">\(\mathsf{in}(d)\)</span> are the output and
+    input types of <span class="math inline">\(c\)</span> and <span
+    class="math inline">\(d\)</span> respectively, and <span
+    class="math inline">\(\mathrm{Hom}_A\)</span> is the hom-set in the
+    category of message types.</em></p>
+    </div>
+    <h3 data-number="3.4.1"
+    id="connecting-categorical-and-operational-semantics"><span
+    class="header-section-number">3.4.1</span> Connecting Categorical
+    and Operational Semantics</h3>
+    <p>The categorical semantics developed above relate to the <span
+    class="math inline">\(\pi_{\text{JAPL}}\)</span> operational
+    semantics (<a href="#def:reduction" data-reference-type="ref+Label"
+    data-reference="def:reduction">4</a>) through a
+    denotational–operational bridge. Every well-typed <span
+    class="math inline">\(\pi_{\text{JAPL}}\)</span> process <span
+    class="math inline">\(P\)</span> with mailbox type <span
+    class="math inline">\(A\)</span> induces a process presheaf <span
+    class="math inline">\(\llbracket P \rrbracket \in
+    \mathbf{TProc}\)</span>, where <span
+    class="math inline">\(\llbracket P \rrbracket(t)\)</span> is the set
+    of reachable states of <span class="math inline">\(P\)</span> after
+    exactly <span class="math inline">\(t\)</span> reduction steps. The
+    restriction maps <span class="math inline">\(\llbracket P
+    \rrbracket(m \leq n) : \llbracket P \rrbracket(n) \to \llbracket P
+    \rrbracket(m)\)</span> are well-defined because every state
+    reachable in <span class="math inline">\(n\)</span> steps determines
+    (by truncating the reduction trace) the state at step <span
+    class="math inline">\(m\)</span>. <em>Soundness</em> asserts that if
+    two processes are identified in the categorical model—i.e., their
+    presheaves are naturally isomorphic in <span
+    class="math inline">\(\mathbf{TProc}\)</span>—then they are
+    typed-bisimilar in the operational semantics: <span
+    class="math inline">\(\llbracket P \rrbracket \cong \llbracket Q
+    \rrbracket\)</span> implies <span class="math inline">\((P,A)
+    \sim(Q,A)\)</span>. This follows because a natural isomorphism
+    between presheaves preserves the <span
+    class="math inline">\(\mathsf{recv}\)</span> transition structure at
+    every time step, which is exactly the transfer property required by
+    typed bisimulation (<a href="#def:bisim"
+    data-reference-type="ref+Label" data-reference="def:bisim">11</a>).
+    <em>Completeness</em> (the converse) holds for finite-state
+    processes: if <span class="math inline">\((P,A) \sim(Q,A)\)</span>,
+    the bisimulation relation itself provides the components of a
+    natural isomorphism <span class="math inline">\(\llbracket P
+    \rrbracket \cong \llbracket Q \rrbracket\)</span>. For
+    infinite-state processes, completeness requires passing to the
+    coalgebraic completion of <span
+    class="math inline">\(\mathbf{TProc}\)</span>, which we leave to
+    future work. Together, these results ensure that reasoning in the
+    categorical model faithfully reflects the operational behavior of
+    <span class="math inline">\(\pi_{\text{JAPL}}\)</span> programs.</p>
+    <h2 data-number="3.5" id="bisimulation"><span
+    class="header-section-number">3.5</span> Bisimulation</h2>
+    <div id="def:bisim" class="definition">
+    <p><strong>Definition 11</strong> (Typed bisimulation). <em>A
+    <em>typed bisimulation</em> is a relation <span
+    class="math inline">\(\mathcal{R}\)</span> on typed processes such
+    that if <span class="math inline">\((P, A) \mathcal{R} (Q,
+    A)\)</span> (note: same message type), then:</em></p>
+    <ol>
+    <li><p><em>If <span class="math inline">\(P \xrightarrow{\tau}
+    P&#39;\)</span>, then there exists <span
+    class="math inline">\(Q&#39;\)</span> such that <span
+    class="math inline">\(Q \xrightarrow{\tau} Q&#39;\)</span> and <span
+    class="math inline">\((P&#39;, A) \mathcal{R} (Q&#39;,
+    A)\)</span>.</em></p></li>
+    <li><p><em>If <span class="math inline">\(P
+    \xrightarrow{\mathsf{receive}{}{v}} P&#39;\)</span> where <span
+    class="math inline">\(v : A\)</span>, then there exists <span
+    class="math inline">\(Q&#39;\)</span> such that <span
+    class="math inline">\(Q \xrightarrow{\mathsf{receive}{}{v}}
+    Q&#39;\)</span> and <span class="math inline">\((P&#39;, A)
+    \mathcal{R} (Q&#39;, A)\)</span>.</em></p></li>
+    <li><p><em>Symmetrically for <span
+    class="math inline">\(Q\)</span>.</em></p></li>
+    </ol>
+    <p><em>Two typed processes are <em>bisimilar</em>, written <span
+    class="math inline">\((P, A) \sim(Q, A)\)</span>, if there exists a
+    typed bisimulation relating them.</em></p>
+    </div>
+    <div id="thm:congruence" class="theorem">
+    <p><strong>Theorem 12</strong> (Congruence). <em>Typed bisimilarity
+    is a congruence with respect to all <span
+    class="math inline">\(\pi_{\text{JAPL}}\)</span> constructors:
+    parallel composition, restriction, supervision, and
+    spawning.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof sketch.</em> The proof proceeds by showing that for
+    each constructor <span class="math inline">\(\mathcal{C}\)</span>,
+    if <span class="math inline">\((P, A) \sim(Q, A)\)</span> then <span
+    class="math inline">\((\mathcal{C}[P], A&#39;) \sim(\mathcal{C}[Q],
+    A&#39;)\)</span> for the appropriate type <span
+    class="math inline">\(A&#39;\)</span>. The key insight is that typed
+    bisimulation respects message types: substituting bisimilar
+    processes in any context preserves the ability to send and receive
+    the same typed messages. The supervision case requires showing that
+    if <span class="math inline">\(P \sim Q\)</span> and both crash with
+    the same typed reason, then their restarts (under any strategy) are
+    also bisimilar. ◻</p>
+    </div>
+    <h1 data-number="4" id="sec:process-model"><span
+    class="header-section-number">4</span> JAPL’s Process Model</h1>
+    <p>JAPL’s concurrency model is built on a single primitive: the
+    <em>process</em>. A process is a lightweight, isolated unit of
+    concurrent execution with the following properties:</p>
+    <ol>
+    <li><p><strong>Isolated state:</strong> Each process has its own
+    heap. There is no shared mutable memory between processes. Pure
+    immutable values may be shared (they are safe to share because they
+    cannot change), but mutable resources are owned by exactly one
+    process at a time.</p></li>
+    <li><p><strong>Typed mailbox:</strong> Each process has a single
+    mailbox that accepts messages of a statically known type. The type
+    system prevents sending a message of the wrong type.</p></li>
+    <li><p><strong>Supervision relationship:</strong> Every process
+    (except the root) has a supervisor. If a process crashes, its
+    supervisor is notified and takes corrective action according to a
+    declared strategy.</p></li>
+    <li><p><strong>Location transparency:</strong> Process identifiers
+    (<span class="math inline">\(\mathsf{Pid}[A]\)</span>) are
+    location-transparent. A PID may refer to a process on the local node
+    or a remote node; the runtime handles serialization, routing, and
+    network transport.</p></li>
+    <li><p><strong>Effect tracking:</strong> Process operations (spawn,
+    send, receive) are tracked by the effect system. A function that
+    performs process operations must declare the <span
+    class="math inline">\(\mathsf{Process}[A]\)</span> effect in its
+    signature.</p></li>
+    </ol>
+    <h2 data-number="4.1" id="process-isolation"><span
+    class="header-section-number">4.1</span> Process Isolation</h2>
+    <p>The cornerstone of JAPL’s concurrency safety is process
+    isolation. Unlike Go (where goroutines share memory), Java (where
+    threads share the heap), or even Akka (where JVM actors can access
+    shared objects), JAPL enforces isolation through a combination of
+    language semantics and runtime architecture:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Process isolation: no shared mutable state"><code>-- Each process has its own state, managed via recursion
+fn worker(state: WorkerState) -&gt; Never with Process[WorkerMsg] =
+  match Process.receive() with
+  | DoWork(task, reply) -&gt;
+      -- state is local to this process; no other process can access it
+      let result = execute_task(state, task)
+      let new_state = update_state(state, task, result)
+      Reply.send(reply, result)
+      worker(new_state)  -- tail-recursive loop with new state
+  | Shutdown -&gt;
+      cleanup(state)
+      Process.exit(Normal)</code></pre>
+    <p>The key mechanisms ensuring isolation are:</p>
+    <dl>
+    <dt>Immutable sharing.</dt>
+    <dd>
+    <p>Pure values (algebraic data types, records, strings, lists) are
+    immutable and can be shared across process boundaries without
+    copying or synchronization. Since they cannot change, concurrent
+    access is inherently safe.</p>
+    </dd>
+    <dt>Ownership transfer.</dt>
+    <dd>
+    <p>Mutable resources (file handles, buffers, network sockets) are
+    governed by JAPL’s ownership type system. A resource has exactly one
+    owner. To pass a mutable resource to another process, ownership must
+    be explicitly transferred, at which point the sending process can no
+    longer access it:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Ownership transfer between processes"><code>fn send_to_worker(buf: own Buffer, pid: Pid[WorkerMsg]) -&gt; Unit =
+  Process.send(pid, ProcessBuffer(buf))
+  -- buf is moved; using it here is a compile error</code></pre>
+    </dd>
+    <dt>Per-process heaps.</dt>
+    <dd>
+    <p>The runtime allocates a separate heap for each process. Garbage
+    collection of one process’s heap does not pause other processes.
+    When a process terminates, its entire heap is reclaimed
+    instantly.</p>
+    </dd>
+    </dl>
+    <h2 data-number="4.2" id="the-process-effect"><span
+    class="header-section-number">4.2</span> The Process Effect</h2>
+    <p>Concurrency in JAPL is not ambient: it is tracked by the effect
+    system. Any function that spawns processes, sends messages, or
+    receives messages must declare the <span
+    class="math inline">\(\mathsf{Process}[A]\)</span> effect:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="The Process effect in function signatures"><code>-- Pure function: no concurrency
+fn calculate_price(item: Item, qty: Int) -&gt; Money =
+  Money.multiply(item.price, qty)
+
+-- Process function: concurrency is declared
+fn order_processor(state: State) -&gt; Never with Process[OrderMsg] =
+  match Process.receive() with
+  | NewOrder(order) -&gt;
+      let priced = List.map(order.items, fn item -&gt;
+        { item | total = calculate_price(item, item.qty) }
+      )
+      order_processor({ state | pending = priced })</code></pre>
+    <p>This has several benefits:</p>
+    <ul>
+    <li><p>Pure functions are guaranteed to be free of concurrency
+    effects. They can be tested, reasoned about, and composed without
+    concern for race conditions.</p></li>
+    <li><p>The effect system ensures that process operations cannot
+    “leak” into pure code.</p></li>
+    <li><p>Effect polymorphism allows writing generic code that works in
+    both pure and concurrent contexts.</p></li>
+    </ul>
+    <h2 data-number="4.3" id="message-passing-semantics"><span
+    class="header-section-number">4.3</span> Message Passing
+    Semantics</h2>
+    <p>JAPL’s message passing is <em>asynchronous</em> and
+    <em>reliable</em> for local processes:</p>
+    <dl>
+    <dt>Asynchronous send.</dt>
+    <dd>
+    <p><span class="math inline">\(\mathsf{Process.send}(pid,
+    msg)\)</span> enqueues <span class="math inline">\(msg\)</span> in
+    the target process’s mailbox and returns immediately. It never
+    blocks the sender.</p>
+    </dd>
+    <dt>Blocking receive.</dt>
+    <dd>
+    <p><span class="math inline">\(\mathsf{Process.receive}()\)</span>
+    blocks the calling process until a message is available in its
+    mailbox. A timeout variant, <span
+    class="math inline">\(\mathsf{Process.receive\_with\_timeout}(ms)\)</span>,
+    returns <span
+    class="math inline">\(\mathsf{Err}(\mathsf{Timeout})\)</span> if no
+    message arrives within the specified duration.</p>
+    </dd>
+    <dt>Selective receive.</dt>
+    <dd>
+    <p><span
+    class="math inline">\(\mathsf{Process.receive\_matching}(predicate)\)</span>
+    receives the first message in the mailbox that satisfies the
+    predicate, leaving non-matching messages in the queue. This is
+    essential for implementing protocols where messages may arrive out
+    of order.</p>
+    </dd>
+    <dt>Ordering guarantee.</dt>
+    <dd>
+    <p>Messages from a single sender to a single receiver are delivered
+    in the order they were sent. No ordering is guaranteed between
+    messages from different senders.</p>
+    </dd>
+    </dl>
+    <pre class="japl" data-language="japl"
+    data-caption="Message passing primitives"><code>type Msg =
+  | StartJob(JobId)
+  | CancelJob(JobId)
+  | JobFinished(JobId, Output)
+  | JobFailed(JobId, Reason)
+
+fn worker_loop(state: WorkerState) -&gt; Process&lt;Unit&gt; {
+  receive {
+    StartJob(id) =&gt;
+      worker_loop(begin_job(state, id))
+    CancelJob(id) =&gt;
+      worker_loop(cancel_job(state, id))
+    Shutdown =&gt;
+      done()
+  }
+}</code></pre>
+    <h1 data-number="5" id="sec:typed-mailboxes"><span
+    class="header-section-number">5</span> Typed Mailboxes</h1>
+    <h2 data-number="5.1" id="motivation"><span
+    class="header-section-number">5.1</span> Motivation</h2>
+    <p>In Erlang, any term can be sent to any process. The burden of
+    message discrimination falls entirely on the receiving process,
+    which must pattern-match on incoming messages and (hopefully) handle
+    all possible cases. This design has served Erlang well for
+    dynamically-typed, hot-code-reloading scenarios, but it has
+    significant drawbacks:</p>
+    <ol>
+    <li><p><strong>Protocol violations are silent.</strong> Sending a
+    message of the wrong type to a process does not cause an immediate
+    error. The message sits in the mailbox, potentially forever (if no
+    clause matches it), causing a slow memory leak and eventual process
+    crash.</p></li>
+    <li><p><strong>Refactoring is dangerous.</strong> Adding or removing
+    a variant from a message type requires updating all senders—but the
+    compiler provides no guidance on which senders to update.</p></li>
+    <li><p><strong>Documentation is informal.</strong> The expected
+    message protocol of a process is documented in comments or
+    convention, not in the type system.</p></li>
+    </ol>
+    <h2 data-number="5.2" id="japls-approach"><span
+    class="header-section-number">5.2</span> JAPL’s Approach</h2>
+    <p>In JAPL, every process has a mailbox typed by an algebraic data
+    type. The type of a process identifier, <span
+    class="math inline">\(\mathsf{Pid}[A]\)</span>, encodes the type of
+    messages the process accepts:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Typed mailbox definition and use"><code>type LoggerMsg =
+  | Log(Level, String)
+  | Flush(Reply[Unit])
+  | SetLevel(Level)
+
+-- This process can ONLY receive LoggerMsg values
+fn logger(config: LogConfig) -&gt; Never with Process[LoggerMsg] =
+  match Process.receive() with
+  | Log(level, msg) -&gt;
+      if level &gt;= config.min_level then
+        write_log(config.output, level, msg)
+      logger(config)
+  | Flush(reply) -&gt;
+      flush_output(config.output)
+      Reply.send(reply, ())
+      logger(config)
+  | SetLevel(level) -&gt;
+      logger({ config | min_level = level })
+
+-- Spawning returns a typed PID
+let pid: Pid[LoggerMsg] = Process.spawn(fn -&gt; logger(default_config))
+
+-- Type-safe sending: only LoggerMsg values are accepted
+Process.send(pid, Log(Info, &quot;server started&quot;))
+Process.send(pid, SetLevel(Debug))
+
+-- Type error: wrong message type
+-- Process.send(pid, &quot;hello&quot;)     -- COMPILE ERROR
+-- Process.send(pid, Increment)   -- COMPILE ERROR</code></pre>
+    <h2 data-number="5.3" id="contrast-with-erlang"><span
+    class="header-section-number">5.3</span> Contrast with Erlang</h2>
+    <p>Consider the equivalent Erlang code:</p>
+    <div class="sourceCode" id="cb6" data-language="erlang"
+    data-caption="Erlang: untyped messages"><pre
+    class="sourceCode erlang"><code class="sourceCode erlang"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">logger(</span><span class="va">Config</span><span class="fu">)</span> <span class="op">-&gt;</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">receive</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span><span class="ch">log</span><span class="fu">,</span> <span class="va">Level</span><span class="fu">,</span> <span class="va">Msg</span><span class="fu">}</span> <span class="op">-&gt;</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>      <span class="kw">case</span> <span class="va">Level</span> <span class="op">&gt;=</span> <span class="fu">maps:get(</span><span class="ch">min_level</span><span class="fu">,</span> <span class="va">Config</span><span class="fu">)</span> <span class="kw">of</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>        <span class="ch">true</span> <span class="op">-&gt;</span> <span class="fu">write_log(maps:get(</span><span class="ch">output</span><span class="fu">,</span> <span class="va">Config</span><span class="fu">),</span> <span class="va">Level</span><span class="fu">,</span> <span class="va">Msg</span><span class="fu">);</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        <span class="ch">false</span> <span class="op">-&gt;</span> <span class="ch">ok</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>      <span class="kw">end</span><span class="fu">,</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>      <span class="fu">logger(</span><span class="va">Config</span><span class="fu">);</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span><span class="ch">flush</span><span class="fu">,</span> <span class="va">From</span><span class="fu">}</span> <span class="op">-&gt;</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>      <span class="fu">flush_output(maps:get(</span><span class="ch">output</span><span class="fu">,</span> <span class="va">Config</span><span class="fu">)),</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>      <span class="va">From</span> <span class="op">!</span> <span class="ch">ok</span><span class="fu">,</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>      <span class="fu">logger(</span><span class="va">Config</span><span class="fu">);</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span><span class="ch">set_level</span><span class="fu">,</span> <span class="va">Level</span><span class="fu">}</span> <span class="op">-&gt;</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>      <span class="fu">logger(</span><span class="va">Config</span><span class="fu">#{</span><span class="ch">min_level</span> <span class="op">=&gt;</span> <span class="va">Level</span><span class="fu">})</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">%% What happens if someone sends an unexpected message?</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    <span class="co">%% It sits in the mailbox forever, leaking memory.</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>  <span class="kw">end</span><span class="fu">.</span></span></code></pre></div>
+    <p>In Erlang, there is no compile-time check that senders use the
+    correct tuple structure. A misspelling
+    (<code>{logmsg, info, "text"}</code> instead of
+    <code>{log, info, "text"}</code>) creates a silent failure.</p>
+    <h2 data-number="5.4" id="reply-channels-and-request-response"><span
+    class="header-section-number">5.4</span> Reply Channels and
+    Request-Response</h2>
+    <p>A common pattern in concurrent systems is request-response: a
+    client sends a request and expects a reply. JAPL supports this
+    through the <span class="math inline">\(\mathsf{Reply}[T]\)</span>
+    type, which is a one-shot, typed reply channel:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Request-response with typed reply channels"><code>type CacheMsg =
+  | Get(Key, Reply[Option[Value]])
+  | Put(Key, Value)
+  | Invalidate(Key)
+  | Stats(Reply[CacheStats])
+
+fn cache_server(store: Map[Key, Value]) -&gt; Never with Process[CacheMsg] =
+  match Process.receive() with
+  | Get(key, reply) -&gt;
+      Reply.send(reply, Map.lookup(store, key))
+      cache_server(store)
+  | Put(key, value) -&gt;
+      cache_server(Map.insert(store, key, value))
+  | Invalidate(key) -&gt;
+      cache_server(Map.delete(store, key))
+  | Stats(reply) -&gt;
+      Reply.send(reply, compute_stats(store))
+      cache_server(store)
+
+-- Client-side: type-safe request-response
+fn lookup_cached(pid: Pid[CacheMsg], key: Key) -&gt; Option[Value] with Process =
+  let reply = Reply.new()
+  Process.send(pid, Get(key, reply))
+  Reply.await(reply)  -- blocks until reply arrives; typed as Option[Value]</code></pre>
+    <p>The <span class="math inline">\(\mathsf{Reply}[T]\)</span> type
+    is <em>affine</em> in implementation: it may be used <em>at most
+    once</em>, with a complementary liveness check that ensures it is
+    used <em>at least once</em> on every reachable code path. Together,
+    these two checks enforce exactly-once semantics. JAPL does not
+    require a full substructural type system; instead, <span
+    class="math inline">\(\mathsf{Reply}[T]\)</span> values are tracked
+    by a lightweight affine usage analysis integrated into the type
+    checker. Each <span class="math inline">\(\mathsf{Reply}[T]\)</span>
+    binding is marked as “unconsumed” at creation and “consumed” after a
+    call to <span class="math inline">\(\mathsf{Reply.send}\)</span>. A
+    second use after consumption, or a path where the binding is never
+    consumed, triggers a compile-time error. The following example
+    illustrates the compile-time rejection of double use:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Compile error: Reply used twice"><code>fn bad_handler(state: State) -&gt; Never with Process[CacheMsg] =
+  match Process.receive() with
+  | Get(key, reply) -&gt;
+      Reply.send(reply, Map.lookup(state.store, key))
+      -- COMPILE ERROR: linear value &#39;reply&#39; used after consumption
+      Reply.send(reply, None)
+      bad_handler(state)</code></pre>
+    <p>Similarly, forgetting to reply in a branch is rejected:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Compile error: Reply not consumed on all paths"><code>fn forgetful_handler(state: State) -&gt; Never with Process[CacheMsg] =
+  match Process.receive() with
+  | Get(key, reply) -&gt;
+      if Map.contains(state.store, key) then
+        Reply.send(reply, Map.lookup(state.store, key))
+        -- &#39;reply&#39; consumed here
+      else
+        ()  -- COMPILE ERROR: linear value &#39;reply&#39; not consumed on this path
+      forgetful_handler(state)</code></pre>
+    <p>This approach prevents a common class of bugs in actor
+    systems—unanswered requests and duplicate replies—without imposing
+    the full cognitive overhead of a substructural type system on all
+    values.</p>
+    <h2 data-number="5.5" id="session-types-for-complex-protocols"><span
+    class="header-section-number">5.5</span> Session Types for Complex
+    Protocols</h2>
+    <p>For protocols more complex than single request-response, JAPL
+    supports session types <span class="citation"
+    data-cites="honda1993types"></span> that describe multi-step
+    communication sequences:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Session-typed protocol"><code>type AuthProtocol =
+  session {
+    client -&gt; server: Credentials
+    server -&gt; client: AuthResult
+    if authenticated:
+      client -&gt; server: Request
+      server -&gt; client: Response
+    else:
+      end
+  }
+
+-- The compiler verifies that both sides follow the protocol
+fn auth_client(server: Pid[AuthProtocol.Server]) -&gt; Result[Response, AuthError]
+    with Process =
+  let session = Session.connect(server)
+  Session.send(session, my_credentials)
+  match Session.receive(session) with
+  | Authenticated(token) -&gt;
+      Session.send(session, my_request)
+      let response = Session.receive(session)
+      Ok(response)
+  | Rejected(reason) -&gt;
+      Err(AuthFailed(reason))</code></pre>
+    <p>Session types provide compile-time guarantees that:</p>
+    <ul>
+    <li><p>Messages are sent and received in the correct order.</p></li>
+    <li><p>Both parties agree on the types of messages at each
+    step.</p></li>
+    <li><p>All protocol branches are handled.</p></li>
+    <li><p>Sessions are completed (no dangling sessions).</p></li>
+    </ul>
+    <h2 data-number="5.6" id="formal-typing-of-mailboxes"><span
+    class="header-section-number">5.6</span> Formal Typing of
+    Mailboxes</h2>
+    <div id="def:mailbox-typing" class="definition">
+    <p><strong>Definition 13</strong> (Mailbox typing rule). <em>A
+    process <span class="math inline">\(P\)</span> with mailbox type
+    <span class="math inline">\(A\)</span> is well-typed, written <span
+    class="math inline">\(\Gamma \vdash_A P\)</span>, if:</em></p>
+    <ol>
+    <li><p><em>Every <span
+    class="math inline">\(\mathsf{receive}{\mathsf{self}}{y}.Q\)</span>
+    in <span class="math inline">\(P\)</span> binds <span
+    class="math inline">\(y\)</span> at type <span
+    class="math inline">\(A\)</span>.</em></p></li>
+    <li><p><em>Every pattern match on a received message <span
+    class="math inline">\(y\)</span> is exhaustive over the constructors
+    of <span class="math inline">\(A\)</span>.</em></p></li>
+    <li><p><em>Every <span
+    class="math inline">\(\mathsf{send}{x}{v}.Q\)</span> where <span
+    class="math inline">\(\Gamma(x) = \mathsf{Pid}[B]\)</span> has <span
+    class="math inline">\(v : B\)</span>.</em></p></li>
+    </ol>
+    </div>
+    <div id="thm:msg-safety" class="theorem">
+    <p><strong>Theorem 14</strong> (Typed message safety). <em>If <span
+    class="math inline">\(\Gamma \vdash P\)</span> in <span
+    class="math inline">\(\pi_{\text{JAPL}}\)</span>, then during any
+    execution of <span class="math inline">\(P\)</span>, every message
+    received by a process with mailbox type <span
+    class="math inline">\(A\)</span> has type <span
+    class="math inline">\(A\)</span>.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By induction on the typing derivation and case
+    analysis on the reduction rules. The key cases are:</p>
+    <p><strong>Case R-Comm:</strong> The communication rule <span
+    class="math inline">\(\mathsf{send}{x}{v}.P
+    \;\|\;\mathsf{receive}{x}{y}.Q \rightarrow P \;\|\;Q[v/y]\)</span>
+    requires, by T-Send, that <span class="math inline">\(v : A\)</span>
+    where <span class="math inline">\(\Gamma(x) =
+    \mathsf{Pid}[A]\)</span>, and by T-Recv, that <span
+    class="math inline">\(y\)</span> is bound at type <span
+    class="math inline">\(A\)</span>. Therefore <span
+    class="math inline">\(Q[v/y]\)</span> is well-typed.</p>
+    <p><strong>Case R-Spawn:</strong> The spawn rule creates a new
+    channel <span class="math inline">\(x : \mathsf{Pid}[A]\)</span>. By
+    T-Spawn, the spawned process has effect <span
+    class="math inline">\(\mathsf{Process}[A]\)</span>, so it receives
+    messages of type <span class="math inline">\(A\)</span>. The
+    continuation can only send type-<span
+    class="math inline">\(A\)</span> messages to <span
+    class="math inline">\(x\)</span>.</p>
+    <p><strong>Case R-Par:</strong> By induction hypothesis on each
+    component.</p>
+    <p><strong>Case R-New:</strong> By induction hypothesis under the
+    extended context.</p>
+    <p>The supervision case (R-Fail) preserves typing because the
+    restart creates a fresh instance of the same process with the same
+    type. ◻</p>
+    </div>
+    <h1 data-number="6" id="sec:supervision"><span
+    class="header-section-number">6</span> Supervision Trees</h1>
+    <h2 data-number="6.1" id="philosophy-let-it-crash"><span
+    class="header-section-number">6.1</span> Philosophy: Let It
+    Crash</h2>
+    <p>Erlang’s “let it crash” philosophy <span class="citation"
+    data-cites="armstrong2003making"></span> is one of the most
+    important insights in the history of concurrent programming. The
+    idea is simple but profound: instead of trying to anticipate and
+    handle every possible failure within a process, allow the process to
+    crash and delegate recovery to a supervisor. This approach has
+    several advantages:</p>
+    <ol>
+    <li><p><strong>Simplicity.</strong> Process code handles the “happy
+    path.” It does not need defensive error handling for every possible
+    corruption of state, hardware failure, or unexpected
+    condition.</p></li>
+    <li><p><strong>Clean state.</strong> Restarting a process gives it
+    fresh, known-good state. This eliminates the problem of processes
+    continuing with corrupted state after a partial failure.</p></li>
+    <li><p><strong>Isolation of failure.</strong> A crash in one process
+    does not corrupt the state of other processes. Supervision
+    boundaries are fault boundaries.</p></li>
+    <li><p><strong>Compositionality.</strong> Supervision trees compose:
+    a supervisor can itself be supervised, creating hierarchical fault
+    domains.</p></li>
+    </ol>
+    <p>JAPL adopts this philosophy and extends it with static
+    typing.</p>
+    <h2 data-number="6.2" id="supervision-strategies"><span
+    class="header-section-number">6.2</span> Supervision Strategies</h2>
+    <p>JAPL provides three supervision strategies, matching
+    Erlang/OTP:</p>
+    <dl>
+    <dt><code>OneForOne</code>:</dt>
+    <dd>
+    <p>When a child process crashes, only that child is restarted. Other
+    children are unaffected. This is appropriate when children are
+    independent.</p>
+    </dd>
+    <dt><code>AllForOne</code>:</dt>
+    <dd>
+    <p>When any child crashes, all children are terminated and
+    restarted. This is appropriate when children have complex
+    interdependencies and their collective state must be consistent.</p>
+    </dd>
+    <dt><code>RestForOne</code>:</dt>
+    <dd>
+    <p>When a child crashes, that child and all children started
+    <em>after</em> it are terminated and restarted. This is appropriate
+    when children have a sequential dependency: later children depend on
+    earlier ones.</p>
+    </dd>
+    </dl>
+    <pre class="japl" data-language="japl"
+    data-caption="Supervisor declaration with typed crash reasons"><code>supervisor ApiSystem {
+  strategy: OneForOne
+  child http_server()
+  child metrics_reporter()
+  child cache_manager()
+}
+
+-- Expanded form with full child specifications
+fn start_app() -&gt; Pid[SupervisorMsg] with Process =
+  Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = 5,
+    max_seconds = 60,
+    children = [
+      { id = &quot;db_pool&quot;
+      , start = fn -&gt; DbPool.start(config.database)
+      , restart = Permanent
+      , shutdown = Timeout(5000)
+      },
+      { id = &quot;http_server&quot;
+      , start = fn -&gt; HttpServer.start(config.http)
+      , restart = Permanent
+      , shutdown = Timeout(10000)
+      },
+      { id = &quot;background_jobs&quot;
+      , start = fn -&gt; JobRunner.start(config.jobs)
+      , restart = Transient
+      , shutdown = Timeout(30000)
+      },
+    ]
+  )</code></pre>
+    <h2 data-number="6.3" id="restart-policies"><span
+    class="header-section-number">6.3</span> Restart Policies</h2>
+    <p>Each child process has a restart policy:</p>
+    <dl>
+    <dt><code>Permanent</code>:</dt>
+    <dd>
+    <p>Always restarted when it terminates, regardless of reason. Used
+    for long-running services.</p>
+    </dd>
+    <dt><code>Transient</code>:</dt>
+    <dd>
+    <p>Restarted only if it terminates abnormally (crashes). Normal
+    termination is not restarted. Used for tasks that may complete.</p>
+    </dd>
+    <dt><code>Temporary</code>:</dt>
+    <dd>
+    <p>Never restarted. Used for one-shot tasks.</p>
+    </dd>
+    </dl>
+    <h2 data-number="6.4" id="restart-intensity-and-backoff"><span
+    class="header-section-number">6.4</span> Restart Intensity and
+    Backoff</h2>
+    <p>To prevent restart storms (where a persistently failing process
+    is restarted in a tight loop, consuming resources), supervisors
+    enforce a <em>restart intensity</em>: a maximum number of restarts
+    within a time window. If the intensity is exceeded, the supervisor
+    itself crashes, propagating the failure up the supervision tree.</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Declarative backoff for restart intensity"><code>supervisor DatabaseCluster {
+  strategy: OneForOne
+  max_restarts: 5
+  max_seconds: 60
+  backoff: Exponential { base_ms = 100, max_ms = 30000, jitter = True }
+
+  child db_connection(&quot;primary&quot;, config.primary_url)
+  child db_connection(&quot;replica-1&quot;, config.replica1_url)
+  child db_connection(&quot;replica-2&quot;, config.replica2_url)
+}</code></pre>
+    <p>The <code>backoff</code> specification is a JAPL extension to the
+    OTP model. Rather than immediately restarting a failed child, the
+    supervisor waits for an exponentially increasing duration, with
+    optional jitter to prevent thundering-herd effects. This is
+    particularly valuable for processes that connect to external
+    resources (databases, APIs), where immediate restart after a
+    connection failure is unlikely to succeed.</p>
+    <h2 data-number="6.5" id="typed-crash-reasons"><span
+    class="header-section-number">6.5</span> Typed Crash Reasons</h2>
+    <p>In Erlang, crash reasons are arbitrary terms. In JAPL, crash
+    reasons are typed, enabling compile-time reasoning about failure
+    modes:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Typed crash reasons"><code>type DbCrashReason =
+  | ConnectionLost(String)
+  | QueryTimeout(Duration)
+  | ProtocolError(Bytes)
+  | AuthenticationFailed
+
+type HttpCrashReason =
+  | BindFailed(Port)
+  | TlsError(TlsErrorKind)
+  | AcceptError(IoError)
+
+-- Supervisor can pattern-match on typed crash reasons
+fn on_child_crash(child_id: String, reason: CrashReason) -&gt; SupervisorAction =
+  match reason with
+  | DbCrashReason(ConnectionLost(_)) -&gt;
+      Restart(Backoff(Exponential { base_ms = 500 }))
+  | DbCrashReason(AuthenticationFailed) -&gt;
+      -- Don&#39;t restart; auth won&#39;t fix itself
+      Escalate
+  | HttpCrashReason(BindFailed(port)) -&gt;
+      Log.error(&quot;Port &quot; ++ show(port) ++ &quot; unavailable&quot;)
+      Escalate
+  | _ -&gt;
+      RestartImmediately</code></pre>
+    <h2 data-number="6.6" id="supervision-tree-visualization"><span
+    class="header-section-number">6.6</span> Supervision Tree
+    Visualization</h2>
+    <p>The supervision tree structure for a typical JAPL application is
+    illustrated in <a href="#fig:suptree"
+    data-reference-type="ref+Label"
+    data-reference="fig:suptree">2</a>.</p>
+    <figure id="fig:suptree" data-latex-placement="H">
+
+    <figcaption>A supervision tree for a typical JAPL web application.
+    Blue nodes are supervisors; green nodes are worker processes. Arrows
+    indicate supervision relationships.</figcaption>
+    </figure>
+    <h2 data-number="6.7" id="process-groups-and-registries"><span
+    class="header-section-number">6.7</span> Process Groups and
+    Registries</h2>
+    <p>Beyond tree-structured supervision, JAPL provides process groups
+    and registries for organizing processes:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Process groups and registries"><code>-- Register a process under a name
+Registry.register(&quot;cache_server&quot;, pid)
+
+-- Look up a process by name
+let cache = Registry.lookup(&quot;cache_server&quot;)
+
+-- Process groups: broadcast to all members
+let group = ProcessGroup.new(&quot;event_listeners&quot;)
+ProcessGroup.join(group, listener1)
+ProcessGroup.join(group, listener2)
+ProcessGroup.broadcast(group, EventOccurred(event_data))</code></pre>
+    <h2 data-number="6.8" id="formal-model-of-supervision"><span
+    class="header-section-number">6.8</span> Formal Model of
+    Supervision</h2>
+    <div id="def:suptree" class="definition">
+    <p><strong>Definition 15</strong> (Supervision tree). <em>A
+    supervision tree <span class="math inline">\(\mathcal{T}\)</span> is
+    a rooted tree where:</em></p>
+    <ul>
+    <li><p><em>Each internal node is a supervisor <span
+    class="math inline">\(\mathsf{Sup}{s}{\overline{P_i}}\)</span> with
+    strategy <span class="math inline">\(s \in \{\text{OneForOne},
+    \text{AllForOne}, \text{RestForOne}\}\)</span>.</em></p></li>
+    <li><p><em>Each leaf is a worker process <span
+    class="math inline">\(P\)</span>.</em></p></li>
+    <li><p><em>Each node has restart parameters <span
+    class="math inline">\((k, t)\)</span> specifying at most <span
+    class="math inline">\(k\)</span> restarts in <span
+    class="math inline">\(t\)</span> seconds.</em></p></li>
+    </ul>
+    </div>
+    <div id="def:restart" class="definition">
+    <p><strong>Definition 16</strong> (Restart function). <em>The
+    restart function <span class="math inline">\(\mathsf{restart} :
+    \mathsf{Strategy} \times \mathsf{Reason} \times
+    \overline{\mathsf{Proc}} \times \mathbb{N} \to
+    \overline{\mathsf{Proc}} + \mathsf{Escalate}\)</span> is defined by:
+    <span class="math display">\[\begin{align}
+    \mathsf{restart}(\text{OneForOne}, r, [P_1, \ldots, P_n], j) &amp;=
+    [P_1, \ldots, P_j^0, \ldots, P_n] \notag \\
+    \mathsf{restart}(\text{AllForOne}, r, [P_1, \ldots, P_n], j) &amp;=
+    [P_1^0, \ldots, P_n^0] \notag \\
+    \mathsf{restart}(\text{RestForOne}, r, [P_1, \ldots, P_n], j) &amp;=
+    [P_1, \ldots, P_{j-1}, P_j^0, \ldots, P_n^0] \notag
+    \end{align}\]</span> where <span
+    class="math inline">\(P_i^0\)</span> denotes the initial state of
+    process <span class="math inline">\(P_i\)</span> and <span
+    class="math inline">\(j\)</span> is the index of the failed process.
+    If the restart intensity is exceeded, the function returns <span
+    class="math inline">\(\mathsf{Escalate}\)</span>, causing the
+    supervisor itself to fail.</em></p>
+    </div>
+    <h1 data-number="7" id="sec:lifecycle"><span
+    class="header-section-number">7</span> Process Lifecycle</h1>
+    <h2 data-number="7.1" id="lifecycle-states"><span
+    class="header-section-number">7.1</span> Lifecycle States</h2>
+    <p>A JAPL process passes through the following states:</p>
+    <figure id="fig:lifecycle" data-latex-placement="H">
+
+    <figcaption>Process lifecycle state machine.</figcaption>
+    </figure>
+    <h2 data-number="7.2" id="lifecycle-operations"><span
+    class="header-section-number">7.2</span> Lifecycle Operations</h2>
+    <p>The six fundamental process operations are:</p>
+    <dl>
+    <dt><code>spawn</code>:</dt>
+    <dd>
+    <p>Creates a new process. The parent receives a typed <span
+    class="math inline">\(\mathsf{Pid}[A]\)</span> for the new process.
+    The new process begins executing its body function.</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Spawning a process"><code>let pid: Pid[WorkerMsg] = Process.spawn(fn -&gt; worker(initial_state))</code></pre>
+    </dd>
+    <dt><code>send</code>:</dt>
+    <dd>
+    <p>Enqueues a typed message in the target process’s mailbox.
+    Non-blocking; returns immediately.</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Sending a message"><code>Process.send(pid, StartJob(job_id))</code></pre>
+    </dd>
+    <dt><code>receive</code>:</dt>
+    <dd>
+    <p>Blocks the process until a message is available in its mailbox.
+    The received message is pattern-matched.</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Receiving with pattern matching"><code>match Process.receive() with
+| StartJob(id) -&gt; begin_work(state, id)
+| CancelJob(id) -&gt; cancel_work(state, id)</code></pre>
+    </dd>
+    <dt><code>continue</code>:</dt>
+    <dd>
+    <p>A tail-recursive call that advances the process to its next
+    iteration with new state. This is the standard mechanism for
+    process-local state management:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="State evolution through tail recursion"><code>fn counter(n: Int) -&gt; Never with Process[CounterMsg] =
+  match Process.receive() with
+  | Increment -&gt; counter(n + 1)      -- continue with new state
+  | Decrement -&gt; counter(n - 1)      -- continue with new state
+  | GetCount(reply) -&gt;
+      Reply.send(reply, n)
+      counter(n)                       -- continue with same state</code></pre>
+    </dd>
+    <dt><code>done</code>:</dt>
+    <dd>
+    <p>Signals successful process termination. The process exits with
+    reason <span class="math inline">\(\mathsf{Normal}\)</span>.
+    Transient and temporary child processes are not restarted after
+    normal termination.</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Normal process termination"><code>fn one_shot_task(data: TaskData) -&gt; Unit with Process[TaskMsg] =
+  let result = compute(data)
+  Process.send(data.reply_to, TaskComplete(result))
+  done()</code></pre>
+    </dd>
+    <dt><code>fail</code>:</dt>
+    <dd>
+    <p>Signals abnormal process termination with a typed reason. The
+    supervisor is notified and takes action according to its
+    strategy.</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Explicit failure with typed reason"><code>fn db_worker(conn: DbConn) -&gt; Never with Process[DbMsg] =
+  match Process.receive() with
+  | Query(sql, reply) -&gt;
+      match Db.execute(conn, sql) with
+      | Ok(rows) -&gt;
+          Reply.send(reply, Ok(rows))
+          db_worker(conn)
+      | Err(ConnectionLost(detail)) -&gt;
+          fail(DbCrashReason(ConnectionLost(detail)))</code></pre>
+    </dd>
+    </dl>
+    <h2 data-number="7.3"
+    id="process-local-tail-recursion-as-state-management"><span
+    class="header-section-number">7.3</span> Process-Local Tail
+    Recursion as State Management</h2>
+    <p>A distinctive feature of JAPL’s process model (shared with
+    Erlang) is that process-local state is managed through tail
+    recursion rather than mutable variables. The process function takes
+    the current state as a parameter and calls itself with the new
+    state:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="State management via tail recursion"><code>type RateLimiterMsg =
+  | Request(ClientId, Reply[Bool])
+  | ResetBucket(ClientId)
+  | GetStats(Reply[RateLimiterStats])
+
+type BucketState = Map[ClientId, { count: Int, reset_at: Timestamp }]
+
+fn rate_limiter(state: BucketState, config: RateLimiterConfig)
+    -&gt; Never with Process[RateLimiterMsg] =
+  match Process.receive() with
+  | Request(client, reply) -&gt;
+      let bucket = Map.lookup(state, client)
+        |&gt; Option.unwrap_or({ count = 0, reset_at = now() + config.window })
+      if bucket.count &lt; config.max_requests then
+        Reply.send(reply, True)
+        let new_bucket = { bucket | count = bucket.count + 1 }
+        rate_limiter(Map.insert(state, client, new_bucket), config)
+      else
+        Reply.send(reply, False)
+        rate_limiter(state, config)
+  | ResetBucket(client) -&gt;
+      rate_limiter(Map.delete(state, client), config)
+  | GetStats(reply) -&gt;
+      Reply.send(reply, compute_stats(state))
+      rate_limiter(state, config)</code></pre>
+    <p>This approach has important advantages over mutable state:</p>
+    <ol>
+    <li><p><strong>No partial updates.</strong> The state transition is
+    atomic: the old state is the parameter, the new state is the
+    argument to the recursive call. There is no window where the state
+    is partially updated.</p></li>
+    <li><p><strong>State history.</strong> Since state is passed as a
+    value, it is trivial to log, snapshot, or roll back state
+    transitions for debugging or auditing.</p></li>
+    <li><p><strong>Restart safety.</strong> When a process crashes and
+    is restarted, it begins with fresh, known-good state (the initial
+    parameter). There is no corrupted mutable state to worry
+    about.</p></li>
+    <li><p><strong>Guaranteed tail-call optimization.</strong> JAPL
+    guarantees tail-call elimination, so process loops consume constant
+    stack space regardless of how many messages they process.</p></li>
+    </ol>
+    <h1 data-number="8" id="sec:comparison"><span
+    class="header-section-number">8</span> Comparison with Existing
+    Approaches</h1>
+    <p><a href="#tab:comparison" data-reference-type="ref+Label"
+    data-reference="tab:comparison">1</a> provides a feature-level
+    comparison of JAPL’s process model with the concurrency facilities
+    of Erlang, Go, Akka, Pony, and Gleam.</p>
+    <div id="tab:comparison">
+    <table>
+    <caption>Comparison of concurrency models across
+    languages.</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Feature</strong></th>
+    <th style="text-align: center;"><strong>JAPL</strong></th>
+    <th style="text-align: center;"><strong>Erlang</strong></th>
+    <th style="text-align: center;"><strong>Go</strong></th>
+    <th style="text-align: center;"><strong>Akka</strong></th>
+    <th style="text-align: center;"><strong>Pony</strong></th>
+    <th style="text-align: center;"><strong>Gleam</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Typed messages</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">Partial</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Process isolation</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Supervision trees</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Typed supervision</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;">Partial</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Session types</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Effect tracking</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Location transparency</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Hot code upgrade</td>
+    <td style="text-align: center;">Planned</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Per-process GC</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Linear resources</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h4 data-number="8.0.0.1" id="note-on-hot-code-upgrade."><span
+    class="header-section-number">8.0.0.1</span> Note on hot code
+    upgrade.</h4>
+    <p>The “Planned” status for hot code upgrade in JAPL reflects a
+    deliberate design tension. Erlang and Gleam support hot code
+    swapping via the BEAM’s module-loading infrastructure, which
+    benefits from dynamic typing: a new module version can accept
+    messages of any shape, and the programmer is responsible for
+    handling both old- and new-format messages during the transition. In
+    a statically typed language like JAPL, hot-swapping is
+    <em>harder</em> because type versioning must be addressed: if
+    version <span class="math inline">\(n\)</span> of a process expects
+    <span class="math inline">\(\mathsf{Msg}_n\)</span> and version
+    <span class="math inline">\(n{+}1\)</span> expects <span
+    class="math inline">\(\mathsf{Msg}_{n+1}\)</span>, the runtime must
+    ensure that in-flight messages of type <span
+    class="math inline">\(\mathsf{Msg}_n\)</span> are either drained
+    before the upgrade or translated to <span
+    class="math inline">\(\mathsf{Msg}_{n+1}\)</span> via a
+    compiler-generated migration function. Conversely, static typing
+    makes hot-swapping <em>safer</em>: the compiler can verify that the
+    migration function is total and type-correct, that the new process
+    state type is compatible with the serialized state of the old
+    version, and that all callers holding a <span
+    class="math inline">\(\mathsf{Pid}[\mathsf{Msg}_n]\)</span> are
+    updated or provided with a typed adapter. JAPL’s planned approach
+    requires each hot-upgradeable module to declare a <span
+    class="math inline">\(\mathsf{Migration}[V_{\text{old}},
+    V_{\text{new}}]\)</span> instance, providing compile-time assurance
+    that upgrades preserve type safety—a guarantee that neither Erlang
+    nor Gleam can offer.</p>
+    <h2 data-number="8.1" id="erlangotp-1"><span
+    class="header-section-number">8.1</span> Erlang/OTP</h2>
+    <p>Erlang is the direct inspiration for JAPL’s process model, and
+    JAPL inherits its core insights: lightweight processes, process
+    isolation, asynchronous message passing, supervision trees, and the
+    “let it crash” philosophy. The key differences are:</p>
+    <dl>
+    <dt>Static typing.</dt>
+    <dd>
+    <p>JAPL’s typed mailboxes catch message-protocol errors at compile
+    time. Erlang’s Dialyzer provides success typing but cannot enforce
+    exhaustive message handling or session-type compliance.</p>
+    </dd>
+    <dt>Typed crash reasons.</dt>
+    <dd>
+    <p>In Erlang, crash reasons are arbitrary terms. In JAPL, they are
+    typed algebraic data types, enabling pattern-matching on failure
+    modes in supervision logic.</p>
+    </dd>
+    <dt>Effect tracking.</dt>
+    <dd>
+    <p>JAPL’s effect system makes concurrency operations visible in
+    function signatures. In Erlang, any function can send messages or
+    spawn processes, and this is not reflected in the function’s
+    type.</p>
+    </dd>
+    <dt>Ownership for resources.</dt>
+    <dd>
+    <p>Erlang relies on GC for all memory management. JAPL’s linear
+    types provide deterministic resource cleanup and safe ownership
+    transfer between processes.</p>
+    </dd>
+    </dl>
+    <p>Erlang’s advantages over JAPL include its mature ecosystem,
+    battle-tested runtime (the BEAM), hot code reloading, and three
+    decades of production experience. JAPL aims to preserve Erlang’s
+    strengths while adding the benefits of static typing.</p>
+    <h2 data-number="8.2" id="go"><span
+    class="header-section-number">8.2</span> Go</h2>
+    <p>Go’s goroutines and channels provide syntactically lightweight
+    concurrency, but the model differs from JAPL’s in fundamental
+    ways:</p>
+    <dl>
+    <dt>Shared memory.</dt>
+    <dd>
+    <p>Go goroutines share the process memory space. While channels
+    provide a communication mechanism, nothing prevents goroutines from
+    accessing shared variables, and data races are a common source of
+    bugs. Go’s race detector is dynamic, not static.</p>
+    </dd>
+    <dt>No supervision.</dt>
+    <dd>
+    <p>Go has no built-in supervision mechanism. A panicking goroutine
+    crashes the program unless explicitly recovered. Building
+    supervision in Go requires manual bookkeeping.</p>
+    </dd>
+    <dt>Channel typing.</dt>
+    <dd>
+    <p>Go channels are typed, which is a strength. However, channels are
+    point-to-point, and there is no equivalent of Erlang/JAPL’s
+    selective receive or mailbox semantics. Complex protocols require
+    careful channel management.</p>
+    </dd>
+    <dt>Goroutine leaks.</dt>
+    <dd>
+    <p>Since goroutines are not supervised, a goroutine that blocks on a
+    channel read forever is a resource leak. Detecting and preventing
+    goroutine leaks requires discipline and tooling external to the
+    language.</p>
+    </dd>
+    </dl>
+    <p>Go’s advantages include its simplicity, fast compilation,
+    excellent tooling, and large ecosystem. JAPL draws inspiration from
+    Go’s pragmatic approach to tooling and compilation speed.</p>
+    <h2 data-number="8.3" id="akka"><span
+    class="header-section-number">8.3</span> Akka</h2>
+    <p>Akka provides actor-based concurrency on the JVM, with
+    supervision trees and location transparency. The comparison with
+    JAPL:</p>
+    <dl>
+    <dt>JVM overhead.</dt>
+    <dd>
+    <p>Akka actors share the JVM heap and can access each other’s state
+    through Java references, bypassing the actor abstraction. JAPL
+    enforces isolation at the language level.</p>
+    </dd>
+    <dt>Akka Typed.</dt>
+    <dd>
+    <p>Akka Typed addresses some message-typing concerns but operates
+    within Java’s type system, which lacks algebraic data types and
+    effect tracking. Protocol violations can still occur through type
+    erasure and runtime casts.</p>
+    </dd>
+    <dt>Complexity.</dt>
+    <dd>
+    <p>The Akka API surface is large, with many ways to accomplish the
+    same task. JAPL aims for a smaller, more principled set of
+    primitives.</p>
+    </dd>
+    <dt>Library vs. language.</dt>
+    <dd>
+    <p>Supervision in Akka is a library feature. In JAPL, it is a
+    language feature with syntactic support (the <code>supervisor</code>
+    declaration) and type-system integration.</p>
+    </dd>
+    </dl>
+    <h2 data-number="8.4" id="pony"><span
+    class="header-section-number">8.4</span> Pony</h2>
+    <p>Pony’s reference capabilities provide a novel approach to actor
+    safety:</p>
+    <dl>
+    <dt>Reference capabilities.</dt>
+    <dd>
+    <p>Pony uses a capability system (iso, val, ref, box, tag, trn) to
+    prevent data races. This is theoretically elegant but imposes
+    significant cognitive burden.</p>
+    </dd>
+    <dt>No supervision.</dt>
+    <dd>
+    <p>Pony does not provide built-in supervision trees. Error handling
+    is left to the programmer.</p>
+    </dd>
+    <dt>Actor isolation.</dt>
+    <dd>
+    <p>Pony achieves actor isolation through its capability system
+    rather than per-actor heaps. This allows zero-copy message passing
+    for data with appropriate capabilities, but requires understanding
+    the capability system.</p>
+    </dd>
+    </dl>
+    <p>JAPL takes a different approach: isolation through per-process
+    heaps and ownership types, which is conceptually simpler (immutable
+    data is shared freely; mutable resources have single owners) while
+    achieving similar safety guarantees.</p>
+    <h2 data-number="8.5" id="gleam"><span
+    class="header-section-number">8.5</span> Gleam</h2>
+    <p>Gleam compiles to BEAM bytecode and provides static typing for
+    the Erlang ecosystem:</p>
+    <dl>
+    <dt>Shared runtime.</dt>
+    <dd>
+    <p>Gleam inherits BEAM’s runtime characteristics (per-process heaps,
+    preemptive scheduling, supervision) and can interoperate with Erlang
+    and Elixir libraries.</p>
+    </dd>
+    <dt>Type system scope.</dt>
+    <dd>
+    <p>Gleam’s type system is simpler than JAPL’s: it lacks effect
+    tracking, session types, linear types, and capability types. This
+    makes Gleam more accessible but provides fewer static
+    guarantees.</p>
+    </dd>
+    <dt>Interoperability.</dt>
+    <dd>
+    <p>Gleam’s BEAM compatibility is a significant practical advantage.
+    JAPL targets its own runtime, which provides more control but
+    requires building an ecosystem from scratch.</p>
+    </dd>
+    </dl>
+    <h1 data-number="9" id="sec:implementation"><span
+    class="header-section-number">9</span> Implementation</h1>
+    <p>This section describes the key implementation techniques for
+    JAPL’s process runtime, targeting scalability to millions of
+    concurrent processes on commodity hardware.</p>
+    <h2 data-number="9.1" id="lightweight-process-representation"><span
+    class="header-section-number">9.1</span> Lightweight Process
+    Representation</h2>
+    <p>Each JAPL process is represented as a lightweight structure
+    containing:</p>
+    <ul>
+    <li><p>A <strong>process control block</strong> (PCB): status flags,
+    priority, reduction counter, mailbox pointer, links/monitors list,
+    supervisor reference.</p></li>
+    <li><p>A <strong>private heap</strong>: a small, separately
+    collected memory region for the process’s local data. Initial size
+    is 2 KB, growing as needed.</p></li>
+    <li><p>A <strong>stack</strong>: for the process’s continuation.
+    Since JAPL guarantees tail-call elimination for process loops, the
+    stack remains small.</p></li>
+    <li><p>A <strong>mailbox</strong>: a queue of incoming messages
+    (described in <a href="#sec:impl-mailbox"
+    data-reference-type="ref+Label"
+    data-reference="sec:impl-mailbox">9.3</a>).</p></li>
+    </ul>
+    <p>The total overhead per idle process is approximately 4–8 KB,
+    enabling millions of processes per node on machines with tens of
+    gigabytes of RAM.</p>
+    <h2 data-number="9.2" id="scheduler-design"><span
+    class="header-section-number">9.2</span> Scheduler Design</h2>
+    <p>JAPL’s scheduler follows the Erlang BEAM model with
+    enhancements:</p>
+    <dl>
+    <dt>Scheduler threads.</dt>
+    <dd>
+    <p>The runtime creates one scheduler thread per CPU core. Each
+    scheduler thread has a run queue of processes ready to execute.</p>
+    </dd>
+    <dt>Preemptive scheduling.</dt>
+    <dd>
+    <p>Each process is assigned a <em>reduction budget</em> (e.g., 4000
+    reductions). Function calls, message sends, and receives each
+    consume one or more reductions. When a process exhausts its budget,
+    it is preempted and placed at the back of its scheduler’s run
+    queue.</p>
+    </dd>
+    <dt>Work stealing.</dt>
+    <dd>
+    <p>When a scheduler’s run queue is empty, it attempts to steal
+    processes from other schedulers’ queues. This provides automatic
+    load balancing across cores.</p>
+    </dd>
+    <dt>Priority queues.</dt>
+    <dd>
+    <p>Each scheduler maintains multiple priority levels (high, normal,
+    low). High-priority processes (e.g., supervisors, timers) are
+    scheduled preferentially.</p>
+    </dd>
+    <dt>Priority inversion avoidance.</dt>
+    <dd>
+    <p>In shared-memory systems, priority inversion occurs when a
+    low-priority thread holds a lock needed by a high-priority thread.
+    JAPL’s process model avoids this pathology structurally: since
+    processes do not share memory or locks, the classical Coffman-style
+    priority inversion cannot arise. However, a <em>message-level</em>
+    analog exists: a high-priority process may send a request (via <span
+    class="math inline">\(\mathsf{Reply}[T]\)</span>) to a low-priority
+    process and block on the reply. If the low-priority process is
+    starved of scheduler time, the high-priority process is effectively
+    delayed. JAPL addresses this through <em>priority inheritance on
+    reply channels</em>: when a high-priority process blocks on a <span
+    class="math inline">\(\mathsf{Reply.await}\)</span>, the runtime
+    temporarily elevates the priority of the target process to match the
+    waiter’s priority. This elevation persists until the reply is sent,
+    at which point the target process reverts to its original priority.
+    During work stealing, stolen processes retain their (possibly
+    elevated) priority, ensuring that a process promoted due to a
+    pending reply is not demoted simply by being migrated to a different
+    scheduler’s queue. This mechanism ensures that priority queues and
+    work stealing interact correctly without reintroducing the priority
+    inversion problem.</p>
+    </dd>
+    </dl>
+    <figure id="fig:scheduler" data-latex-placement="H">
+
+    <figcaption>Work-stealing scheduler architecture. Each core has a
+    scheduler with its own run queue. Idle schedulers steal work from
+    busy ones.</figcaption>
+    </figure>
+    <h2 data-number="9.3" id="sec:impl-mailbox"><span
+    class="header-section-number">9.3</span> Mailbox Data
+    Structures</h2>
+    <p>The mailbox is a critical data structure, as every inter-process
+    communication passes through it. JAPL’s mailbox implementation has
+    two components:</p>
+    <dl>
+    <dt>Message queue.</dt>
+    <dd>
+    <p>A lock-free, multi-producer, single-consumer (MPSC) queue.
+    Multiple processes can send messages concurrently without contention
+    (each sender appends to the queue via a CAS operation on the tail
+    pointer). The owning process is the sole consumer, so receives
+    require no synchronization.</p>
+    </dd>
+    <dt>Selective receive index.</dt>
+    <dd>
+    <p>For processes that use selective receive, the mailbox maintains
+    an auxiliary index that maps message constructors (tags) to
+    positions in the queue. This enables <span
+    class="math inline">\(O(1)\)</span> lookup for selective receive by
+    tag, avoiding the <span class="math inline">\(O(n)\)</span> scan
+    that Erlang’s selective receive requires.</p>
+    </dd>
+    </dl>
+    <pre class="japl" data-language="japl"
+    data-caption="Selective receive with efficient tag-based lookup"><code>-- Without selective receive: messages processed in order
+fn simple_worker(state: State) -&gt; Never with Process[WorkerMsg] =
+  match Process.receive() with
+  | msg -&gt; handle(state, msg)
+
+-- With selective receive: priority messages handled first
+fn priority_worker(state: State) -&gt; Never with Process[WorkerMsg] =
+  -- Efficiently finds the first Priority message in the mailbox
+  match Process.receive_matching(fn m -&gt; is_priority(m)) with
+  | Some(Priority(data)) -&gt; handle_priority(state, data)
+  | None -&gt;
+      -- No priority messages; handle the next regular message
+      match Process.receive() with
+      | msg -&gt; handle(state, msg)</code></pre>
+    <h2 data-number="9.4" id="process-isolation-guarantees"><span
+    class="header-section-number">9.4</span> Process Isolation
+    Guarantees</h2>
+    <p>JAPL’s runtime enforces process isolation through multiple
+    mechanisms:</p>
+    <ol>
+    <li><p><strong>Per-process heaps.</strong> Each process allocates
+    memory from its own heap region. References between heaps are
+    forbidden for mutable data.</p></li>
+    <li><p><strong>Immutable data sharing.</strong> Immutable values
+    (which constitute the vast majority of data in functional programs)
+    can be shared across process heaps via pointer sharing, since
+    concurrent reads of immutable data are safe. The GC handles
+    reachability tracking.</p></li>
+    <li><p><strong>Message copying for small messages.</strong> Small
+    messages (below a configurable threshold, default 64 bytes) are
+    copied into the receiving process’s heap. This avoids cross-heap
+    references for small messages and improves cache locality.</p></li>
+    <li><p><strong>Reference counting for large immutable
+    messages.</strong> Large immutable messages (strings, byte arrays,
+    large records) are allocated in a shared immutable heap and
+    reference-counted. Since they are immutable, concurrent reference
+    counting is safe.</p></li>
+    <li><p><strong>Ownership transfer for mutable resources.</strong>
+    Mutable resources are moved (not copied) between processes. The
+    runtime ensures that after a move, the sending process’s reference
+    is invalidated.</p></li>
+    </ol>
+    <h2 data-number="9.5" id="green-threads-vs.-os-threads"><span
+    class="header-section-number">9.5</span> Green Threads vs. OS
+    Threads</h2>
+    <p>JAPL processes are green threads (user-space threads managed by
+    the runtime) rather than OS threads. The comparison:</p>
+    <div id="tab:threads">
+    <table>
+    <caption>Green threads vs. OS threads.</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Property</strong></th>
+    <th style="text-align: left;"><strong>Green Threads
+    (JAPL)</strong></th>
+    <th style="text-align: left;"><strong>OS Threads</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Creation cost</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(\sim\)</span>2–8 KB memory</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(\sim\)</span>1–8 MB stack</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Context switch</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(\sim\)</span>100 ns (user-space)</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(\sim\)</span>1–10 <span
+    class="math inline">\(\mu\)</span>s (kernel)</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Max concurrent</td>
+    <td style="text-align: left;">Millions per node</td>
+    <td style="text-align: left;">Thousands per node</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Scheduling</td>
+    <td style="text-align: left;">Runtime (cooperative/preemptive)</td>
+    <td style="text-align: left;">OS kernel</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Isolation</td>
+    <td style="text-align: left;">Per-process heap (JAPL runtime)</td>
+    <td style="text-align: left;">Shared process memory</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Blocking I/O</td>
+    <td style="text-align: left;">Handled by I/O scheduler</td>
+    <td style="text-align: left;">Blocks OS thread</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>The JAPL runtime includes a dedicated I/O scheduler that offloads
+    blocking operations (file I/O, DNS resolution, long-running FFI
+    calls) to a pool of OS threads, ensuring that blocking I/O does not
+    stall the green thread scheduler.</p>
+    <h2 data-number="9.6" id="garbage-collection"><span
+    class="header-section-number">9.6</span> Garbage Collection</h2>
+    <p>JAPL uses a hybrid GC strategy:</p>
+    <dl>
+    <dt>Per-process generational GC.</dt>
+    <dd>
+    <p>Each process’s private heap has a two-generation collector. Young
+    generation collection is triggered frequently (every few hundred
+    reductions) and is very fast (typically microseconds) because
+    process heaps are small. Old generation collection is less
+    frequent.</p>
+    </dd>
+    <dt>Process death reclamation.</dt>
+    <dd>
+    <p>When a process terminates, its entire heap is freed in one
+    operation, with no need for GC. In systems with many short-lived
+    processes, this provides excellent throughput.</p>
+    </dd>
+    <dt>Shared immutable heap.</dt>
+    <dd>
+    <p>Large immutable values shared across processes live in a separate
+    heap with concurrent mark-sweep collection. Since this data is
+    immutable, no write barriers are needed, simplifying the collector
+    significantly.</p>
+    </dd>
+    </dl>
+    <h1 data-number="10" id="sec:properties"><span
+    class="header-section-number">10</span> Formal Properties</h1>
+    <h2 data-number="10.1" id="typed-message-safety"><span
+    class="header-section-number">10.1</span> Typed Message Safety</h2>
+    <div id="thm:preservation" class="theorem">
+    <p><strong>Theorem 17</strong> (Type preservation). <em>If <span
+    class="math inline">\(\Gamma \vdash P\)</span> and <span
+    class="math inline">\(P \rightarrow P&#39;\)</span>, then <span
+    class="math inline">\(\Gamma&#39; \vdash P&#39;\)</span> for some
+    <span class="math inline">\(\Gamma&#39; \supseteq
+    \Gamma\)</span>.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By induction on the derivation of <span
+    class="math inline">\(P \rightarrow P&#39;\)</span>.</p>
+    <p><strong>Case R-Comm:</strong> We have <span
+    class="math inline">\(\mathsf{send}{x}{v}.P_1
+    \;\|\;\mathsf{receive}{x}{y}.P_2 \rightarrow P_1
+    \;\|\;P_2[v/y]\)</span>. By T-Send, <span
+    class="math inline">\(\Gamma \vdash v : A\)</span> where <span
+    class="math inline">\(\Gamma(x) = \mathsf{Pid}[A]\)</span>. By
+    T-Recv, <span class="math inline">\(\Gamma, y : A \vdash
+    P_2\)</span>. By the substitution lemma, <span
+    class="math inline">\(\Gamma \vdash P_2[v/y]\)</span>. Since <span
+    class="math inline">\(\Gamma \vdash P_1\)</span> (from the premise
+    of T-Send), we have <span class="math inline">\(\Gamma \vdash P_1
+    \;\|\;P_2[v/y]\)</span>.</p>
+    <p><strong>Case R-Spawn:</strong> We have <span
+    class="math inline">\(\mathsf{spawn}{x}{A}{P_1}{P_2} \rightarrow
+    (\nu\, x : \mathsf{Pid}[A])(P_1 \;\|\;P_2)\)</span>. By T-Spawn,
+    <span class="math inline">\(\Gamma, x : \mathsf{Pid}[A] \vdash
+    P_1\)</span> and <span class="math inline">\(\Gamma, x :
+    \mathsf{Pid}[A] \vdash P_2\)</span>. Let <span
+    class="math inline">\(\Gamma&#39; = \Gamma, x :
+    \mathsf{Pid}[A]\)</span>. Then <span
+    class="math inline">\(\Gamma&#39; \vdash P_1 \;\|\;P_2\)</span> and
+    <span class="math inline">\(\Gamma \vdash (\nu\, x :
+    \mathsf{Pid}[A])(P_1 \;\|\;P_2)\)</span> by T-New (with <span
+    class="math inline">\(\Gamma&#39; \supseteq \Gamma\)</span>).</p>
+    <p><strong>Case R-Fail:</strong> The supervisor applies the restart
+    function, which creates fresh instances of the same process type. By
+    T-Sup, each child specification includes a start function of the
+    appropriate type, so the restarted processes are well-typed.</p>
+    <p>The remaining cases (R-Match, R-Par, R-New) follow by
+    straightforward induction. ◻</p>
+    </div>
+    <div id="cor:no-msg-errors" class="corollary">
+    <p><strong>Corollary 18</strong> (No message type errors at
+    runtime). <em>In a well-typed JAPL program, a process with mailbox
+    type <span class="math inline">\(A\)</span> never receives a message
+    that is not of type <span class="math inline">\(A\)</span>.</em></p>
+    </div>
+    <h2 data-number="10.2" id="deadlock-freedom"><span
+    class="header-section-number">10.2</span> Deadlock Freedom</h2>
+    <p>Deadlock in process-based systems can arise when processes form a
+    circular wait on message reception. JAPL’s supervision model
+    provides a practical (though not absolute) guarantee against
+    deadlock:</p>
+    <div id="def:supdiscipline" class="definition">
+    <p><strong>Definition 19</strong> (Supervision-disciplined network).
+    <em>A process network is <em>supervision-disciplined</em>
+    if:</em></p>
+    <ol>
+    <li><p><em>Every process is part of a supervision
+    tree.</em></p></li>
+    <li><p><em>Communication follows the supervision hierarchy: children
+    send messages to their supervisor (or siblings in the same
+    supervision group), and supervisors send messages to their
+    children.</em></p></li>
+    <li><p><em>All receive operations have timeouts at supervision
+    boundaries.</em></p></li>
+    </ol>
+    </div>
+    <div id="thm:deadlock-free" class="theorem">
+    <p><strong>Theorem 20</strong> (Deadlock freedom under supervision
+    discipline). <em>A supervision-disciplined process network is
+    deadlock-free.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> Assume for contradiction that a deadlock exists:
+    a cycle <span class="math inline">\(P_1 \to P_2 \to \cdots \to P_k
+    \to P_1\)</span> where each <span class="math inline">\(P_i\)</span>
+    is waiting for a message from <span
+    class="math inline">\(P_{i+1}\)</span> (indices mod <span
+    class="math inline">\(k\)</span>).</p>
+    <p>By the supervision discipline, communication follows the
+    supervision hierarchy. The supervision tree is acyclic (it is a
+    tree). Therefore, the communication graph is a subgraph of the tree,
+    augmented with sibling edges. In either case, a cycle would require
+    an edge from a descendant to an ancestor, which the discipline
+    forbids for blocking communication.</p>
+    <p>If any <span class="math inline">\(P_i\)</span> uses a timed
+    receive at a supervision boundary, the timeout will fire, breaking
+    the potential deadlock by causing <span
+    class="math inline">\(P_i\)</span> to take an alternative action
+    (fail, retry, or escalate to its supervisor). ◻</p>
+    </div>
+    <div class="remark">
+    <p><strong>Remark 21</strong>. <em>The supervision discipline is
+    sufficient but not always necessary. Many practical process networks
+    that violate the discipline are still deadlock-free. However, the
+    discipline provides a compositional, statically checkable
+    criterion.</em></p>
+    </div>
+    <h3 data-number="10.2.1"
+    id="lateral-communication-and-deadlock-detection"><span
+    class="header-section-number">10.2.1</span> Lateral Communication
+    and Deadlock Detection</h3>
+    <p>We acknowledge that the supervision-disciplined network
+    assumption is restrictive. In real-world actor systems, <em>lateral
+    communication</em>—messages between sibling processes, unrelated
+    process groups, or processes discovered via a Registry—is common and
+    often necessary. Registry-based communication (e.g.,
+    <code>Registry.lookup("service_name")</code>) introduces edges in
+    the communication graph that do not follow the supervision
+    hierarchy, potentially creating cycles that violate the
+    tree-structured assumption of <a href="#thm:deadlock-free"
+    data-reference-type="ref+Label"
+    data-reference="thm:deadlock-free">20</a>.</p>
+    <p>JAPL adopts a two-tier strategy to handle this. For
+    <em>tree-structured communication</em> (parent–child and sibling
+    messages within a supervision group), the deadlock prevention
+    guarantee of <a href="#thm:deadlock-free"
+    data-reference-type="ref+Label"
+    data-reference="thm:deadlock-free">20</a> applies statically. For
+    <em>lateral communication</em> that escapes the supervision
+    hierarchy, JAPL provides a <em>deadlock detection</em> effect:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Deadlock-aware lateral communication"><code>-- Lateral send with deadlock detection enabled
+fn request_from_peer(peer: Pid[PeerMsg], data: RequestData)
+    -&gt; Result[Response, Timeout] with Process =
+  let reply = Reply.new()
+  Process.send(peer, PeerRequest(data, reply))
+  -- Timed await: breaks potential deadlock cycles
+  Reply.await_timeout(reply, 5000)</code></pre>
+    <p>The runtime maintains a lightweight <em>wait-for graph</em> over
+    processes that are blocked on <span
+    class="math inline">\(\mathsf{Reply.await}\)</span> or <span
+    class="math inline">\(\mathsf{receive}\)</span> calls involving
+    lateral channels. When a cycle is detected in this graph, the
+    runtime delivers a <span
+    class="math inline">\(\mathsf{DeadlockDetected}\)</span> signal to
+    the youngest process in the cycle (by process creation time),
+    causing it to fail and be restarted by its supervisor. This hybrid
+    approach—static prevention for hierarchical communication, dynamic
+    detection for lateral communication—preserves the strong guarantees
+    of the supervision discipline where they apply while permitting the
+    flexible communication topologies that practical systems
+    require.</p>
+    <h2 data-number="10.3" id="progress-guarantees"><span
+    class="header-section-number">10.3</span> Progress Guarantees</h2>
+    <div id="def:progress" class="definition">
+    <p><strong>Definition 22</strong> (Progress). <em>A well-typed
+    process <span class="math inline">\(P\)</span> with mailbox type
+    <span class="math inline">\(A\)</span> <em>makes progress</em> if it
+    is either:</em></p>
+    <ol>
+    <li><p><em>Able to perform an internal reduction (<span
+    class="math inline">\(P \rightarrow P&#39;\)</span>),
+    or</em></p></li>
+    <li><p><em>Waiting to receive a message and able to accept any
+    message of type <span class="math inline">\(A\)</span>,
+    or</em></p></li>
+    <li><p><em>Successfully terminated (<span class="math inline">\(P =
+    \mathsf{done}\)</span>), or</em></p></li>
+    <li><p><em>Failed and being handled by its supervisor.</em></p></li>
+    </ol>
+    </div>
+    <div id="thm:progress" class="theorem">
+    <p><strong>Theorem 23</strong> (Progress for well-typed processes).
+    <em>If <span class="math inline">\(\Gamma \vdash P\)</span> and
+    <span class="math inline">\(P \neq \mathsf{done}\)</span> and <span
+    class="math inline">\(P\)</span> is not waiting for a message, then
+    there exists <span class="math inline">\(P&#39;\)</span> such that
+    <span class="math inline">\(P \rightarrow P&#39;\)</span>.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By induction on the typing derivation of <span
+    class="math inline">\(P\)</span>.</p>
+    <p><strong>Case T-Send:</strong> <span class="math inline">\(P =
+    \mathsf{send}{x}{v}.P&#39;\)</span>. If there exists a process <span
+    class="math inline">\(Q = \mathsf{receive}{x}{y}.Q&#39;\)</span> in
+    parallel, then R-Comm applies. If not, the send is asynchronous: the
+    message is enqueued and <span class="math inline">\(P\)</span>
+    transitions to <span class="math inline">\(P&#39;\)</span>.</p>
+    <p><strong>Case T-Match:</strong> <span class="math inline">\(P =
+    \mathsf{match}\; v\; \{\overline{p_i \Rightarrow P_i}\}\)</span>.
+    Since the typing rule requires exhaustive pattern matching over all
+    constructors of the message type <span
+    class="math inline">\(A\)</span>, there exists some <span
+    class="math inline">\(j\)</span> such that <span
+    class="math inline">\(p_j\)</span> matches <span
+    class="math inline">\(v\)</span>, and R-Match applies.</p>
+    <p><strong>Case T-Spawn:</strong> R-Spawn applies immediately.</p>
+    <p><strong>Case T-Sup:</strong> The supervisor monitors its
+    children. If any child has failed, R-Fail applies. Otherwise, the
+    supervisor itself is waiting for a child event (a form of
+    receive). ◻</p>
+    </div>
+    <h2 data-number="10.4" id="typed-reply-safety"><span
+    class="header-section-number">10.4</span> Typed Reply Safety</h2>
+    <div id="thm:reply-linearity" class="theorem">
+    <p><strong>Theorem 24</strong> (Reply linearity). <em>If <span
+    class="math inline">\(\Gamma \vdash P\)</span> and <span
+    class="math inline">\(P\)</span> contains a binding <span
+    class="math inline">\(r : \mathsf{Reply}[T]\)</span>, then <span
+    class="math inline">\(r\)</span> is used exactly once in <span
+    class="math inline">\(P\)</span>: exactly one <span
+    class="math inline">\(\mathsf{Reply.send}(r, v)\)</span> occurs on
+    every execution path through <span
+    class="math inline">\(P\)</span>.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> The <span
+    class="math inline">\(\mathsf{Reply}[T]\)</span> type is linear.
+    JAPL’s linear type checker ensures that every linear value is
+    consumed exactly once. If <span class="math inline">\(r\)</span> is
+    unused on some path, the checker reports a “linear value not
+    consumed” error. If <span class="math inline">\(r\)</span> is used
+    twice, the checker reports a “linear value used after consumption”
+    error. Since the program is well-typed, neither case applies. ◻</p>
+    </div>
+    <h1 data-number="11" id="sec:discussion"><span
+    class="header-section-number">11</span> Discussion</h1>
+    <h2 data-number="11.1" id="when-processes-are-overkill"><span
+    class="header-section-number">11.1</span> When Processes Are
+    Overkill</h2>
+    <p>Not every concurrent task warrants a process. For fine-grained
+    data parallelism—mapping a function over a large array, parallel
+    sorting, matrix operations—the overhead of process creation and
+    message passing is unnecessary. JAPL addresses this through two
+    mechanisms:</p>
+    <dl>
+    <dt>Parallel combinators.</dt>
+    <dd>
+    <p>Functions like <span
+    class="math inline">\(\mathsf{List.par\_map}\)</span> and <span
+    class="math inline">\(\mathsf{Array.par\_fold}\)</span> provide
+    data-parallel operations that use the scheduler’s thread pool
+    directly, without creating processes. These are implemented as
+    work-stealing parallel loops at the runtime level.</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Data parallelism without processes"><code>-- Parallel map: uses scheduler threads, not processes
+let results = List.par_map(large_list, fn item -&gt;
+  expensive_computation(item)
+)
+
+-- Sequential map: single-threaded
+let results = List.map(large_list, fn item -&gt;
+  expensive_computation(item)
+)</code></pre>
+    </dd>
+    <dt>Structured concurrency scopes.</dt>
+    <dd>
+    <p>For medium-grained parallelism (e.g., making several API calls
+    concurrently), JAPL provides structured concurrency within a lexical
+    scope:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Structured concurrency scope"><code>fn fetch_dashboard_data(user_id: UserId) -&gt; DashboardData
+    with Io, Net =
+  -- All three fetches run concurrently; scope waits for all
+  let (profile, orders, notifications) = concurrent {
+    fetch_profile(user_id),
+    fetch_orders(user_id),
+    fetch_notifications(user_id),
+  }
+  { profile, orders, notifications }</code></pre>
+    </dd>
+    </dl>
+    <h2 data-number="11.2" id="integration-with-the-effect-system"><span
+    class="header-section-number">11.2</span> Integration with the
+    Effect System</h2>
+    <p>The <span class="math inline">\(\mathsf{Process}[A]\)</span>
+    effect interacts with other effects in JAPL’s effect system:</p>
+    <dl>
+    <dt>Effect subsumption.</dt>
+    <dd>
+    <p><span class="math inline">\(\mathsf{Process}[A]\)</span> subsumes
+    <span class="math inline">\(\mathsf{Async}\)</span>: any
+    asynchronous operation can be expressed as a process operation. The
+    reverse is not true: <span
+    class="math inline">\(\mathsf{Async}\)</span> does not imply the
+    ability to spawn processes or receive typed messages.</p>
+    </dd>
+    <dt>Effect handlers at process boundaries.</dt>
+    <dd>
+    <p>When spawning a process, the parent provides effect handlers for
+    the child’s effects. For example, a child process that performs
+    <span class="math inline">\(\mathsf{Io}\)</span> has its I/O routed
+    through the runtime’s I/O scheduler. This is transparent to the
+    child.</p>
+    </dd>
+    <dt>Pure process logic.</dt>
+    <dd>
+    <p>The body of a process loop often calls pure functions for
+    business logic, using processes only for state management and
+    message routing. The effect system makes this separation explicit:
+    pure helper functions have no effects in their signatures.</p>
+    </dd>
+    </dl>
+    <h2 data-number="11.3" id="distribution-considerations"><span
+    class="header-section-number">11.3</span> Distribution
+    Considerations</h2>
+    <p>JAPL’s location-transparent PIDs enable distribution, but
+    introduce challenges:</p>
+    <dl>
+    <dt>Serialization.</dt>
+    <dd>
+    <p>Messages sent to remote processes must be serialized. JAPL uses
+    type-derived serialization: any type with a <span
+    class="math inline">\(\mathsf{Serialize}\)</span> trait
+    implementation can cross node boundaries. Types that cannot be
+    serialized (e.g., those containing function closures or mutable
+    resources) cause a compile-time error if used in a context that
+    requires distribution.</p>
+    </dd>
+    <dt>Partial failure.</dt>
+    <dd>
+    <p>Network partitions can cause message loss and process
+    unreachability. JAPL’s monitoring system detects node disconnections
+    and delivers <span class="math inline">\(\mathsf{NodeDown}\)</span>
+    messages to processes that monitor remote nodes.</p>
+    </dd>
+    <dt>Consistency.</dt>
+    <dd>
+    <p>JAPL does not impose a global consistency model. Processes on
+    different nodes communicate via asynchronous messages, and any
+    consistency guarantees must be built at the application level (e.g.,
+    using consensus protocols). The supervision tree model naturally
+    supports the “let it crash and retry” approach to network
+    failures.</p>
+    </dd>
+    </dl>
+    <h2 data-number="11.4" id="performance-considerations"><span
+    class="header-section-number">11.4</span> Performance
+    Considerations</h2>
+    <p>The process-based model introduces overhead compared to
+    shared-memory concurrency:</p>
+    <dl>
+    <dt>Message copying.</dt>
+    <dd>
+    <p>While immutable data can be shared by reference, crossing process
+    boundaries for mutable data requires copying or ownership transfer.
+    For most applications, the cost is negligible; for high-throughput
+    data pipelines, ownership transfer (zero-copy) is available.</p>
+    </dd>
+    <dt>Context switching.</dt>
+    <dd>
+    <p>Green thread context switches (<span
+    class="math inline">\(\sim\)</span>100 ns) are much cheaper than OS
+    thread context switches (<span
+    class="math inline">\(\sim\)</span>1–10 <span
+    class="math inline">\(\mu\)</span>s) but more expensive than atomic
+    operations (<span class="math inline">\(\sim\)</span>10–50 ns). For
+    contended data structures accessed billions of times, lock-free
+    shared memory would be faster. JAPL’s position is that such
+    scenarios are rare and can be addressed with the parallel combinator
+    escape hatch.</p>
+    </dd>
+    <dt>Memory overhead.</dt>
+    <dd>
+    <p>Per-process heaps provide isolation but increase memory usage
+    compared to a shared heap. The minimum overhead (4–8 KB per process)
+    is acceptable for most applications but may be significant for
+    systems with tens of millions of processes.</p>
+    </dd>
+    </dl>
+    <h2 data-number="11.5" id="limitations-and-future-work"><span
+    class="header-section-number">11.5</span> Limitations and Future
+    Work</h2>
+    <p>Several aspects of JAPL’s process model are active areas of
+    research and development:</p>
+    <ol>
+    <li><p><strong>Multiparty session types.</strong> The current
+    session type support handles two-party sessions. Extending to
+    multiparty session types <span class="citation"
+    data-cites="honda2008multiparty"></span> would enable verification
+    of complex distributed protocols involving multiple
+    participants.</p></li>
+    <li><p><strong>Hot code upgrade.</strong> Erlang supports hot code
+    swapping—updating running code without stopping the system. JAPL
+    plans to support this through typed module versioning, where the
+    type system ensures that upgraded code is compatible with existing
+    process states.</p></li>
+    <li><p><strong>Process algebra tooling.</strong> We plan to develop
+    tools that extract process algebra models from JAPL code and verify
+    properties (deadlock freedom, protocol compliance) using model
+    checking techniques.</p></li>
+    <li><p><strong>Hardware acceleration.</strong> For some workloads,
+    mapping processes to hardware threads (via OS threads or SIMD lanes)
+    could provide significant speedups. We are investigating hybrid
+    scheduling strategies.</p></li>
+    <li><p><strong>Formal verification.</strong> Integrating with proof
+    assistants (Coq, Lean) to provide machine-checked proofs of process
+    protocol correctness is a long-term goal.</p></li>
+    </ol>
+    <h1 data-number="12" id="sec:conclusion"><span
+    class="header-section-number">12</span> Conclusion</h1>
+    <p>We have presented JAPL’s process-based concurrency model, which
+    rejects shared-memory concurrency in favor of isolated, lightweight
+    processes communicating through typed mailboxes under hierarchical
+    supervision. This design, rooted in the Erlang/OTP tradition and
+    extended with modern type theory, provides several advantages over
+    both shared-memory and untyped actor systems:</p>
+    <ol>
+    <li><p><strong>Data race freedom by construction.</strong> Process
+    isolation eliminates data races without requiring locks, atomics, or
+    complex memory models.</p></li>
+    <li><p><strong>Typed message safety.</strong> Typed mailboxes
+    prevent message-protocol errors at compile time, catching a large
+    class of bugs that are silent in dynamically-typed actor
+    systems.</p></li>
+    <li><p><strong>Compositional fault tolerance.</strong> Supervision
+    trees, integrated into the type system with typed crash reasons and
+    declarative backoff, provide hierarchical fault domains that compose
+    naturally.</p></li>
+    <li><p><strong>Effect-tracked concurrency.</strong> The <span
+    class="math inline">\(\mathsf{Process}\)</span> effect makes
+    concurrency visible in function signatures, enabling clean
+    separation of pure logic from concurrent state management.</p></li>
+    <li><p><strong>Formal foundations.</strong> The categorical
+    semantics (presheaf categories over time, profunctors for
+    communication) and typed <span
+    class="math inline">\(\pi\)</span>-calculus provide rigorous
+    foundations for reasoning about process behavior, with proofs of
+    type preservation, progress, and deadlock freedom under supervision
+    discipline.</p></li>
+    </ol>
+    <p>The process-based model is not without tradeoffs: it introduces
+    overhead for fine-grained parallelism, requires explicit message
+    passing for communication, and adds complexity for distribution.
+    JAPL addresses these through parallel combinators, structured
+    concurrency scopes, and location-transparent PIDs respectively.</p>
+    <p>Ultimately, JAPL’s thesis is that <em>the shared-memory model is
+    the wrong default for concurrent programming</em>. Shared memory
+    makes the common case (independent concurrent tasks) unnecessarily
+    dangerous and the hard case (coordinated concurrent tasks) nearly
+    intractable. Process isolation makes the common case safe by default
+    and the hard case manageable through typed protocols and
+    supervision. Three decades of Erlang/OTP’s success in
+    telecommunications, along with the growing adoption of actor-based
+    systems in distributed computing, provide strong empirical support
+    for this thesis. JAPL’s contribution is to bring the full power of
+    modern type theory to bear on this proven model.</p>
+    <p><em>“Pure functions handle logic, supervised processes handle
+    time and failure, and ownership handles reality.”</em></p>
+    <div class="thebibliography">
+    <p><span>40</span></p>
+    <p>Gul A. Agha. <em>Actors: A Model of Concurrent Computation in
+    Distributed Systems</em>. MIT Press, 1986.</p>
+    <p>Joe Armstrong. Making reliable distributed systems in the
+    presence of software errors. PhD thesis, Royal Institute of
+    Technology, Stockholm, 2003.</p>
+    <p>Joe Armstrong. <em>Programming Erlang: Software for a Concurrent
+    World</em>. Pragmatic Bookshelf, 2007.</p>
+    <p>Hans-J. Boehm and Sarita V. Adve. Foundations of the
+    <span>C</span>++ concurrency memory model. In <em>PLDI</em>, pages
+    68–78. ACM, 2008.</p>
+    <p>Lu<span>ı́</span>s Caires and Frank Pfenning. Session types as
+    intuitionistic linear propositions. In <em>CONCUR</em>, volume 6269
+    of <em>LNCS</em>, pages 222–236. Springer, 2010.</p>
+    <p>Gian Luca Cattani and Glynn Winskel. Presheaf models for
+    concurrency. In <em>CSL</em>, volume 1414 of <em>LNCS</em>, pages
+    58–75. Springer, 1997.</p>
+    <p>Sylvan Clebsch, Sophia Drossopoulou, Sebastian Blessing, and Andy
+    McNeil. Deny capabilities for safe, fast actors. In <em>AGERE!</em>,
+    pages 1–12. ACM, 2015.</p>
+    <p>Edward G. Coffman, Michael J. Elphick, and Arie Shoshani. System
+    deadlocks. <em>ACM Computing Surveys</em>, 3(2):67–78, 1971.</p>
+    <p>Alan A.A. Donovan and Brian W. Kernighan. <em>The Go Programming
+    Language</em>. Addison-Wesley, 2015.</p>
+    <p><span>Gleam Team</span>. The <span>Gleam</span> programming
+    language. <a href="https://gleam.run"
+    class="uri">https://gleam.run</a>, 2023.</p>
+    <p>Carl Hewitt, Peter Bishop, and Richard Steiger. A universal
+    modular <span>ACTOR</span> formalism for artificial intelligence. In
+    <em>IJCAI</em>, pages 235–245, 1973.</p>
+    <p>C. A. R. Hoare. Communicating sequential processes.
+    <em>Communications of the ACM</em>, 21(8):666–677, 1978.</p>
+    <p>Kohei Honda. Types for dyadic interaction. In <em>CONCUR</em>,
+    volume 715 of <em>LNCS</em>, pages 509–523. Springer, 1993.</p>
+    <p>Kohei Honda, Vasco T. Vasconcelos, and Makoto Kubo. Language
+    primitives and type discipline for structured communication-based
+    programming. In <em>ESOP</em>, volume 1381 of <em>LNCS</em>, pages
+    122–138. Springer, 1998.</p>
+    <p>Kohei Honda, Nobuko Yoshida, and Marco Carbone. Multiparty
+    asynchronous session types. In <em>POPL</em>, pages 273–284. ACM,
+    2008.</p>
+    <p>Andr<span>é</span> Joyal, Mogens Nielsen, and Glynn Winskel.
+    Bisimulation from open maps. <em>Information and Computation</em>,
+    127(2):164–185, 1996.</p>
+    <p><span>Lightbend</span>. : Build concurrent, distributed, and
+    resilient message-driven applications. <a href="https://akka.io"
+    class="uri">https://akka.io</a>, 2023.</p>
+    <p>Tobias Lindahl and Konstantinos Sagonas. Practical type inference
+    based on success typings. In <em>PPDP</em>, pages 167–178. ACM,
+    2006.</p>
+    <p>Jeremy Manson, William Pugh, and Sarita V. Adve. The
+    <span>Java</span> memory model. In <em>POPL</em>, pages 378–391.
+    ACM, 2005.</p>
+    <p>Maged M. Michael. Hazard pointers: Safe memory reclamation for
+    lock-free objects. <em>IEEE Transactions on Parallel and Distributed
+    Systems</em>, 15(6):491–504, 2004.</p>
+    <p>Mark S. Miller. <em>Robust Composition: Towards a Unified
+    Approach to Access Control and Concurrency Control</em>. PhD thesis,
+    Johns Hopkins University, 2006.</p>
+    <p>Robin Milner. <em>A Calculus of Communicating Systems</em>.
+    Springer, 1980.</p>
+    <p>Robin Milner, Joachim Parrow, and David Walker. A calculus of
+    mobile processes, <span>I</span> and <span>II</span>.
+    <em>Information and Computation</em>, 100(1):1–77, 1992.</p>
+    <p>Robin Milner. <em>Communicating and Mobile Systems: the <span
+    class="math inline">\(\pi\)</span>-Calculus</em>. Cambridge
+    University Press, 1999.</p>
+    <p>Rob Pike. Concurrency is not parallelism. Talk at Heroku’s Waza
+    conference, 2012. <a href="https://go.dev/blog/waza-talk"
+    class="uri">https://go.dev/blog/waza-talk</a>.</p>
+    <p>Glenn E. Reeves. What really happened on <span>Mars</span>? <a
+    href="https://www.cs.cornell.edu/courses/cs614/1999sp/papers/pathfinder.html"
+    class="uri">https://www.cs.cornell.edu/courses/cs614/1999sp/papers/pathfinder.html</a>,
+    1997.</p>
+    <p>Raymond Roestenburg, Rob Bakker, and Rob Williams. <em>Akka in
+    Action</em>. Manning Publications, 2016.</p>
+    <p>A. W. Roscoe. <em>The Theory and Practice of Concurrency</em>.
+    Prentice Hall, 1998.</p>
+    <p>Konstantin Serebryany and Timur Iskhodzhanov. : data race
+    detection in practice. In <em>WBIA</em>, pages 62–71. ACM, 2012.</p>
+    <p>Peter Sewell, Susmit Sarkar, Scott Owens, Francesco Zappa
+    Nardelli, and Magnus O. Myreen. x86-<span>TSO</span>: A rigorous and
+    usable programmer’s model for x86 multiprocessors.
+    <em>Communications of the ACM</em>, 53(7):89–97, 2010.</p>
+    <p>Vasco T. Vasconcelos. Language primitives and type discipline for
+    structured communication-based programming. PhD thesis, Keio
+    University, 1998.</p>
+    <p>Philip Wadler. Propositions as sessions. In <em>ICFP</em>, pages
+    273–286. ACM, 2012.</p>
+    <p>Michael R. Clarkson, Stephen Chong, and Andrew C. Myers. Civitas:
+    Toward a secure voting system. In <em>S&amp;P</em>, pages 354–368.
+    IEEE, 2014.</p>
+    <p>Martin Odersky et al. An overview of the <span>Scala</span>
+    programming language. Technical Report IC/2004/64, EPFL, 2004.</p>
+    <p>Koen Claessen and John Hughes. : A lightweight tool for random
+    testing of <span>Haskell</span> programs. <em>ICFP</em>, pages
+    268–279. ACM, 2000.</p>
+    <p>Simon J. Gay and Vasco T. Vasconcelos. Linear type theory for
+    asynchronous session types. <em>Journal of Functional
+    Programming</em>, 20(1):19–50, 2010.</p>
+    <p>Alceste Scalas and Nobuko Yoshida. Less is more: Multiparty
+    session types revisited. <em>Proceedings of the ACM on Programming
+    Languages</em>, 3(POPL):30:1–30:29, 2019.</p>
+    <p>Bernardo Toninho, Lu<span>ı́</span>s Caires, and Frank Pfenning.
+    Higher-order processes, functions, and sessions: A monadic
+    integration. In <em>ESOP</em>, volume 7792 of <em>LNCS</em>, pages
+    350–369. Springer, 2013.</p>
+    <p>Robert Virding, Claes Wikstr<span>ö</span>m, and Mike Williams.
+    <em>Concurrent Programming in Erlang</em>. Prentice Hall, 2nd
+    edition, 1996.</p>
+    <p>Glynn Winskel. Event structures. In <em>Advances in Petri
+    Nets</em>, volume 255 of <em>LNCS</em>, pages 325–392. Springer,
+    1986.</p>
+    </div>
+    <h1 data-number="13" id="app:examples"><span
+    class="header-section-number">13</span> Extended JAPL Process
+    Examples</h1>
+    <h2 data-number="13.1" id="a-complete-worker-pool"><span
+    class="header-section-number">13.1</span> A Complete Worker
+    Pool</h2>
+    <p>The following example demonstrates a complete worker pool
+    implementation using supervision, typed mailboxes, and process
+    lifecycle management:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Worker pool with supervision"><code>-- Message types for the pool manager
+type PoolMsg =
+  | SubmitJob(Job, Reply[JobResult])
+  | WorkerDone(WorkerId, JobResult)
+  | WorkerCrashed(WorkerId, CrashReason)
+  | ScaleUp(Int)
+  | ScaleDown(Int)
+  | GetPoolStats(Reply[PoolStats])
+
+-- Message types for individual workers
+type WorkerMsg =
+  | RunJob(Job)
+  | Shutdown
+
+-- Worker process
+fn worker(id: WorkerId, pool: Pid[PoolMsg]) -&gt; Never with Process[WorkerMsg] =
+  match Process.receive() with
+  | RunJob(job) -&gt;
+      let result = execute_job(job)
+      Process.send(pool, WorkerDone(id, result))
+      worker(id, pool)
+  | Shutdown -&gt;
+      done()
+
+-- Pool state
+type PoolState =
+  { workers: Map[WorkerId, Pid[WorkerMsg]]
+  , available: List[WorkerId]
+  , pending: Queue[(Job, Reply[JobResult])]
+  , next_id: Int
+  }
+
+-- Pool manager process
+fn pool_manager(state: PoolState) -&gt; Never with Process[PoolMsg] =
+  match Process.receive() with
+  | SubmitJob(job, reply) -&gt;
+      match state.available with
+      | [worker_id, ..rest] -&gt;
+          let pid = Map.get(state.workers, worker_id)
+          Process.send(pid, RunJob(job))
+          let new_state = { state
+            | available = rest
+            , pending = Queue.push(state.pending, (job, reply))
+          }
+          pool_manager(new_state)
+      | [] -&gt;
+          -- No available workers; queue the job
+          let new_state = { state
+            | pending = Queue.push(state.pending, (job, reply))
+          }
+          pool_manager(new_state)
+
+  | WorkerDone(id, result) -&gt;
+      -- Return worker to available pool, dispatch next job
+      match Queue.pop(state.pending) with
+      | Some((next_job, reply), remaining) -&gt;
+          let pid = Map.get(state.workers, id)
+          Reply.send(reply, result)
+          Process.send(pid, RunJob(next_job))
+          pool_manager({ state | pending = remaining })
+      | None -&gt;
+          pool_manager({ state | available = [id, ..state.available] })
+
+  | GetPoolStats(reply) -&gt;
+      Reply.send(reply, {
+        total_workers = Map.size(state.workers),
+        available_workers = List.length(state.available),
+        pending_jobs = Queue.length(state.pending),
+      })
+      pool_manager(state)
+
+-- Supervisor for the pool
+supervisor WorkerPool {
+  strategy: OneForOne
+  max_restarts: 10
+  max_seconds: 60
+
+  child pool_manager(initial_pool_state())
+}</code></pre>
+    <h2 data-number="13.2" id="distributed-key-value-store"><span
+    class="header-section-number">13.2</span> Distributed Key-Value
+    Store</h2>
+    <p>This example shows a distributed key-value store using JAPL’s
+    location-transparent PIDs and process groups:</p>
+    <pre class="japl" data-language="japl"
+    data-caption="Distributed key-value store"><code>type KvMsg =
+  | Put(Key, Value, Reply[Ok])
+  | Get(Key, Reply[Option[Value]])
+  | Delete(Key, Reply[Ok])
+  | Replicate(Key, Value)
+
+fn kv_node(store: Map[Key, Value], peers: List[Pid[KvMsg]])
+    -&gt; Never with Process[KvMsg] =
+  match Process.receive() with
+  | Put(key, value, reply) -&gt;
+      let new_store = Map.insert(store, key, value)
+      -- Replicate to peers (fire-and-forget)
+      List.each(peers, fn peer -&gt;
+        Process.send(peer, Replicate(key, value))
+      )
+      Reply.send(reply, Ok)
+      kv_node(new_store, peers)
+  | Get(key, reply) -&gt;
+      Reply.send(reply, Map.lookup(store, key))
+      kv_node(store, peers)
+  | Delete(key, reply) -&gt;
+      Reply.send(reply, Ok)
+      kv_node(Map.delete(store, key), peers)
+  | Replicate(key, value) -&gt;
+      kv_node(Map.insert(store, key, value), peers)
+
+-- Start nodes on multiple machines
+fn start_cluster(nodes: List[NodeAddr]) -&gt; List[Pid[KvMsg]] with Process, Net =
+  let pids = List.map(nodes, fn addr -&gt;
+    let node = Node.connect(addr)
+    Process.spawn_on(node, fn -&gt; kv_node(Map.empty(), []))
+  )
+  -- Inform each node about its peers
+  List.each(pids, fn pid -&gt;
+    let peers = List.filter(pids, fn p -&gt; p != pid)
+    -- In practice, use a separate control message type
+    -- This is simplified for illustration
+  )
+  pids</code></pre>
+    <h1 data-number="14" id="app:derivations"><span
+    class="header-section-number">14</span> Process Algebra
+    Derivations</h1>
+    <h2 data-number="14.1"
+    id="encoding-supervision-in-the-pi-calculus"><span
+    class="header-section-number">14.1</span> Encoding Supervision in
+    the Pi-Calculus</h2>
+    <p>A supervisor with strategy <span
+    class="math inline">\(\mathsf{OneForOne}\)</span> and children <span
+    class="math inline">\(P_1, \ldots, P_n\)</span> is encoded as:</p>
+    <p><span class="math display">\[\begin{align}
+    \llbracket \mathsf{Sup}{\text{O4O}}{P_1, \ldots, P_n} \rrbracket
+    &amp;= (\nu\, m_1, \ldots, m_n) \Big( \notag \\
+    &amp; \quad !m_i(\text{down}).(\text{match down with} \notag \\
+    &amp; \qquad \mid \text{Crash}(r) \Rightarrow \llbracket P_i
+    \rrbracket \notag \\
+    &amp; \qquad \mid \text{Normal} \Rightarrow \mathbf{0}) \notag \\
+    &amp; \quad \;\|\;\llbracket P_1 \rrbracket \;\|\;\cdots
+    \;\|\;\llbracket P_n \rrbracket \Big) \notag
+    \end{align}\]</span></p>
+    <p>where <span class="math inline">\(m_i\)</span> is a monitor
+    channel for child <span class="math inline">\(P_i\)</span>, and the
+    replicated input on each <span class="math inline">\(m_i\)</span>
+    implements the restart logic: upon receiving a crash notification,
+    the supervisor re-instantiates the child process.</p>
+    <h2 data-number="14.2"
+    id="bisimulation-of-supervised-processes"><span
+    class="header-section-number">14.2</span> Bisimulation of Supervised
+    Processes</h2>
+    <div id="lem:restart-bisim" class="lemma">
+    <p><strong>Lemma 25</strong> (Restart bisimulation). <em>Let <span
+    class="math inline">\(P\)</span> be a process and <span
+    class="math inline">\(P^0\)</span> its initial state. Under
+    OneForOne supervision, a process that crashes and is restarted is
+    bisimilar (from the perspective of external observers) to a process
+    that was never started with the corrupted state: <span
+    class="math display">\[\mathsf{Sup}{\text{O4O}}{P \text{ crashes}}
+    \sim\mathsf{Sup}{\text{O4O}}{P^0}\]</span></em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof sketch.</em> After the crash and restart, the
+    supervised process is in state <span
+    class="math inline">\(P^0\)</span>, which is exactly the initial
+    state. The supervision wrapper is in its monitoring state, ready to
+    handle the next crash. Since <span
+    class="math inline">\(P^0\)</span> is the same state in both cases,
+    and the supervisor’s state depends only on the restart counter
+    (which is the same up to the current restart count), the two
+    configurations are bisimilar. ◻</p>
+    </div>
+    <h1 data-number="15" id="app:session-types"><span
+    class="header-section-number">15</span> Session Type Encoding</h1>
+    <p>JAPL’s session types can be encoded in the linear <span
+    class="math inline">\(\pi\)</span>-calculus following the
+    Caires-Pfenning correspondence <span class="citation"
+    data-cites="caires2010session"></span>:</p>
+    <div id="def:session-encoding" class="definition">
+    <p><strong>Definition 26</strong> (Session type encoding). <em>The
+    session type <span class="math inline">\(S\)</span> is encoded as a
+    linear <span class="math inline">\(\pi\)</span>-calculus type <span
+    class="math inline">\(\llbracket S \rrbracket\)</span>: <span
+    class="math display">\[\begin{align}
+    \llbracket \mathsf{Send}[T].S \rrbracket &amp;= T \otimes \llbracket
+    S \rrbracket \notag \\
+    \llbracket \mathsf{Recv}[T].S \rrbracket &amp;= T \multimap
+    \llbracket S \rrbracket \notag \\
+    \llbracket \mathsf{Choice}\{l_i : S_i\} \rrbracket &amp;=
+    \bigoplus_{i} \llbracket S_i \rrbracket \notag \\
+    \llbracket \mathsf{Branch}\{l_i : S_i\} \rrbracket &amp;= \&amp;_{i}
+    \llbracket S_i \rrbracket \notag \\
+    \llbracket \mathsf{End} \rrbracket &amp;= \mathbf{1} \notag
+    \end{align}\]</span> where <span
+    class="math inline">\(\otimes\)</span> is the tensor (send), <span
+    class="math inline">\(\multimap\)</span> is the lollipop (receive),
+    <span class="math inline">\(\oplus\)</span> is the sum (internal
+    choice), <span class="math inline">\(\&amp;\)</span> is the with
+    (external choice), and <span
+    class="math inline">\(\mathbf{1}\)</span> is the unit (session
+    end).</em></p>
+    </div>
+    <p>This encoding ensures that the linearity discipline of the <span
+    class="math inline">\(\pi\)</span>-calculus enforces the session
+    type protocol: each message is sent/received exactly once, branches
+    are handled exhaustively, and sessions are properly terminated.</p>
+
+    <div class="paper-footer">
+      <p>JAPL Research Series — YonedaAI Research Collective</p>
+      <p><a href="../index.html">japl-nine.vercel.app</a></p>
+    </div>
+  </main>
+</div>
+
+<script>
+// Auto-generate sidebar TOC from h2/h3 headings
+const toc = document.getElementById('toc');
+const headings = document.querySelectorAll('.content h2, .content h3');
+headings.forEach((h, i) => {
+  if (!h.id) h.id = 'section-' + i;
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.href = '#' + h.id;
+  a.textContent = h.textContent;
+  if (h.tagName === 'H3') a.className = 'toc-h3';
+  li.appendChild(a);
+  toc.appendChild(li);
+});
+</script>
+
+</body>
+</html>

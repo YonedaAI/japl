@@ -1,0 +1,2962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Distribution Is a Native Language Concern: Location-Transparent Processes and Type-Derived Protocols in JAPL — JAPL Research</title>
+  <meta name="description" content="Distribution Is a Native Language Concern: Location-Transparent Processes and Type-Derived Protocols in JAPL — Part of the JAPL programming language research series.">Japl</span> Programming
+Language — Part of the JAPL programming language research series.">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Distribution Is a Native Language Concern: Location-Transparent Processes and Type-Derived Protocols in JAPL — JAPL Research">Japl</span> Programming
+Language — JAPL Research">
+  <meta property="og:description" content="Part of the JAPL programming language research series. Just Another Programming Language.">
+  <meta property="og:url" content="https://japl-nine.vercel.app/papers/native-distribution.html">
+  <meta property="og:image" content="https://japl-nine.vercel.app/og-image.png">
+  <meta property="og:site_name" content="JAPL">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Distribution Is a Native Language Concern: Location-Transparent Processes and Type-Derived Protocols in JAPL — JAPL Research">Japl</span> Programming
+Language — JAPL Research">
+  <meta name="twitter:description" content="Part of the JAPL programming language research series.">
+  <meta name="twitter:image" content="https://japl-nine.vercel.app/og-image.png">
+
+  <!-- KaTeX for math -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      if (typeof renderMathInElement !== "undefined") {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: "\\[", right: "\\]", display: true},
+            {left: "\\(", right: "\\)", display: false}
+          ]
+        });
+      }
+    });
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e17;
+      --surface: #141922;
+      --surface-2: #1a1f2e;
+      --accent: #7c5cfc;
+      --accent-dim: rgba(124, 92, 252, 0.15);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --dim: #64748b;
+      --code-bg: #1a1f2e;
+      --border: #1e293b;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 17px;
+    }
+
+    /* Top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 23, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    .topbar a:hover { color: var(--accent); }
+    .topbar .logo { color: var(--text); font-weight: 700; font-size: 1.1rem; }
+    .topbar .logo span { color: var(--accent); }
+    .topbar-links { display: flex; gap: 1.5rem; }
+
+    /* Layout */
+    .wrapper {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Sidebar TOC */
+    .sidebar {
+      position: sticky;
+      top: 60px;
+      width: 260px;
+      min-width: 260px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+      padding: 2rem 1rem 2rem 2rem;
+      border-right: 1px solid var(--border);
+    }
+    .sidebar h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      margin-bottom: 1rem;
+    }
+    .sidebar ul { list-style: none; }
+    .sidebar li { margin-bottom: 0.4rem; }
+    .sidebar a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      display: block;
+      padding: 0.2rem 0;
+      transition: color 0.2s;
+    }
+    .sidebar a:hover { color: var(--accent); }
+    .sidebar .toc-h3 { padding-left: 1rem; font-size: 0.8rem; }
+
+    /* Main content */
+    .content {
+      flex: 1;
+      min-width: 0;
+      padding: 2.5rem 3rem 4rem;
+      max-width: 800px;
+    }
+
+    /* Paper header */
+    .paper-header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .paper-part {
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+    .paper-header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 1rem;
+    }
+    .paper-author {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .paper-links-bar {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+    }
+    .paper-links-bar a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .paper-links-bar a:hover {
+      background: var(--accent-dim);
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--text);
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+      line-height: 1.3;
+    }
+    h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h3 { font-size: 1.2rem; color: var(--muted); }
+    h4 { font-size: 1.05rem; }
+    p { margin-bottom: 1rem; }
+    a { color: var(--accent); }
+
+    /* Abstract */
+    .abstract {
+      background: var(--surface);
+      border-left: 3px solid var(--accent);
+      padding: 1.5rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 2rem;
+    }
+    .abstract p { margin-bottom: 0; }
+
+    /* Code */
+    pre, code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.6rem 0.8rem;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      background: var(--surface);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:nth-child(even) { background: rgba(20, 25, 34, 0.5); }
+
+    /* Small caps */
+    .smallcaps { font-variant: small-caps; }
+
+    /* Lists */
+    ul, ol { margin: 1rem 0; padding-left: 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+
+    /* Blockquote */
+    blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 1rem;
+      color: var(--muted);
+      margin: 1.5rem 0;
+    }
+
+    /* Figures */
+    figure { margin: 2rem 0; text-align: center; }
+    figcaption { color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* Math */
+    .math.display { overflow-x: auto; padding: 0.5rem 0; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .content { padding: 1.5rem; }
+      .topbar { padding: 0.75rem 1rem; }
+    }
+
+    /* Footer */
+    .paper-footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 0.85rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="../index.html" class="logo">JAPL<span>.</span></a>
+  <div class="topbar-links">
+    <a href="../index.html#papers">All Papers</a>
+    <a href="pdf/native-distribution.pdf">Download PDF</a>
+    <a href="https://github.com/YonedaAI/japl" target="_blank">GitHub</a>
+  </div>
+</div>
+
+<div class="wrapper">
+  <nav class="sidebar" id="sidebar">
+    <h4>Contents</h4>
+    <ul id="toc"></ul>
+  </nav>
+
+  <main class="content">
+    <div class="paper-header">
+      <div class="paper-part">Part V</div>
+      <h1><strong>Distribution Is a Native Language
+Concern:</strong><br />
+Location-Transparent Processes and Type-Derived Protocols<br />
+in the <span class="smallcaps">Japl</span> Programming Language</h1>
+      <div class="paper-author">Matthew Long — The JAPL Research Collaboration<br>YonedaAI Research Collective, Chicago, IL</div>
+      <div class="paper-links-bar">
+        <a href="pdf/native-distribution.pdf">PDF</a>
+        <a href="latex/native-distribution.tex">LaTeX Source</a>
+        <a href="../index.html#papers">Series Index</a>
+      </div>
+    </div>
+
+    <p><strong>Keywords:</strong> distributed systems, programming
+    language design, location transparency, type-derived serialization,
+    process calculi, algebraic data types, effect systems, fault
+    tolerance</p>
+    <h1 data-number="1" id="sec:introduction"><span
+    class="header-section-number">1</span> Introduction</h1>
+    <p>The fundamental challenge of distributed computing is not
+    networking—it is semantics. When a computation spans multiple
+    machines connected by an unreliable network, every assumption that
+    holds for local computation becomes suspect. Function calls may fail
+    silently, messages may arrive out of order or not at all, clocks
+    disagree, and state is inherently partitioned. These are not
+    incidental difficulties; they are the defining characteristics of
+    distributed systems <span class="citation"
+    data-cites="waldo1996note lamport1978time"></span>.</p>
+    <p>Despite this, the vast majority of programming languages treat
+    distribution as an afterthought. The language provides constructs
+    for local computation— functions, objects, threads, memory—and
+    leaves the programmer to bridge the gap to distributed computation
+    using external tools:</p>
+    <ul>
+    <li><p><strong>Serialization frameworks</strong> (Protocol Buffers,
+    Avro, MessagePack) that require schema files separate from the
+    program’s types.</p></li>
+    <li><p><strong>RPC generators</strong> (gRPC, Thrift) that produce
+    code in a different style than the surrounding program.</p></li>
+    <li><p><strong>Service meshes</strong> (Istio, Linkerd) that handle
+    concerns the language cannot express: retries, circuit breaking,
+    load balancing.</p></li>
+    <li><p><strong>Distributed tracing</strong> (Jaeger, Zipkin) that
+    reconstructs causality because the language does not track
+    it.</p></li>
+    <li><p><strong>Configuration management</strong> for service
+    discovery, health checking, and membership—all external to the
+    program.</p></li>
+    </ul>
+    <p>The result is a “distribution tax” levied on every distributed
+    application: thousands of lines of glue code, configuration files,
+    generated stubs, and operational infrastructure that exist only
+    because the language cannot express distribution natively. This tax
+    is not merely an inconvenience; it is a source of bugs. Protocol
+    mismatches, serialization errors, version incompatibilities, and
+    unhandled partial failures account for a significant fraction of
+    distributed systems outages <span class="citation"
+    data-cites="yuan2014simple"></span>.</p>
+    <h2 data-number="1.1" id="the-waldo-critique"><span
+    class="header-section-number">1.1</span> The Waldo Critique</h2>
+    <p>In their seminal 1994 note, <span class="citation"
+    data-cites="waldo1996note"></span> argued that “objects that
+    interact in a distributed system need to be dealt with in ways that
+    are intrinsically different from objects that interact in a single
+    address space.” They criticized systems like CORBA and Java RMI that
+    attempted to make remote calls look identical to local calls,
+    arguing that this transparency hid essential complexity: latency,
+    partial failure, and concurrency.</p>
+    <p>The Waldo critique is correct—but the conclusion drawn by most
+    language designers (“therefore, do not attempt language-level
+    distribution”) does not follow. The correct response is to make
+    distribution a language concern while also making the distributed
+    nature of operations <em>visible</em> where it matters. <span
+    class="smallcaps">Japl</span> achieves this through three
+    mechanisms:</p>
+    <ol>
+    <li><p><strong>Location-transparent PIDs</strong> allow uniform
+    send/receive syntax regardless of process location, reducing
+    syntactic burden.</p></li>
+    <li><p><strong>The <code>Net</code> effect</strong> marks functions
+    that perform network operations, making distribution boundaries
+    visible in types.</p></li>
+    <li><p><strong>Type-derived serialization</strong> ensures that
+    messages sent across node boundaries are compatible, catching
+    protocol mismatches at compile time.</p></li>
+    </ol>
+    <h2 data-number="1.2" id="contributions"><span
+    class="header-section-number">1.2</span> Contributions</h2>
+    <p>This paper makes the following contributions:</p>
+    <ol>
+    <li><p>We present the distribution model of <span
+    class="smallcaps">Japl</span>, which extends Erlang-style
+    location-transparent processes with static typing, type-derived wire
+    protocols, and effect-tracked network boundaries (<a
+    href="#sec:japl-model" data-reference-type="ref+Label"
+    data-reference="sec:japl-model">4</a>).</p></li>
+    <li><p>We develop a formal framework based on a location-aware <span
+    class="math inline">\(\pi\)</span>-calculus with type-safe
+    serialization, and provide a categorical semantics using fibered
+    categories over network topology (<a href="#sec:formal"
+    data-reference-type="ref+Label"
+    data-reference="sec:formal">3</a>).</p></li>
+    <li><p>We define type-derived wire protocols and schema evolution
+    rules that eliminate manual serialization code while guaranteeing
+    backward compatibility (<a href="#sec:wire-protocols"
+    data-reference-type="ref+Label"
+    data-reference="sec:wire-protocols">5</a>).</p></li>
+    <li><p>We describe <span class="smallcaps">Japl</span>’s approach to
+    partition tolerance, distributed supervision, service discovery, and
+    security (<a href="#sec:partition,sec:discovery,sec:security"
+    data-reference-type="ref+Label"
+    data-reference="sec:partition,sec:discovery,sec:security">[sec:partition,sec:discovery,sec:security]</a>).</p></li>
+    <li><p>We provide a comprehensive comparison with six alternative
+    approaches and a detailed case study demonstrating multi-node
+    process migration (<a href="#sec:comparison,sec:case-study"
+    data-reference-type="ref+Label"
+    data-reference="sec:comparison,sec:case-study">[sec:comparison,sec:case-study]</a>).</p></li>
+    </ol>
+    <h2 data-number="1.3" id="paper-outline"><span
+    class="header-section-number">1.3</span> Paper Outline</h2>
+    <p><a href="#sec:background" data-reference-type="ref+Label"
+    data-reference="sec:background">2</a> surveys related work. <a
+    href="#sec:formal" data-reference-type="ref+Label"
+    data-reference="sec:formal">3</a> develops the formal framework. <a
+    href="#sec:japl-model" data-reference-type="ref+Label"
+    data-reference="sec:japl-model">4</a> presents <span
+    class="smallcaps">Japl</span>’s distribution model. <a
+    href="#sec:wire-protocols" data-reference-type="ref+Label"
+    data-reference="sec:wire-protocols">5</a> describes type-derived
+    wire protocols. <a href="#sec:location-transparency"
+    data-reference-type="ref+Label"
+    data-reference="sec:location-transparency">6</a> examines location
+    transparency. <a href="#sec:partition"
+    data-reference-type="ref+Label" data-reference="sec:partition">7</a>
+    addresses partition tolerance. <a href="#sec:discovery"
+    data-reference-type="ref+Label" data-reference="sec:discovery">8</a>
+    covers service discovery and clustering. <a href="#sec:comparison"
+    data-reference-type="ref+Label"
+    data-reference="sec:comparison">9</a> provides a detailed
+    comparison. <a href="#sec:implementation"
+    data-reference-type="ref+Label"
+    data-reference="sec:implementation">10</a> describes the
+    implementation architecture. <a href="#sec:security"
+    data-reference-type="ref+Label" data-reference="sec:security">11</a>
+    addresses distributed security. <a href="#sec:case-study"
+    data-reference-type="ref+Label"
+    data-reference="sec:case-study">12</a> presents the case study. <a
+    href="#sec:conclusion" data-reference-type="ref+Label"
+    data-reference="sec:conclusion">14</a> concludes.</p>
+    <h1 data-number="2" id="sec:background"><span
+    class="header-section-number">2</span> Background and Related
+    Work</h1>
+    <h2 data-number="2.1"
+    id="erlangotp-the-gold-standard-for-distribution"><span
+    class="header-section-number">2.1</span> Erlang/OTP: The Gold
+    Standard for Distribution</h2>
+    <p>Erlang <span class="citation"
+    data-cites="armstrong2003making virding1996concurrent"></span> is
+    the language that most fully embraces native distribution. Every
+    Erlang process has a PID that can refer to a local or remote
+    process. The <code>!</code> (send) operator works identically
+    regardless of process location. The Erlang distribution protocol
+    handles connection management, serialization (via the External Term
+    Format), and node discovery (via EPMD).</p>
+    <p>Erlang’s distribution model has been extraordinarily successful
+    in production. The Ericsson AXD301 ATM switch, WhatsApp’s messaging
+    infrastructure, and Discord’s real-time communication all depend on
+    it. However, Erlang’s approach has limitations that <span
+    class="smallcaps">Japl</span> addresses:</p>
+    <ul>
+    <li><p><strong>Dynamic typing.</strong> Erlang provides no
+    compile-time guarantees about message compatibility. A serialization
+    error is discovered only at runtime. <span
+    class="smallcaps">Japl</span> derives serialization from types,
+    catching incompatibilities statically.</p></li>
+    <li><p><strong>No schema evolution.</strong> Changing a message
+    format in Erlang requires careful manual coordination during rolling
+    deployments. <span class="smallcaps">Japl</span> provides type-level
+    compatibility rules.</p></li>
+    <li><p><strong>Security model.</strong> Erlang’s cookie-based
+    authentication provides only coarse-grained access control. Once
+    connected, a node can spawn processes and send arbitrary messages.
+    <span class="smallcaps">Japl</span> uses capability-based
+    security.</p></li>
+    </ul>
+    <h2 data-number="2.2" id="akka-cluster"><span
+    class="header-section-number">2.2</span> Akka Cluster</h2>
+    <p>Akka <span class="citation" data-cites="akka2009"></span> brings
+    the actor model to the JVM with Akka Cluster providing distribution
+    primitives: cluster membership via a gossip protocol, cluster
+    sharding for stateful actors, and distributed pub-sub. Akka Typed
+    adds static typing to actor interactions.</p>
+    <p>Akka’s model is powerful but suffers from the impedance mismatch
+    of being a library in a language (Scala/Java) not designed for
+    actors. Serialization requires explicit configuration (Kryo,
+    Jackson, Protobuf). Cluster membership is managed through
+    <code>application.conf</code> files. Failure handling interleaves
+    with JVM exception mechanics. <span class="smallcaps">Japl</span>
+    avoids these issues by making distribution a language-level
+    concern.</p>
+    <h2 data-number="2.3" id="orleans-virtual-actors"><span
+    class="header-section-number">2.3</span> Orleans: Virtual
+    Actors</h2>
+    <p>Microsoft Orleans <span class="citation"
+    data-cites="bernstein2014orleans bykov2011orleans"></span>
+    introduces the “virtual actor” model, where actors always exist
+    conceptually and the runtime activates and deactivates them as
+    needed. This simplifies distributed programming by eliminating
+    explicit lifecycle management. Grain identities serve as stable,
+    location-transparent references.</p>
+    <p>Orleans demonstrates that distribution semantics benefit from
+    runtime support. However, Orleans is tied to the .NET ecosystem,
+    requires code generation for grain interfaces, and relies on
+    external storage for persistence. <span
+    class="smallcaps">Japl</span> takes the insight that the runtime
+    should manage distribution but implements it as a language primitive
+    rather than a framework.</p>
+    <h2 data-number="2.4" id="cloud-haskell"><span
+    class="header-section-number">2.4</span> Cloud Haskell</h2>
+    <p>Cloud Haskell <span class="citation"
+    data-cites="epstein2011towards"></span> brings Erlang-style
+    distribution to Haskell. It provides typed channels, remote
+    spawning, and process monitoring. Cloud Haskell demonstrates that
+    static typing and distribution can coexist, but it faces fundamental
+    challenges:</p>
+    <ul>
+    <li><p><strong>Closure serialization.</strong> Haskell closures
+    capture arbitrary values and functions, making serialization
+    complex. Cloud Haskell uses <code>static</code> pointers and
+    Template Haskell, which are ergonomically painful.</p></li>
+    <li><p><strong>Library-level integration.</strong> Cloud Haskell
+    cannot modify GHC’s runtime, so it builds distribution atop the
+    existing threading model, leading to performance and semantic
+    gaps.</p></li>
+    <li><p><strong>Monadic overhead.</strong> All distributed operations
+    live in the <code>Process</code> monad, creating syntactic
+    overhead.</p></li>
+    </ul>
+    <p><span class="smallcaps">Japl</span> avoids these issues because
+    its runtime is designed from the start for distribution, its effect
+    system replaces monadic encoding, and its type-derived serialization
+    does not require Template Haskell equivalents.</p>
+    <h2 data-number="2.5"
+    id="capn-proto-and-zero-copy-serialization"><span
+    class="header-section-number">2.5</span> Cap’n Proto and Zero-Copy
+    Serialization</h2>
+    <p>Cap’n Proto <span class="citation"
+    data-cites="capnproto2013"></span> takes the radical approach of
+    defining a wire format that is also the in-memory format,
+    eliminating serialization overhead entirely. This is powerful for
+    performance but requires a separate schema language and code
+    generation step.</p>
+    <p><span class="smallcaps">Japl</span>’s approach is spiritually
+    similar—types define wire formats—but achieves this within the
+    language itself rather than through external tools. The compiler
+    generates efficient serialization code from algebraic data type
+    definitions.</p>
+    <h2 data-number="2.6" id="unison-content-addressed-code"><span
+    class="header-section-number">2.6</span> Unison: Content-Addressed
+    Code</h2>
+    <p>Unison <span class="citation"
+    data-cites="chiusano2019unison"></span> takes a radical approach to
+    distribution: all code is content-addressed by hash. A function is
+    identified not by name but by the hash of its abstract syntax tree.
+    This means code can be trivially transferred between nodes—send the
+    hash, and if the remote node does not have it, send the
+    definition.</p>
+    <p>Unison’s approach eliminates versioning problems entirely but
+    requires a fundamental rethinking of the development experience.
+    <span class="smallcaps">Japl</span> takes a more conservative
+    approach, keeping named modules and file-based source code while
+    providing version-aware serialization for data.</p>
+    <h2 data-number="2.7" id="the-e-language"><span
+    class="header-section-number">2.7</span> The E Language</h2>
+    <p>The E language <span class="citation"
+    data-cites="miller2006robust"></span> pioneered capability-secure
+    distributed programming. E’s distributed model is based on “eventual
+    sends” (using the <code>&lt;-</code> operator) and “promises” that
+    resolve when remote operations complete. E’s capability discipline
+    ensures that distributed access control is enforced by the language,
+    not just by convention.</p>
+    <p><span class="smallcaps">Japl</span> borrows the
+    capability-security concept but integrates it with the process model
+    rather than the object model. Capability types in <span
+    class="smallcaps">Japl</span> control what a process can do on a
+    remote node.</p>
+    <h2 data-number="2.8" id="bloom-and-the-calm-theorem"><span
+    class="header-section-number">2.8</span> Bloom and the CALM
+    Theorem</h2>
+    <p>Bloom <span class="citation"
+    data-cites="alvaro2011consistency conway2012logic"></span> and the
+    CALM theorem <span class="citation"
+    data-cites="hellerstein2010declarative"></span> establish a deep
+    connection between monotonicity and consistency in distributed
+    systems. The CALM theorem states that a program that is logically
+    monotonic can be implemented without coordination (i.e., it is
+    eventually consistent by construction). Non-monotonic operations
+    (e.g., aggregation, negation) require synchronization.</p>
+    <p>While <span class="smallcaps">Japl</span> does not enforce
+    monotonicity, its type system can express CRDT-based data
+    structures <span class="citation"
+    data-cites="shapiro2011comprehensive"></span> that are monotonic by
+    construction, and its effect system can distinguish
+    coordination-free operations from those requiring
+    synchronization.</p>
+    <h1 data-number="3" id="sec:formal"><span
+    class="header-section-number">3</span> Formal Framework</h1>
+    <p>We develop the formal foundations for <span
+    class="smallcaps">Japl</span>’s distribution model in three parts: a
+    location-aware process calculus, type-safe serialization, and a
+    categorical semantics.</p>
+    <h2 data-number="3.1" id="location-aware-pi-calculus"><span
+    class="header-section-number">3.1</span> Location-Aware <span
+    class="math inline">\(\pi\)</span>-Calculus</h2>
+    <p>We extend the <span
+    class="math inline">\(\pi\)</span>-calculus <span class="citation"
+    data-cites="milner1999communicating sangiorgi2001pi"></span> with
+    locations, typed channels, and serialization constraints.</p>
+    <div class="definition">
+    <p><strong>Definition 1</strong> (Network Topology). <em>A
+    <em>network topology</em> is a directed graph <span
+    class="math inline">\(\mathcal{N}= (N, E)\)</span> where <span
+    class="math inline">\(N\)</span> is a finite set of <em>nodes</em>
+    and <span class="math inline">\(E \subseteq N \times N\)</span> is a
+    set of <em>connections</em>. We write <span class="math inline">\(n
+    \rightsquigarrow m\)</span> when <span class="math inline">\((n, m)
+    \in E\)</span>. Connections may be asymmetric and may fail.</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 2</strong> (Located Processes). <em>The syntax
+    of the <em>located <span
+    class="math inline">\(\pi\)</span>-calculus</em> (<span
+    class="math inline">\(L\pi\)</span>) is: <span
+    class="math display">\[\begin{align*}
+      P, Q ::= \quad
+        &amp; \mathbf{0}                            &amp;
+    \text{(inaction)} \\
+        &amp; \overline{c}\langle v \rangle . P     &amp; \text{(output
+    on channel $c$)} \\
+        &amp; c(x).P                                &amp; \text{(input
+    on channel $c$)} \\
+        &amp; P \mid Q                              &amp;
+    \text{(parallel composition)} \\
+        &amp; (\nu c : \tau) P                      &amp; \text{(channel
+    restriction with type)} \\
+        &amp; !P                                    &amp;
+    \text{(replication)} \\
+        &amp; n \llbracket P \rrbracket             &amp; \text{(located
+    process at node $n$)} \\
+        &amp; \mathsf{spawn}_n(P)                           &amp;
+    \text{(spawn process at node $n$)} \\
+        &amp; \mathsf{migrate}(n, P)               &amp; \text{(migrate
+    process to node $n$)}
+    \end{align*}\]</span> where <span class="math inline">\(c\)</span>
+    ranges over channels, <span class="math inline">\(v\)</span> over
+    values, <span class="math inline">\(x\)</span> over variables, <span
+    class="math inline">\(\tau\)</span> over types, and <span
+    class="math inline">\(n\)</span> over node identifiers.</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 3</strong> (Typed Channels). <em>A channel
+    <span class="math inline">\(c\)</span> has type <span
+    class="math inline">\(\mathsf{Chan}[\tau]\)</span> where <span
+    class="math inline">\(\tau\)</span> is the message type. The typing
+    rules for communication require: <span
+    class="math display">\[\frac{\Gamma \vdash c : \mathsf{Chan}[\tau]
+    \quad \Gamma \vdash v : \tau
+          \quad \mathsf{Ser}(\tau)}
+         {\Gamma \vdash \overline{c}\langle v \rangle . P}
+    \quad \text{(T-Send)}\]</span> <span
+    class="math display">\[\frac{\Gamma \vdash c : \mathsf{Chan}[\tau]
+    \quad \Gamma, x : \tau \vdash P}
+         {\Gamma \vdash c(x).P}
+    \quad \text{(T-Recv)}\]</span> The predicate <span
+    class="math inline">\(\mathsf{Ser}(\tau)\)</span> (“<span
+    class="math inline">\(\tau\)</span> is serializable”) is required
+    only when the channel crosses a node boundary.</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 4</strong> (Cross-Node Communication).
+    <em>When processes at different nodes communicate, serialization is
+    required: <span class="math display">\[\frac{n \neq m \quad \Gamma
+    \vdash c : \mathsf{Chan}[\tau] \quad
+          \Gamma \vdash v : \tau \quad \mathsf{Ser}(\tau)}
+         {n\llbracket \overline{c}\langle v \rangle . P \rrbracket \mid
+          m\llbracket c(x).Q \rrbracket
+          \;\longrightarrow\;
+          n\llbracket P \rrbracket \mid
+          m\llbracket Q[x := \mathsf{deser}(\mathsf{ser}(v))]
+    \rrbracket}\]</span> This rule makes explicit that cross-node
+    communication involves serialization and deserialization, and that
+    the serializable type constraint is required.</em></p>
+    </div>
+    <h2 data-number="3.2" id="type-safe-serialization"><span
+    class="header-section-number">3.2</span> Type-Safe
+    Serialization</h2>
+    <div class="definition">
+    <p><strong>Definition 5</strong> (Serializable Types). <em>The
+    predicate <span class="math inline">\(\mathsf{Ser}(\tau)\)</span> is
+    defined inductively over types:</em></p>
+    <ol>
+    <li><p><em><span
+    class="math inline">\(\mathsf{Ser}(\mathsf{Int})\)</span>, <span
+    class="math inline">\(\mathsf{Ser}(\mathsf{Float})\)</span>, <span
+    class="math inline">\(\mathsf{Ser}(\mathsf{Bool})\)</span>, <span
+    class="math inline">\(\mathsf{Ser}(\mathsf{String})\)</span>, <span
+    class="math inline">\(\mathsf{Ser}(\mathsf{Bytes})\)</span>, <span
+    class="math inline">\(\mathsf{Ser}(\mathsf{Unit})\)</span> — all
+    primitive types are serializable.</em></p></li>
+    <li><p><em>If <span
+    class="math inline">\(\mathsf{Ser}(\tau_1)\)</span> and <span
+    class="math inline">\(\mathsf{Ser}(\tau_2)\)</span>, then <span
+    class="math inline">\(\mathsf{Ser}(\tau_1 \times \tau_2)\)</span>
+    and <span class="math inline">\(\mathsf{Ser}(\tau_1 +
+    \tau_2)\)</span> — products and sums of serializable types are
+    serializable.</em></p></li>
+    <li><p><em>If <span
+    class="math inline">\(\mathsf{Ser}(\tau)\)</span>, then <span
+    class="math inline">\(\mathsf{Ser}(\mathsf{List}[\tau])\)</span>,
+    <span
+    class="math inline">\(\mathsf{Ser}(\mathsf{Option}[\tau])\)</span>,
+    <span class="math inline">\(\mathsf{Ser}(\mathsf{Map}[k,v])\)</span>
+    where <span class="math inline">\(\mathsf{Ser}(k)\)</span> and <span
+    class="math inline">\(\mathsf{Ser}(v)\)</span> — container types
+    preserve serializability.</em></p></li>
+    <li><p><em><span
+    class="math inline">\(\mathsf{Ser}(\textsf{Pid}[\tau])\)</span> for
+    any <span class="math inline">\(\tau\)</span> — process identifiers
+    are always serializable (they are network addresses).</em></p></li>
+    <li><p><em><span class="math inline">\(\neg\mathsf{Ser}(\tau \to
+    \sigma)\)</span> — function types are <em>not</em> serializable.
+    Closures cannot cross node boundaries.</em></p></li>
+    <li><p><em>If <span class="math inline">\(\tau\)</span> is a named
+    type with <span
+    class="math inline">\(\mathsf{deriving}(\mathsf{Serialize})\)</span>
+    and all field types are serializable, then <span
+    class="math inline">\(\mathsf{Ser}(\tau)\)</span>.</em></p></li>
+    </ol>
+    </div>
+    <div id="thm:ser-sound" class="theorem">
+    <p><strong>Theorem 6</strong> (Serialization Soundness). <em>If
+    <span class="math inline">\(\mathsf{Ser}(\tau)\)</span> and <span
+    class="math inline">\(v : \tau\)</span>, then <span
+    class="math inline">\(\mathsf{deser}_\tau(\mathsf{ser}_\tau(v)) =
+    v\)</span>. That is, serialization followed by deserialization is
+    the identity on values.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By structural induction on <span
+    class="math inline">\(\tau\)</span>.</p>
+    <p><strong>Base cases (primitives).</strong> Consider <span
+    class="math inline">\(\tau = \mathsf{Int}\)</span>. By definition,
+    <span class="math inline">\(\mathsf{ser}_{\mathsf{Int}}(n)\)</span>
+    produces the LEB128 zigzag encoding of <span
+    class="math inline">\(n\)</span>, which is a bijection between
+    integers and finite byte sequences. The decoder <span
+    class="math inline">\(\mathsf{deser}_{\mathsf{Int}}\)</span> inverts
+    the zigzag and LEB128 steps, recovering <span
+    class="math inline">\(n\)</span> exactly. The argument is analogous
+    for <span class="math inline">\(\mathsf{Float}\)</span> (IEEE 754
+    round-trip is exact for non-<code>NaN</code> values, and <span
+    class="smallcaps">Japl</span> canonicalizes <code>NaN</code>), <span
+    class="math inline">\(\mathsf{Bool}\)</span> (one byte, two values),
+    <span class="math inline">\(\mathsf{String}\)</span>
+    (length-prefixed UTF-8 is self-delimiting and bijective), <span
+    class="math inline">\(\mathsf{Bytes}\)</span> (length-prefixed raw
+    bytes), and <span class="math inline">\(\mathsf{Unit}\)</span> (zero
+    bytes, unique value).</p>
+    <p><strong>Inductive case: products.</strong> Let <span
+    class="math inline">\(\tau = \tau_1 \times \tau_2\)</span> with
+    <span class="math inline">\(v = (v_1, v_2)\)</span>. By the
+    induction hypothesis, <span
+    class="math inline">\(\mathsf{deser}_{\tau_i}(\mathsf{ser}_{\tau_i}(v_i))
+    = v_i\)</span> for <span class="math inline">\(i \in
+    \{1,2\}\)</span>. Serialization of records uses tagged,
+    length-prefixed fields: <span
+    class="math display">\[\mathsf{ser}_{\tau_1 \times \tau_2}(v_1, v_2)
+    =
+        \mathsf{tag}(1) \cdot \mathsf{len}(\mathsf{ser}_{\tau_1}(v_1))
+    \cdot \mathsf{ser}_{\tau_1}(v_1)
+        \cdot
+        \mathsf{tag}(2) \cdot \mathsf{len}(\mathsf{ser}_{\tau_2}(v_2))
+    \cdot \mathsf{ser}_{\tau_2}(v_2)\]</span> The length prefixes allow
+    the deserializer to split the byte stream unambiguously at the
+    correct boundary. It then applies <span
+    class="math inline">\(\mathsf{deser}_{\tau_1}\)</span> and <span
+    class="math inline">\(\mathsf{deser}_{\tau_2}\)</span> to the
+    respective segments, recovering <span class="math inline">\((v_1,
+    v_2)\)</span> by the induction hypothesis. The argument generalizes
+    to <span class="math inline">\(n\)</span>-ary products by induction
+    on the number of fields.</p>
+    <p><strong>Inductive case: sums.</strong> Let <span
+    class="math inline">\(\tau = \tau_1 + \tau_2\)</span> with <span
+    class="math inline">\(v = \mathsf{inl}(v_1)\)</span> (the <span
+    class="math inline">\(\mathsf{inr}\)</span> case is symmetric). Then
+    <span class="math inline">\(\mathsf{ser}_{\tau}(v) =
+    \mathsf{tag}(\mathsf{inl})
+    \cdot \mathsf{ser}_{\tau_1}(v_1)\)</span>. The deserializer reads
+    the tag, determines the active variant, and applies <span
+    class="math inline">\(\mathsf{deser}_{\tau_1}\)</span> to the
+    remaining bytes, recovering <span
+    class="math inline">\(\mathsf{inl}(v_1)\)</span> by the induction
+    hypothesis.</p>
+    <p><strong>Inductive case: containers.</strong> For <span
+    class="math inline">\(\tau = \mathsf{List}[\sigma]\)</span> with
+    <span class="math inline">\(v = [v_1, \ldots, v_k]\)</span>,
+    serialization produces <span class="math inline">\(k \cdot
+    \mathsf{ser}_\sigma(v_1) \cdots
+    \mathsf{ser}_\sigma(v_k)\)</span> where <span
+    class="math inline">\(k\)</span> is LEB128-encoded. Deserialization
+    reads <span class="math inline">\(k\)</span>, then applies <span
+    class="math inline">\(\mathsf{deser}_\sigma\)</span> exactly <span
+    class="math inline">\(k\)</span> times. Each element round-trips by
+    the induction hypothesis on <span
+    class="math inline">\(\sigma\)</span>, so the list round-trips. The
+    <span class="math inline">\(\mathsf{Option}[\sigma]\)</span> and
+    <span class="math inline">\(\mathsf{Map}[k,v]\)</span> cases follow
+    similarly.</p>
+    <p><strong>PID case.</strong> <span
+    class="math inline">\(\mathsf{Pid}[\tau]\)</span> is serialized as a
+    fixed 16-byte value (8-byte node ID concatenated with 8-byte process
+    ID). This is a bijection on the PID space, so round-tripping is
+    immediate.</p>
+    <p><strong>Negative case.</strong> Function types <span
+    class="math inline">\(\tau \to \sigma\)</span> are excluded from
+    <span class="math inline">\(\mathsf{Ser}\)</span> by rule 5 of
+    Definition 3.4, so the theorem’s hypothesis is never satisfied for
+    them. ◻</p>
+    </div>
+    <h2 data-number="3.3"
+    id="protocol-evolution-and-backward-compatibility"><span
+    class="header-section-number">3.3</span> Protocol Evolution and
+    Backward Compatibility</h2>
+    <div class="definition">
+    <p><strong>Definition 7</strong> (Type Compatibility). <em>A type
+    <span class="math inline">\(\tau&#39;\)</span> is <em>backward
+    compatible</em> with <span class="math inline">\(\tau\)</span>
+    (written <span class="math inline">\(\tau \preceq
+    \tau&#39;\)</span>) if every value that can be deserialized as <span
+    class="math inline">\(\tau\)</span> can also be deserialized as
+    <span class="math inline">\(\tau&#39;\)</span> (with defaults for
+    new fields). The compatibility relation is defined by:</em></p>
+    <ol>
+    <li><p><em><strong>Field addition:</strong> <span
+    class="math inline">\(\{l_1:\tau_1, \ldots, l_n:\tau_n\}
+            \preceq \{l_1:\tau_1, \ldots, l_n:\tau_n,
+    l_{n+1}:\tau_{n+1}\}\)</span> if <span
+    class="math inline">\(\tau_{n+1}\)</span> has a default
+    value.</em></p></li>
+    <li><p><em><strong>Variant addition:</strong> <span
+    class="math inline">\((C_1(\tau_1) \mid \ldots \mid C_n(\tau_n))
+            \preceq (C_1(\tau_1) \mid \ldots \mid C_n(\tau_n) \mid
+    C_{n+1}(\tau_{n+1}))\)</span>.</em></p></li>
+    <li><p><em><strong>Field widening:</strong> <span
+    class="math inline">\(\{l:\tau\} \preceq \{l:\tau&#39;\}\)</span> if
+    <span class="math inline">\(\tau \preceq
+    \tau&#39;\)</span>.</em></p></li>
+    <li><p><em><strong>Reflexivity and
+    transitivity.</strong></em></p></li>
+    </ol>
+    </div>
+    <div id="thm:evolution" class="theorem">
+    <p><strong>Theorem 8</strong> (Protocol Evolution Safety). <em>If
+    <span class="math inline">\(\tau \preceq \tau&#39;\)</span> and a
+    node running code with message type <span
+    class="math inline">\(\tau&#39;\)</span> receives a message
+    serialized with type <span class="math inline">\(\tau\)</span>, then
+    deserialization succeeds and produces a valid value of type <span
+    class="math inline">\(\tau&#39;\)</span>.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By structural induction on the derivation of
+    <span class="math inline">\(\tau \preceq \tau&#39;\)</span>, with
+    case analysis on the last rule applied.</p>
+    <p><strong>Base case: reflexivity.</strong> If <span
+    class="math inline">\(\tau = \tau&#39;\)</span>, then the message
+    was serialized and is being deserialized at the same type, which
+    succeeds by <a href="#thm:ser-sound" data-reference-type="ref+Label"
+    data-reference="thm:ser-sound">6</a>.</p>
+    <p><strong>Case: field addition.</strong> Suppose <span
+    class="math inline">\(\tau = \{l_1:\tau_1, \ldots,
+    l_n:\tau_n\}\)</span> and <span class="math inline">\(\tau&#39; =
+    \{l_1:\tau_1, \ldots, l_n:\tau_n, l_{n+1}:\tau_{n+1}\}\)</span>
+    where <span class="math inline">\(\tau_{n+1}\)</span> has a default
+    value <span class="math inline">\(d_{n+1}\)</span>. A message
+    serialized at type <span class="math inline">\(\tau\)</span>
+    contains tagged fields for <span class="math inline">\(l_1, \ldots,
+    l_n\)</span>. The deserializer for <span
+    class="math inline">\(\tau&#39;\)</span> reads fields by tag. For
+    tags <span class="math inline">\(1, \ldots, n\)</span>, the
+    corresponding field types are identical, so each field deserializes
+    correctly by <a href="#thm:ser-sound"
+    data-reference-type="ref+Label"
+    data-reference="thm:ser-sound">6</a>. Tag <span
+    class="math inline">\(n{+}1\)</span> is absent from the byte stream;
+    the deserializer detects this absence (the stream terminates or the
+    next tag does not match <span class="math inline">\(n{+}1\)</span>)
+    and fills <span class="math inline">\(l_{n+1}\)</span> with its
+    default value <span class="math inline">\(d_{n+1}\)</span>. The
+    result is a valid value of type <span
+    class="math inline">\(\tau&#39;\)</span>.</p>
+    <p><strong>Case: variant addition.</strong> Suppose <span
+    class="math inline">\(\tau = (C_1(\sigma_1) \mid \ldots \mid
+    C_n(\sigma_n))\)</span> and <span class="math inline">\(\tau&#39; =
+    (C_1(\sigma_1) \mid \ldots \mid C_n(\sigma_n) \mid
+    C_{n+1}(\sigma_{n+1}))\)</span>. A message serialized at type <span
+    class="math inline">\(\tau\)</span> has a variant tag in <span
+    class="math inline">\(\{1, \ldots, n\}\)</span>. The deserializer
+    for <span class="math inline">\(\tau&#39;\)</span> recognizes all
+    tags <span class="math inline">\(1, \ldots, n\)</span> with the same
+    payload types, so deserialization succeeds by <a
+    href="#thm:ser-sound" data-reference-type="ref+Label"
+    data-reference="thm:ser-sound">6</a> applied to the payload. The tag
+    <span class="math inline">\(n{+}1\)</span> cannot appear in messages
+    serialized at type <span class="math inline">\(\tau\)</span>, so no
+    failure case arises.</p>
+    <p><strong>Case: field widening.</strong> Suppose <span
+    class="math inline">\(\tau = \{l:\sigma\}\)</span> and <span
+    class="math inline">\(\tau&#39; = \{l:\sigma&#39;\}\)</span> where
+    <span class="math inline">\(\sigma
+    \preceq \sigma&#39;\)</span>. A message serialized at type <span
+    class="math inline">\(\tau\)</span> contains <span
+    class="math inline">\(l\)</span> encoded at type <span
+    class="math inline">\(\sigma\)</span>. By the induction hypothesis
+    applied to <span class="math inline">\(\sigma \preceq
+    \sigma&#39;\)</span>, the deserializer for <span
+    class="math inline">\(\sigma&#39;\)</span> can successfully decode a
+    value serialized at type <span
+    class="math inline">\(\sigma\)</span>, producing a valid value of
+    type <span class="math inline">\(\sigma&#39;\)</span>. Therefore the
+    record deserializes to a valid value of type <span
+    class="math inline">\(\tau&#39;\)</span>.</p>
+    <p><strong>Case: transitivity.</strong> Suppose <span
+    class="math inline">\(\tau \preceq \tau&#39;&#39;\)</span> and <span
+    class="math inline">\(\tau&#39;&#39; \preceq \tau&#39;\)</span>. By
+    the induction hypothesis, a message serialized at <span
+    class="math inline">\(\tau\)</span> can be deserialized at <span
+    class="math inline">\(\tau&#39;&#39;\)</span>, producing a valid
+    intermediate value, and a message serialized at <span
+    class="math inline">\(\tau&#39;&#39;\)</span> can be deserialized at
+    <span class="math inline">\(\tau&#39;\)</span>. Since the
+    deserializer for <span class="math inline">\(\tau&#39;\)</span>
+    operates directly on the byte stream (not on an intermediate value),
+    we must show that the byte-level encoding of a <span
+    class="math inline">\(\tau\)</span>-value is accepted by the <span
+    class="math inline">\(\tau&#39;\)</span> deserializer. This follows
+    from the compositionality of each rule: field additions compose
+    (multiple new fields each get defaults), variant additions compose
+    (the union of new variants is still a superset), and field widenings
+    compose by transitivity of <span
+    class="math inline">\(\preceq\)</span> on the field types. ◻</p>
+    </div>
+    <h2 data-number="3.4" id="categorical-semantics"><span
+    class="header-section-number">3.4</span> Categorical Semantics</h2>
+    <p>We provide a categorical interpretation of distributed systems
+    using fibered categories <span class="citation"
+    data-cites="jacobs1999categorical"></span>.</p>
+    <div class="definition">
+    <p><strong>Definition 9</strong> (Network Category). <em>The
+    <em>network category</em> <span
+    class="math inline">\(\mathcal{N}\)</span> has nodes as objects and
+    connections as morphisms. A connection <span class="math inline">\(f
+    : n \to m\)</span> represents a communication channel from node
+    <span class="math inline">\(n\)</span> to node <span
+    class="math inline">\(m\)</span>. Composition of connections
+    represents multi-hop routing.</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 10</strong> (Process Fibration). <em>A
+    <em>process fibration</em> is a functor <span
+    class="math inline">\(\pi : \mathcal{P}\to \mathcal{N}\)</span>
+    where <span class="math inline">\(\mathcal{P}\)</span> is the
+    category of processes and <span
+    class="math inline">\(\mathcal{N}\)</span> is the network category.
+    The fiber <span class="math inline">\(\pi^{-1}(n)\)</span> over a
+    node <span class="math inline">\(n\)</span> is the subcategory of
+    processes running on node <span class="math inline">\(n\)</span>.
+    The total category <span class="math inline">\(\mathcal{P}\)</span>
+    captures all processes across all nodes.</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 11</strong> (Type Fibration). <em>A <em>type
+    fibration</em> is a functor <span class="math inline">\(\sigma :
+    \mathcal{T}\to \mathcal{N}\)</span> where <span
+    class="math inline">\(\mathcal{T}\)</span> is the category of types
+    available at each node. The reindexing functor <span
+    class="math inline">\(f^* : \mathcal{T}_m \to \mathcal{T}_n\)</span>
+    along a connection <span class="math inline">\(f : n \to m\)</span>
+    represents the deserialization of types received over the
+    connection.</em></p>
+    </div>
+    <div id="prop:fibered" class="proposition">
+    <p><strong>Proposition 12</strong> (Distribution as Fibered
+    Adjunction). <em>The operations of spawn-remote and message-send
+    correspond to functorial operations in the fibered setting:</em></p>
+    <ul>
+    <li><p><em><span class="math inline">\(\mathsf{spawn}_m :
+    \mathcal{P}_n \to \mathcal{P}_m\)</span> is the direct image functor
+    along <span class="math inline">\(f : n \to m\)</span>, sending a
+    process description from <span class="math inline">\(n\)</span> to
+    be executed at <span class="math inline">\(m\)</span>.</em></p></li>
+    <li><p><em><span class="math inline">\(\mathsf{send}: \mathcal{P}_n
+    \times \mathcal{T}_n \to \mathcal{P}_m\)</span> composes the
+    serialization functor <span class="math inline">\(\mathsf{ser} :
+    \mathcal{T}_n \to \mathsf{Bytes}\)</span> with the transport functor
+    <span class="math inline">\(\mathsf{trans}_{f} :
+            \mathsf{Bytes}_n \to \mathsf{Bytes}_m\)</span> and the
+    deserialization functor <span class="math inline">\(\mathsf{deser} :
+    \mathsf{Bytes} \to \mathcal{T}_m\)</span>.</em></p></li>
+    </ul>
+    </div>
+    <p>This fibered structure captures the key insight: distribution is
+    not a flat operation but a structured relationship between local
+    computations (fibers) and global topology (base).</p>
+    <div class="definition">
+    <p><strong>Definition 13</strong> (Consistency Sheaf). <em>A
+    <em>consistency sheaf</em> on <span
+    class="math inline">\(\mathcal{N}\)</span> assigns to each node
+    <span class="math inline">\(n\)</span> a set of observable states
+    <span class="math inline">\(S(n)\)</span>, and to each connection
+    <span class="math inline">\(f : n \to m\)</span> a consistency
+    relation <span class="math inline">\(S(f) : S(n) \to S(m)\)</span>.
+    The sheaf condition requires that observations are compatible across
+    paths: <span class="math display">\[S(g \circ f) = S(g) \circ
+    S(f)\]</span> Strong consistency corresponds to a constant sheaf;
+    eventual consistency corresponds to a sheaf where <span
+    class="math inline">\(S(f)\)</span> is required to converge but may
+    temporarily disagree.</em></p>
+    </div>
+    <p>More precisely, <span class="math inline">\(S(f)\)</span> is a
+    <em>relation</em> <span class="math inline">\(S(f) \subseteq S(n)
+    \times S(m)\)</span> that relates the observable state at the source
+    node <span class="math inline">\(n\)</span> to the observable state
+    at the destination node <span class="math inline">\(m\)</span> along
+    connection <span class="math inline">\(f : n \to m\)</span>. Under
+    strong consistency, <span class="math inline">\(S(f)\)</span> is the
+    identity relation (states agree at all times). Under eventual
+    consistency, <span class="math inline">\(S(f)\)</span> is a
+    convergence relation: for any two states <span
+    class="math inline">\(s_n \in S(n)\)</span> and <span
+    class="math inline">\(s_m \in S(m)\)</span> with <span
+    class="math inline">\((s_n, s_m) \in S(f)\)</span>, there exists a
+    future time at which <span class="math inline">\(s_n\)</span> and
+    <span class="math inline">\(s_m\)</span> agree after merging
+    concurrent updates. The sheaf condition <span
+    class="math inline">\(S(g \circ f) = S(g) \circ S(f)\)</span>
+    ensures that consistency guarantees compose transitively across
+    multi-hop paths.</p>
+    <p>The following example shows how the consistency sheaf manifests
+    concretely in <span class="smallcaps">Japl</span> code using a
+    distributed counter (a grow-only CRDT):</p>
+    <pre><code>-- A distributed counter backed by a GCounter CRDT.
+-- Each node maintains a local entry in its vector; the sheaf
+-- structure ensures that observations converge across all paths.
+
+type DistCounter = {
+  counts: Map&lt;NodeId, Int&gt;   -- per-node counts (the fiber S(n))
+} deriving(Serialize)
+
+-- Local observation: S(n) returns the sum of known counts at node n
+fn value(counter: DistCounter) -&gt; Int =
+  Map.values(counter.counts) |&gt; List.sum()
+
+-- Local increment: only modifies the local node&#39;s entry
+fn increment(counter: DistCounter) -&gt; DistCounter =
+  let node = Node.self_id()
+  let current = Map.get(counter.counts, node) |&gt; Option.unwrap_or(0)
+  { counts = Map.insert(counter.counts, node, current + 1) }
+
+-- The consistency relation S(f): merging two observations.
+-- For GCounter, merge = pointwise max, which is commutative,
+-- associative, and idempotent -- guaranteeing convergence.
+fn merge(local: DistCounter, remote: DistCounter) -&gt; DistCounter =
+  let merged = Map.merge_with(local.counts, remote.counts,
+    fn _key local_val remote_val -&gt; Int.max(local_val, remote_val))
+  { counts = merged }
+
+-- Gossip loop: periodically exchange state with peers,
+-- applying the consistency relation on each connection.
+fn counter_gossip(state: DistCounter, peers: List&lt;Pid[CounterMsg]&gt;)
+    -&gt; Never with Process[CounterMsg], Net =
+  match Process.receive_with_timeout(1000) with
+  | GossipSync(remote_state) -&gt;
+      let merged = merge(state, remote_state)
+      counter_gossip(merged, peers)
+  | Timeout -&gt;
+      -- Push local state to a random peer (sheaf pushforward)
+      let peer = List.random_pick(peers)
+      Process.send(peer, GossipSync(state))
+      counter_gossip(state, peers)</code></pre>
+    <p>In this example, the fiber <span
+    class="math inline">\(S(n)\)</span> at each node is the local
+    <code>DistCounter</code> value. The consistency relation <span
+    class="math inline">\(S(f)\)</span> along each connection is
+    realized by the <code>merge</code> function, whose algebraic
+    properties (commutativity, associativity, idempotence) guarantee
+    that the sheaf condition <span class="math inline">\(S(g \circ f) =
+    S(g) \circ S(f)\)</span> holds: merging state received via a
+    multi-hop path produces the same result regardless of the
+    intermediate route.</p>
+    <h1 data-number="4" id="sec:japl-model"><span
+    class="header-section-number">4</span> JAPL’s Distribution
+    Model</h1>
+    <p><span class="smallcaps">Japl</span>’s distribution model rests on
+    five pillars: location-transparent process identifiers, type-derived
+    serialization, effect-marked network operations, distributed
+    supervision, and built-in service discovery. This section provides
+    an overview; subsequent sections develop each pillar in detail.</p>
+    <h2 data-number="4.1"
+    id="process-identifiers-are-location-transparent"><span
+    class="header-section-number">4.1</span> Process Identifiers Are
+    Location-Transparent</h2>
+    <p>In <span class="smallcaps">Japl</span>, every process has a
+    <code>Pid[Msg]</code> where <code>Msg</code> is the type of messages
+    the process accepts. This PID encodes the node on which the process
+    runs, but the programmer is not required to inspect this
+    information. Sending a message to a PID uses the same syntax
+    regardless of locality:</p>
+    <pre><code>-- These use identical syntax
+let local_pid = Process.spawn(fn -&gt; worker_loop(init_state))
+let remote_pid = Process.spawn_on(remote_node, fn -&gt; worker_loop(init_state))
+
+-- Send works the same for both
+Process.send(local_pid, StartJob(job_1))
+Process.send(remote_pid, StartJob(job_2))</code></pre>
+    <p>The runtime determines whether a send requires network transport.
+    If the target PID is local, the message is placed directly in the
+    process mailbox (a pointer swap). If remote, the message is
+    serialized, transmitted, and deserialized at the destination.</p>
+    <h2 data-number="4.2" id="type-derived-serialization"><span
+    class="header-section-number">4.2</span> Type-Derived
+    Serialization</h2>
+    <p><span class="smallcaps">Japl</span>’s key insight is that
+    algebraic data types already contain sufficient information to
+    generate wire protocols. A type definition is simultaneously a data
+    specification and a serialization format:</p>
+    <pre><code>type Order = {
+  id: OrderId,
+  items: List&lt;Item&gt;,
+  total: Money,
+  status: OrderStatus
+}
+
+-- Order is automatically serializable because all its fields are.
+-- No annotation needed, no code generation step, no schema file.</code></pre>
+    <p>The compiler verifies that every type used in cross-node messages
+    is serializable. Attempting to send a function closure across node
+    boundaries is a compile-time error:</p>
+    <pre><code>-- Compile error: fn(Int) -&gt; Int is not Serializable
+-- Cannot send function values across node boundaries
+let bad_msg = ApplyFunction(fn x -&gt; x + 1)
+Process.send(remote_pid, bad_msg)  -- TYPE ERROR</code></pre>
+    <h2 data-number="4.3" id="effects-mark-network-boundaries"><span
+    class="header-section-number">4.3</span> Effects Mark Network
+    Boundaries</h2>
+    <p>Following <span class="citation"
+    data-cites="waldo1996note"></span>’s observation that distributed
+    operations are fundamentally different from local ones, <span
+    class="smallcaps">Japl</span>’s effect system makes network
+    boundaries visible:</p>
+    <pre><code>-- Local process operations: Process effect only
+fn spawn_worker() -&gt; Pid[WorkerMsg] with Process =
+  Process.spawn(fn -&gt; worker_loop(init))
+
+-- Remote operations: Process AND Net effects
+fn spawn_remote_worker(node: Node) -&gt; Pid[WorkerMsg] with Process, Net =
+  Process.spawn_on(node, fn -&gt; worker_loop(init))
+
+-- Node connection: Net effect
+fn connect_cluster() -&gt; List&lt;Node&gt; with Net =
+  let n1 = Node.connect(&quot;us-east-1.cluster:9000&quot;)
+  let n2 = Node.connect(&quot;us-west-2.cluster:9000&quot;)
+  [n1, n2]</code></pre>
+    <p>The <code>Net</code> effect signals that an operation may
+    experience network latency, partial failure, or partition. This is
+    not merely documentation; the effect system enforces that network
+    operations are handled in contexts that expect them.</p>
+    <h2 data-number="4.4" id="distributed-supervision"><span
+    class="header-section-number">4.4</span> Distributed
+    Supervision</h2>
+    <p><span class="smallcaps">Japl</span> extends supervision trees
+    across node boundaries. A supervisor on one node can supervise
+    processes on other nodes, restarting them when they fail or when the
+    network connection drops:</p>
+    <pre><code>supervisor DistributedApi {
+  strategy: OneForOne
+  child spawn_remote(node(&quot;us-east-1&quot;), http_handler())
+  child spawn_remote(node(&quot;us-west-2&quot;), http_handler())
+  child spawn_remote(node(&quot;eu-west-1&quot;), http_handler())
+}</code></pre>
+    <p>When a supervised remote process crashes, the supervisor receives
+    a <code>ProcessDown</code> message just as it would for a local
+    process. When a network partition occurs, the supervisor receives a
+    <code>NodeDown</code> message and can apply a partition
+    strategy.</p>
+    <h2 data-number="4.5" id="built-in-service-discovery"><span
+    class="header-section-number">4.5</span> Built-In Service
+    Discovery</h2>
+    <p><span class="smallcaps">Japl</span> includes primitives for
+    service discovery, eliminating the need for external service
+    registries in many scenarios:</p>
+    <pre><code>-- Register a service
+Registry.register(&quot;payment-service&quot;, self())
+
+-- Discover services
+let payment_workers = Registry.lookup(&quot;payment-service&quot;)
+
+-- Subscribe to service changes
+Registry.subscribe(&quot;payment-service&quot;, fn event -&gt;
+  match event with
+  | ServiceUp(pid) -&gt; add_to_pool(pid)
+  | ServiceDown(pid) -&gt; remove_from_pool(pid)
+)</code></pre>
+    <h1 data-number="5" id="sec:wire-protocols"><span
+    class="header-section-number">5</span> Type-Derived Wire
+    Protocols</h1>
+    <h2 data-number="5.1" id="types-as-protocol-specifications"><span
+    class="header-section-number">5.1</span> Types as Protocol
+    Specifications</h2>
+    <p>In most distributed systems, there is a gap between the in-memory
+    representation of data and its wire format. Serialization frameworks
+    like Protocol Buffers <span class="citation"
+    data-cites="protobuf2008"></span>, Apache Avro <span
+    class="citation" data-cites="avro2009"></span>, and Cap’n
+    Proto <span class="citation" data-cites="capnproto2013"></span>
+    bridge this gap with separate schema languages and code generation.
+    This introduces three problems: schema drift (the schema diverges
+    from the code), impedance mismatch (the generated code does not feel
+    natural in the target language), and build complexity (the code
+    generation step must be integrated into the build system).</p>
+    <p><span class="smallcaps">Japl</span> eliminates this gap entirely.
+    Every algebraic data type is its own schema. The compiler generates
+    serialization and deserialization code from the type definition,
+    ensuring perfect correspondence between in-memory and wire
+    formats.</p>
+    <h2 data-number="5.2" id="encoding-rules"><span
+    class="header-section-number">5.2</span> Encoding Rules</h2>
+    <p>The wire encoding is derived from the structure of algebraic data
+    types:</p>
+    <div class="definition">
+    <p><strong>Definition 14</strong> (Wire Encoding). <em>The wire
+    encoding function <span class="math inline">\(\mathsf{enc} : \tau
+    \to \mathsf{Bytes}\)</span> is defined by structural
+    recursion:</em></p>
+    <ul>
+    <li><p><em><strong>Primitives:</strong> Fixed-width encodings.
+    <code>Int</code> uses variable-length encoding (LEB128).
+    <code>Float</code> uses IEEE 754. <code>String</code> uses
+    length-prefixed UTF-8. <code>Bool</code> uses one
+    byte.</em></p></li>
+    <li><p><em><strong>Records (products):</strong> Fields are encoded
+    in declaration order with field tags (small integers). Each field is
+    prefixed with its tag and length: <span
+    class="math inline">\(\mathsf{enc}(\{l_1 = v_1, \ldots, l_n = v_n\})
+    =
+            \mathsf{tag}(l_1) \cdot \mathsf{len}(v_1) \cdot
+    \mathsf{enc}(v_1)
+            \cdots \mathsf{tag}(l_n) \cdot \mathsf{len}(v_n) \cdot
+            \mathsf{enc}(v_n)\)</span>.</em></p></li>
+    <li><p><em><strong>Variants (sums):</strong> A variant tag (small
+    integer) followed by the encoding of the payload: <span
+    class="math inline">\(\mathsf{enc}(C_i(v)) = \mathsf{tag}(C_i) \cdot
+    \mathsf{enc}(v)\)</span>.</em></p></li>
+    <li><p><em><strong>Containers:</strong> Length prefix followed by
+    element encodings: <span class="math inline">\(\mathsf{enc}([v_1,
+    \ldots, v_n]) = n \cdot \mathsf{enc}(v_1)
+            \cdots \mathsf{enc}(v_n)\)</span>.</em></p></li>
+    </ul>
+    </div>
+    <h2 data-number="5.3" id="schema-evolution"><span
+    class="header-section-number">5.3</span> Schema Evolution</h2>
+    <p>One of the most challenging aspects of distributed systems is
+    managing protocol evolution during rolling deployments. At any given
+    time, different nodes may be running different versions of the code
+    with different type definitions. <span class="smallcaps">Japl</span>
+    manages this through type compatibility rules derived from <a
+    href="#thm:evolution" data-reference-type="ref+Label"
+    data-reference="thm:evolution">8</a>.</p>
+    <p>The following changes are backward compatible:</p>
+    <div id="tab:evolution">
+    <table>
+    <caption>Schema Evolution Rules</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Change</strong></th>
+    <th style="text-align: left;"><strong>Rule</strong></th>
+    <th style="text-align: left;"><strong>Example</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Add optional field</td>
+    <td style="text-align: left;">New field must have
+    <code>Option</code> type (defaults to <code>None</code>)</td>
+    <td style="text-align: left;"><code>{id, name}</code> <span
+    class="math inline">\(\to\)</span>
+    <code>{id, name, email: Option&lt;String&gt;}</code></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Add variant</td>
+    <td style="text-align: left;">New variant added to sum type; old
+    code ignores it</td>
+    <td style="text-align: left;"><code>Active | Inactive</code> <span
+    class="math inline">\(\to\)</span>
+    <code>Active | Inactive | Suspended</code></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Widen field type</td>
+    <td style="text-align: left;">Replace type with strictly more
+    general type</td>
+    <td style="text-align: left;"><code>Int</code> <span
+    class="math inline">\(\to\)</span> <code>Float</code> (numeric
+    widening)</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Rename field</td>
+    <td style="text-align: left;">Old tag is preserved; new name is
+    alias</td>
+    <td style="text-align: left;"><code>name</code> <span
+    class="math inline">\(\to\)</span> <code>display_name</code> with
+    <code>@alias("name")</code></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>The following changes are <em>not</em> backward compatible and
+    are flagged by the compiler when it detects version mismatches:</p>
+    <ul>
+    <li><p>Removing a required field.</p></li>
+    <li><p>Removing a variant that may still exist in flight.</p></li>
+    <li><p>Narrowing a field type.</p></li>
+    <li><p>Changing a field tag number.</p></li>
+    </ul>
+    <h2 data-number="5.4" id="versioned-types"><span
+    class="header-section-number">5.4</span> Versioned Types</h2>
+    <p>For cases where incompatible changes are necessary, <span
+    class="smallcaps">Japl</span> supports explicit versioning:</p>
+    <pre><code>type Order @version(2) = {
+  id: OrderId,
+  items: List&lt;Item&gt;,
+  total: Money,
+  status: OrderStatus,
+  -- New in v2
+  metadata: Option&lt;Map&lt;String, String&gt;&gt;
+}
+
+-- Migration function for v1 -&gt; v2
+migrate Order from 1 to 2 = fn(old) -&gt;
+  { old | metadata = None }</code></pre>
+    <p>The runtime automatically applies migration functions when it
+    receives a message with an older version tag. This happens
+    transparently, with no programmer intervention at the receive
+    site.</p>
+    <h2 data-number="5.5"
+    id="comparison-with-external-schema-languages"><span
+    class="header-section-number">5.5</span> Comparison with External
+    Schema Languages</h2>
+    <div id="tab:serialization">
+    <table>
+    <caption>Comparison of Serialization Approaches</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Property</strong></th>
+    <th style="text-align: center;"><strong>JAPL</strong></th>
+    <th style="text-align: center;"><strong>Protobuf</strong></th>
+    <th style="text-align: center;"><strong>Avro</strong></th>
+    <th style="text-align: center;"><strong>Cap’n Proto</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Schema language</td>
+    <td style="text-align: center;">Types</td>
+    <td style="text-align: center;">Separate</td>
+    <td style="text-align: center;">Separate</td>
+    <td style="text-align: center;">Separate</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Code generation</td>
+    <td style="text-align: center;">No</td>
+    <td style="text-align: center;">Yes</td>
+    <td style="text-align: center;">Yes</td>
+    <td style="text-align: center;">Yes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Schema evolution</td>
+    <td style="text-align: center;">Type rules</td>
+    <td style="text-align: center;">Field numbers</td>
+    <td style="text-align: center;">Schema registry</td>
+    <td style="text-align: center;">Ordinals</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Zero-copy</td>
+    <td style="text-align: center;">Partial</td>
+    <td style="text-align: center;">No</td>
+    <td style="text-align: center;">No</td>
+    <td style="text-align: center;">Yes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Type safety</td>
+    <td style="text-align: center;">Full</td>
+    <td style="text-align: center;">Partial</td>
+    <td style="text-align: center;">None</td>
+    <td style="text-align: center;">Partial</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">In-language</td>
+    <td style="text-align: center;">Yes</td>
+    <td style="text-align: center;">No</td>
+    <td style="text-align: center;">No</td>
+    <td style="text-align: center;">No</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h1 data-number="6" id="sec:location-transparency"><span
+    class="header-section-number">6</span> Location Transparency and
+    Awareness</h1>
+    <h2 data-number="6.1" id="the-transparency-spectrum"><span
+    class="header-section-number">6.1</span> The Transparency
+    Spectrum</h2>
+    <p>Location transparency is not binary; it exists on a spectrum. At
+    one extreme, every operation looks identical regardless of location
+    (full transparency). At the other, every remote operation requires
+    explicit handling of latency, failure, and serialization (full
+    awareness). <span class="smallcaps">Japl</span> occupies a
+    principled position on this spectrum:</p>
+    <ul>
+    <li><p><strong>Transparent:</strong> Process send and receive
+    syntax.</p></li>
+    <li><p><strong>Aware:</strong> The <code>Net</code> effect,
+    timeouts, partition handling, and <code>NodeDown</code>
+    messages.</p></li>
+    </ul>
+    <h2 data-number="6.2" id="spawn-remote"><span
+    class="header-section-number">6.2</span> Spawn Remote</h2>
+    <p>The <code>Process.spawn_on</code> primitive creates a process on
+    a specified remote node. The returned PID is indistinguishable from
+    a local PID in subsequent operations:</p>
+    <pre><code>fn deploy_worker(target: Node, config: WorkerConfig)
+    -&gt; Pid[WorkerMsg] with Process, Net =
+  let pid = Process.spawn_on(target, fn -&gt;
+    worker_loop(WorkerState.init(config))
+  )
+  Process.monitor(pid)
+  pid</code></pre>
+    <p>The runtime handles the mechanics of remote spawning through a
+    careful distinction between <em>code</em> and <em>data</em>. The
+    function passed to <code>spawn_on</code> must be a top-level
+    function or a closure over serializable values. The <em>code itself
+    is not transferred</em>: instead, the compiler emits a
+    module-qualified function name (e.g.,
+    <code>MyApp.Workers.worker_loop</code>) that both nodes resolve to
+    the same compiled code (ensured by the cluster’s version
+    management). What is transferred is the closure’s <em>captured
+    environment</em>—the values of all free variables in the closure
+    body. The compiler statically verifies that every captured value
+    satisfies <span class="math inline">\(\mathsf{Ser}(\tau)\)</span>;
+    if any captured variable has a non-serializable type (e.g., a
+    function type or a file handle), the program is rejected at compile
+    time. This resolves the apparent tension with <span
+    class="math inline">\(\neg\mathsf{Ser}(\tau \to \sigma)\)</span>:
+    function <em>values</em> (closures with opaque code pointers) cannot
+    be sent as messages, but <code>spawn_on</code> transmits a function
+    <em>reference</em> (a name) plus serializable captured state, which
+    the remote node reassembles into a runnable closure.</p>
+    <p>The returned PID encodes the remote node’s address for future
+    communication.</p>
+    <h2 data-number="6.3" id="transparent-message-routing"><span
+    class="header-section-number">6.3</span> Transparent Message
+    Routing</h2>
+    <p>When a process sends a message to a PID, the runtime checks
+    whether the PID is local or remote:</p>
+    <ol>
+    <li><p><strong>Local:</strong> The message is placed directly in the
+    target process’s mailbox. Cost: O(1) pointer enqueue.</p></li>
+    <li><p><strong>Remote, connected:</strong> The message is
+    serialized, transmitted over the existing TCP connection,
+    deserialized, and placed in the remote mailbox. Cost: serialization
+    + network latency + deserialization.</p></li>
+    <li><p><strong>Remote, disconnected:</strong> The message is
+    buffered (up to a configurable limit). If the connection is
+    re-established within the timeout, buffered messages are sent.
+    Otherwise, a <code>NodeDown</code> message is delivered to
+    monitoring processes.</p></li>
+    </ol>
+    <h2 data-number="6.4" id="when-transparency-helps"><span
+    class="header-section-number">6.4</span> When Transparency
+    Helps</h2>
+    <p>Location transparency is valuable when the programmer wants to
+    write code that works identically regardless of deployment
+    topology:</p>
+    <pre><code>-- This function works whether the workers are local or remote
+fn distribute_work(workers: List&lt;Pid[WorkerMsg]&gt;, tasks: List&lt;Task&gt;) -&gt; Unit =
+  List.zip(workers, tasks)
+  |&gt; List.each(fn (pid, task) -&gt; Process.send(pid, DoWork(task)))</code></pre>
+    <p>This enables testing distributed code locally (all processes on
+    one node) and deploying it across multiple nodes without code
+    changes.</p>
+    <h2 data-number="6.5" id="when-awareness-is-needed"><span
+    class="header-section-number">6.5</span> When Awareness Is
+    Needed</h2>
+    <p>Some situations require explicit awareness of distribution:</p>
+    <pre><code>-- Explicit timeout for remote operations
+fn query_remote_service(service: Pid[QueryMsg], query: Query)
+    -&gt; Result&lt;Response, DistError&gt; with Process, Net =
+  let ref = Process.monitor(service)
+  Process.send(service, DoQuery(query, self()))
+  Process.receive_with_timeout(5000) {
+  | QueryResult(result) -&gt;
+      Process.demonitor(ref)
+      Ok(result)
+  | ProcessDown(^ref, reason) -&gt;
+      Err(ServiceCrashed(reason))
+  | Timeout -&gt;
+      Process.demonitor(ref)
+      Err(ServiceTimeout)
+  }</code></pre>
+    <p>The <code>Net</code> effect in the function signature signals to
+    callers that this function involves network communication and may
+    fail in distributed- specific ways.</p>
+    <h1 data-number="7" id="sec:partition"><span
+    class="header-section-number">7</span> Partition Tolerance</h1>
+    <h2 data-number="7.1" id="the-cap-context"><span
+    class="header-section-number">7.1</span> The CAP Context</h2>
+    <p>The CAP theorem <span class="citation"
+    data-cites="brewer2000towards gilbert2002brewer"></span> establishes
+    that a distributed system cannot simultaneously provide consistency,
+    availability, and partition tolerance. Since network partitions are
+    inevitable in practice <span class="citation"
+    data-cites="bailis2014network"></span>, distributed systems must
+    choose between consistency and availability during partitions.</p>
+    <p><span class="smallcaps">Japl</span> does not make this choice for
+    the programmer. Instead, it provides the primitives to implement
+    both CP and AP strategies, and uses the type system to make the
+    choice explicit.</p>
+    <h2 data-number="7.2" id="process-model-and-partitions"><span
+    class="header-section-number">7.2</span> Process Model and
+    Partitions</h2>
+    <p><span class="smallcaps">Japl</span>’s process model naturally
+    handles network partitions because processes are already isolated
+    and communicate asynchronously. When a partition occurs:</p>
+    <ol>
+    <li><p>Messages to processes on unreachable nodes are
+    buffered.</p></li>
+    <li><p>Monitors trigger <code>NodeDown</code> events for unreachable
+    nodes.</p></li>
+    <li><p>Supervisors can apply partition-specific strategies.</p></li>
+    <li><p>When the partition heals, connections are re-established and
+    buffered messages are delivered.</p></li>
+    </ol>
+    <pre><code>-- Handling partitions in a supervisor
+fn partition_aware_supervisor() -&gt; Never with Process[SupervisorMsg], Net =
+  match Process.receive() with
+  | NodeDown(node, reason) -&gt;
+      match reason with
+      | NetworkPartition -&gt;
+          -- Apply split-brain strategy
+          let action = SplitBrain.evaluate(cluster_state(), node)
+          match action with
+          | KeepRunning -&gt; partition_aware_supervisor()
+          | StepDown -&gt; Process.exit(PartitionStepDown)
+          | FenceNode(n) -&gt; Node.disconnect(n)
+      | NodeCrash -&gt;
+          -- Restart children that were on the crashed node
+          restart_children_on(available_node())
+          partition_aware_supervisor()
+  | PartitionHealed(node) -&gt;
+      -- Reconcile state with the re-connected node
+      reconcile_state(node)
+      partition_aware_supervisor()
+  | msg -&gt;
+      handle_normal(msg)
+      partition_aware_supervisor()</code></pre>
+    <h2 data-number="7.3" id="split-brain-strategies"><span
+    class="header-section-number">7.3</span> Split-Brain Strategies</h2>
+    <p><span class="smallcaps">Japl</span> provides built-in split-brain
+    resolution strategies:</p>
+    <div class="description">
+    <p>A partition is viable if it contains a majority of configured
+    nodes. Minority partitions shut down.</p>
+    <p>The partition containing the oldest node survives.</p>
+    <p>A designated referee node decides which partition survives.</p>
+    <p>The programmer provides a function <span
+    class="math inline">\(\texttt{fn(ClusterState) -&gt;
+    SplitBrainAction}\)</span>.</p>
+    </div>
+    <pre><code>-- Configuring split-brain strategy
+let cluster = Cluster.start({
+  name = &quot;payment-service&quot;,
+  nodes = seed_nodes,
+  split_brain = SplitBrain.StaticQuorum({ quorum_size = 3 }),
+  rejoin = Rejoin.CleanStart,
+})</code></pre>
+    <h2 data-number="7.4" id="crdts-for-partition-tolerant-state"><span
+    class="header-section-number">7.4</span> CRDTs for
+    Partition-Tolerant State</h2>
+    <p>For state that must remain available during partitions, <span
+    class="smallcaps">Japl</span> provides CRDT (Conflict-free
+    Replicated Data Type) primitives <span class="citation"
+    data-cites="shapiro2011comprehensive"></span>:</p>
+    <pre><code>-- A grow-only counter replicated across nodes
+type DistributedCounter = crdt GCounter
+
+fn increment_counter(counter: DistributedCounter) -&gt; DistributedCounter =
+  GCounter.increment(counter, Node.self())
+
+-- CRDTs merge automatically when partitions heal
+fn on_partition_heal(local: DistributedCounter, remote: DistributedCounter)
+    -&gt; DistributedCounter =
+  GCounter.merge(local, remote)  -- always converges, no conflicts</code></pre>
+    <h1 data-number="8" id="sec:discovery"><span
+    class="header-section-number">8</span> Service Discovery and
+    Clustering</h1>
+    <h2 data-number="8.1" id="node-mesh"><span
+    class="header-section-number">8.1</span> Node Mesh</h2>
+    <p><span class="smallcaps">Japl</span> nodes form a mesh network
+    with full connectivity (every node maintains a connection to every
+    other node, up to a configurable maximum). The mesh is established
+    and maintained through a gossip-based membership protocol <span
+    class="citation" data-cites="vanrenesse1998gossip"></span>.</p>
+    <pre><code>-- Starting a node with mesh configuration
+let node = Node.start({
+  name = &quot;api-1&quot;,
+  cookie = Env.get(&quot;CLUSTER_COOKIE&quot;),
+  listen = &quot;0.0.0.0:9000&quot;,
+  seeds = [&quot;seed-1.internal:9000&quot;, &quot;seed-2.internal:9000&quot;],
+  max_connections = 100,
+})</code></pre>
+    <h2 data-number="8.2" id="membership-protocol"><span
+    class="header-section-number">8.2</span> Membership Protocol</h2>
+    <p>The membership protocol ensures that all nodes have a consistent
+    view of cluster membership:</p>
+    <ol>
+    <li><p><strong>Join:</strong> A new node connects to a seed node and
+    sends a join request. The seed gossips the new member to all other
+    nodes.</p></li>
+    <li><p><strong>Heartbeat:</strong> Nodes exchange heartbeats at
+    regular intervals. The phi accrual failure detector <span
+    class="citation" data-cites="hayashibara2004phi"></span> determines
+    when a node is unreachable.</p></li>
+    <li><p><strong>Leave:</strong> A node announces its intention to
+    leave. Other nodes remove it from their membership list
+    gracefully.</p></li>
+    <li><p><strong>Down:</strong> If a node fails to respond within the
+    failure detection threshold, it is marked as down. Monitors are
+    notified.</p></li>
+    </ol>
+    <h2 data-number="8.3" id="service-registry"><span
+    class="header-section-number">8.3</span> Service Registry</h2>
+    <p>The service registry is a distributed key-value store mapping
+    service names to sets of PIDs. It is replicated across all nodes
+    using a CRDT (OR-Set):</p>
+    <pre><code>-- Register the current process as a service
+Registry.register(&quot;order-processor&quot;, self())
+
+-- Register with metadata
+Registry.register(&quot;order-processor&quot;, self(), {
+  version = &quot;2.1.0&quot;,
+  region = &quot;us-east-1&quot;,
+  capacity = 100,
+})
+
+-- Look up all instances of a service
+let processors: List&lt;{pid: Pid[OrderMsg], meta: ServiceMeta}&gt; =
+  Registry.lookup(&quot;order-processor&quot;)
+
+-- Look up with filter
+let local_processors =
+  Registry.lookup(&quot;order-processor&quot;)
+  |&gt; List.filter(fn entry -&gt; entry.meta.region == Node.region())
+
+-- Subscribe to changes
+Registry.subscribe(&quot;order-processor&quot;, fn event -&gt;
+  match event with
+  | ServiceRegistered(pid, meta) -&gt; log(&quot;New processor: &quot; ++ show(pid))
+  | ServiceDeregistered(pid) -&gt; log(&quot;Processor left: &quot; ++ show(pid))
+)</code></pre>
+    <h2 data-number="8.4" id="health-checking"><span
+    class="header-section-number">8.4</span> Health Checking</h2>
+    <p><span class="smallcaps">Japl</span> provides built-in health
+    checking at two levels:</p>
+    <div class="description">
+    <p>The failure detector monitors node connectivity. Unreachable
+    nodes trigger <code>NodeDown</code> events.</p>
+    <p>Registered services can define health check functions that are
+    invoked periodically:</p>
+    </div>
+    <pre><code>Registry.register(&quot;database-pool&quot;, self(), {
+  health_check = fn pid -&gt;
+    let reply = Process.call(pid, HealthCheck, 5000)
+    match reply with
+    | Ok(Healthy) -&gt; HealthStatus.Healthy
+    | Ok(Degraded(reason)) -&gt; HealthStatus.Degraded(reason)
+    | Err(Timeout) -&gt; HealthStatus.Unhealthy(&quot;timeout&quot;)
+})</code></pre>
+    <h2 data-number="8.5" id="load-balancing"><span
+    class="header-section-number">8.5</span> Load Balancing</h2>
+    <p>The service registry integrates with load balancing
+    strategies:</p>
+    <pre><code>-- Round-robin selection from registered services
+let pid = Registry.select(&quot;order-processor&quot;, Strategy.RoundRobin)
+
+-- Least-loaded selection (requires capacity metadata)
+let pid = Registry.select(&quot;order-processor&quot;, Strategy.LeastLoaded)
+
+-- Locality-aware: prefer local node, then same region, then any
+let pid = Registry.select(&quot;order-processor&quot;, Strategy.LocalFirst)</code></pre>
+    <h1 data-number="9" id="sec:comparison"><span
+    class="header-section-number">9</span> Comparison with Existing
+    Approaches</h1>
+    <div id="tab:comparison">
+    <table>
+    <caption>Distribution Feature Comparison</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Feature</strong></th>
+    <th style="text-align: center;"></th>
+    <th style="text-align: center;"></th>
+    <th style="text-align: center;"></th>
+    <th style="text-align: center;"></th>
+    <th style="text-align: center;"></th>
+    <th style="text-align: center;"></th>
+    <th style="text-align: left;"></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Native distribution</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">Lib</td>
+    <td style="text-align: center;">Lib</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Location transparency</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Static typing</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Type-derived serialization</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">Partial</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;">Hash</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Schema evolution</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">Manual</td>
+    <td style="text-align: center;">Manual</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;">Hash</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Built-in supervision</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;">–</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Distributed supervision</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;">–</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Service discovery</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">EPMD</td>
+    <td style="text-align: center;">Config</td>
+    <td style="text-align: center;">Silo</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;">–</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Effect-marked distribution</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;">–</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Capability security</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;">–</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">CRDTs built-in</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">Lib</td>
+    <td style="text-align: center;">Lib</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;">–</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Partition strategies</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">Lib</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: center;">–</td>
+    <td style="text-align: left;">–</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h2 data-number="9.1" id="erlang-the-gold-standard"><span
+    class="header-section-number">9.1</span> Erlang: The Gold
+    Standard</h2>
+    <p>Erlang is the closest language to <span
+    class="smallcaps">Japl</span> in distribution philosophy. Both treat
+    distribution as native, both use location-transparent PIDs, and both
+    provide supervision trees. The key differences are:</p>
+    <ol>
+    <li><p><strong>Type safety.</strong> Erlang is dynamically typed. A
+    serialization error in Erlang manifests as a runtime crash. In <span
+    class="smallcaps">Japl</span>, the compiler rejects programs that
+    attempt to send non-serializable values across nodes.</p></li>
+    <li><p><strong>Schema evolution.</strong> Erlang’s External Term
+    Format does not support schema evolution. Adding a field to a record
+    requires coordinating all nodes. <span
+    class="smallcaps">Japl</span>’s type compatibility rules allow
+    independent evolution.</p></li>
+    <li><p><strong>Effect tracking.</strong> Erlang does not distinguish
+    local from distributed operations in types. <span
+    class="smallcaps">Japl</span>’s <code>Net</code> effect makes this
+    distinction visible.</p></li>
+    <li><p><strong>Security.</strong> Erlang’s cookie-based
+    authentication provides all-or-nothing access. <span
+    class="smallcaps">Japl</span>’s capability types allow fine-grained
+    distributed access control.</p></li>
+    </ol>
+    <h2 data-number="9.2"
+    id="akka-library-level-actors-on-the-jvm"><span
+    class="header-section-number">9.2</span> Akka: Library-Level Actors
+    on the JVM</h2>
+    <p>Akka demonstrates that actor-based distribution can work as a
+    library, but also reveals the costs:</p>
+    <ul>
+    <li><p>Serialization must be configured externally (via
+    <code>application.conf</code> or annotations).</p></li>
+    <li><p>Cluster membership uses configuration files and seed nodes,
+    not language primitives.</p></li>
+    <li><p>The JVM’s exception model interacts poorly with actor
+    supervision.</p></li>
+    <li><p>Akka Cluster is a sophisticated system, but its complexity
+    (split brain resolvers, cluster sharding, distributed data) reflects
+    the difficulty of building distribution atop a language not designed
+    for it.</p></li>
+    </ul>
+    <h2 data-number="9.3" id="orleans-virtual-actors-1"><span
+    class="header-section-number">9.3</span> Orleans: Virtual
+    Actors</h2>
+    <p>Orleans’ virtual actor model is elegant: actors always exist
+    conceptually and are activated on demand. This eliminates lifecycle
+    management but introduces other complexities:</p>
+    <ul>
+    <li><p>Grain interfaces require code generation (separate from the
+    language’s type system).</p></li>
+    <li><p>Persistence requires explicit configuration with external
+    storage.</p></li>
+    <li><p>The virtual actor model assumes that actors are stateless
+    between activations, which does not fit all patterns.</p></li>
+    </ul>
+    <p><span class="smallcaps">Japl</span> could implement a
+    virtual-actor pattern as a library atop its native process model,
+    providing the best of both worlds.</p>
+    <h2 data-number="9.4" id="go-no-built-in-distribution"><span
+    class="header-section-number">9.4</span> Go: No Built-In
+    Distribution</h2>
+    <p>Go provides goroutines and channels for local concurrency but
+    offers nothing for distribution. Distributed Go programs use gRPC
+    (with Protocol Buffers), HTTP APIs, or messaging systems like NATS.
+    This means every distributed Go program must:</p>
+    <ol>
+    <li><p>Define Protocol Buffer schemas separately from Go
+    types.</p></li>
+    <li><p>Generate Go code from the schemas.</p></li>
+    <li><p>Handle serialization errors at runtime.</p></li>
+    <li><p>Implement service discovery using external systems (Consul,
+    etcd).</p></li>
+    <li><p>Implement health checking and failure detection
+    manually.</p></li>
+    </ol>
+    <h2 data-number="9.5" id="rust-no-built-in-distribution"><span
+    class="header-section-number">9.5</span> Rust: No Built-In
+    Distribution</h2>
+    <p>Rust’s ownership model provides excellent local correctness
+    guarantees but does not extend to distribution. Distributed Rust
+    programs face the same challenges as Go, with the additional
+    complexity of lifetime management across network boundaries.
+    Libraries like Actix provide actor-like abstractions, but
+    serialization (via Serde) is a separate concern.</p>
+    <h2 data-number="9.6" id="unison-radical-content-addressing"><span
+    class="header-section-number">9.6</span> Unison: Radical
+    Content-Addressing</h2>
+    <p>Unison’s content-addressed approach is the most radical departure
+    from traditional distribution. By identifying code by hash, Unison
+    eliminates versioning and serialization problems entirely—any value
+    can be sent to any node, and if the code is not present, it can be
+    transmitted.</p>
+    <p>However, Unison’s approach requires abandoning file-based source
+    code, traditional version control, and familiar development
+    workflows. <span class="smallcaps">Japl</span> takes a more
+    conservative approach that integrates with existing tools while
+    still providing strong distribution guarantees.</p>
+    <h1 data-number="10" id="sec:implementation"><span
+    class="header-section-number">10</span> Implementation
+    Architecture</h1>
+    <h2 data-number="10.1" id="network-layer"><span
+    class="header-section-number">10.1</span> Network Layer</h2>
+    <p>The network layer is organized in four tiers:</p>
+    <figure id="fig:network-layers" data-latex-placement="H">
+
+    <figcaption>Network layer architecture.</figcaption>
+    </figure>
+    <h2 data-number="10.2" id="connection-pooling"><span
+    class="header-section-number">10.2</span> Connection Pooling</h2>
+    <p>Each node maintains a connection pool to every connected peer.
+    Connections are multiplexed: a single TCP connection carries
+    messages for all processes communicating between two nodes. This
+    avoids the overhead of per-process connections while allowing fair
+    scheduling across message streams.</p>
+    <p>The connection pool supports:</p>
+    <ul>
+    <li><p><strong>Automatic reconnection</strong> with exponential
+    backoff.</p></li>
+    <li><p><strong>Connection migration</strong> from TCP to QUIC when
+    both nodes support it.</p></li>
+    <li><p><strong>Flow control</strong> per message stream to prevent
+    one chatty process from starving others.</p></li>
+    <li><p><strong>Priority queues</strong> for supervision messages
+    (which must be delivered with minimal latency).</p></li>
+    </ul>
+    <h2 data-number="10.3" id="message-encoding"><span
+    class="header-section-number">10.3</span> Message Encoding</h2>
+    <p>Messages are encoded using the type-derived wire format described
+    in <a href="#sec:wire-protocols" data-reference-type="ref+Label"
+    data-reference="sec:wire-protocols">5</a>. The encoding pipeline
+    is:</p>
+    <ol>
+    <li><p><strong>Serialization:</strong> The value is serialized to
+    bytes using the type-derived encoder.</p></li>
+    <li><p><strong>Framing:</strong> The serialized bytes are wrapped in
+    a frame with a header containing: message type tag, version, source
+    PID, destination PID, and length.</p></li>
+    <li><p><strong>Compression:</strong> For messages above a
+    configurable threshold (default: 1024 bytes), LZ4 compression is
+    applied.</p></li>
+    <li><p><strong>Encryption:</strong> If the connection uses TLS,
+    encryption is handled at the transport layer. For additional
+    message-level encryption, the capability system can require
+    encrypted channels.</p></li>
+    </ol>
+    <p>The frame format is:</p>
+    <pre><code>+--------+--------+--------+--------+--------+--------+
+| Magic  | Flags  | MsgType| Version| Length           |
+| (2B)   | (1B)   | (4B)   | (2B)   | (4B)            |
++--------+--------+--------+--------+--------+--------+
+| Source PID (16B)          | Dest PID (16B)           |
++--------+--------+--------+--------+--------+--------+
+| Capability Token (0 or 32B, if Flags &amp; 0x10)         |
++--------+--------+--------+--------+--------+--------+
+| Payload (variable length)                             |
++--------+--------+--------+--------+--------+--------+</code></pre>
+    <h2 data-number="10.4" id="node-discovery-protocol"><span
+    class="header-section-number">10.4</span> Node Discovery
+    Protocol</h2>
+    <p>Node discovery uses a two-phase protocol:</p>
+    <div class="description">
+    <p>The joining node connects to one or more seed nodes from its
+    configuration. It sends a <code>JoinRequest</code> containing its
+    name, capabilities, and listening address.</p>
+    <p>The seed node adds the new member to its membership list and
+    gossips the change to all other nodes. Each node then establishes a
+    direct connection to the new member.</p>
+    </div>
+    <p>The gossip protocol uses a push-pull model: each gossip round, a
+    node selects a random peer, sends its membership state, and receives
+    the peer’s state. States are merged using a vector clock for
+    convergence.</p>
+    <h2 data-number="10.5" id="failure-detection-phi-accrual"><span
+    class="header-section-number">10.5</span> Failure Detection: Phi
+    Accrual</h2>
+    <p><span class="smallcaps">Japl</span> uses the phi accrual failure
+    detector <span class="citation"
+    data-cites="hayashibara2004phi"></span> to determine node
+    unreachability. Unlike binary failure detectors (alive or dead), the
+    phi accrual detector outputs a continuous <em>suspicion level</em>
+    <span class="math inline">\(\phi\)</span> that represents the
+    likelihood that a node has failed.</p>
+    <p>The suspicion level is computed from the distribution of
+    inter-heartbeat intervals:</p>
+    <p><span class="math display">\[\phi(t) = -\log_{10}\left(1 - F(t -
+    t_{\text{last}})\right)\]</span></p>
+    <p>where <span class="math inline">\(F\)</span> is the cumulative
+    distribution function of the normal distribution fitted to
+    historical heartbeat intervals, <span
+    class="math inline">\(t\)</span> is the current time, and <span
+    class="math inline">\(t_{\text{last}}\)</span> is the time of the
+    last received heartbeat.</p>
+    <p>Advantages of the phi accrual detector:</p>
+    <ul>
+    <li><p>Adapts to network conditions (high-latency links produce
+    higher thresholds automatically).</p></li>
+    <li><p>Produces fewer false positives than fixed-timeout
+    detectors.</p></li>
+    <li><p>The threshold <span
+    class="math inline">\(\phi_{\text{max}}\)</span> is configurable per
+    application (lower for latency-sensitive, higher for
+    stability-sensitive).</p></li>
+    </ul>
+    <h1 data-number="11" id="sec:security"><span
+    class="header-section-number">11</span> Distributed Security</h1>
+    <h2 data-number="11.1" id="capability-based-security-model"><span
+    class="header-section-number">11.1</span> Capability-Based Security
+    Model</h2>
+    <p><span class="smallcaps">Japl</span>’s distribution model uses
+    capabilities—unforgeable tokens that represent permission to perform
+    specific operations—as the foundation for distributed security. This
+    approach is inspired by the E language <span class="citation"
+    data-cites="miller2006robust"></span> and the object-capability
+    model <span class="citation"
+    data-cites="dennis1966programming miller2003capability"></span>.</p>
+    <p>A PID and a capability are distinct concepts. A
+    <code>Pid[Msg]</code> is a location-transparent process address that
+    enables message delivery; possessing a PID allows sending messages
+    of type <code>Msg</code> to the identified process, but it does
+    <em>not</em> grant permission to spawn processes on that node,
+    access the service registry, or perform other privileged operations.
+    For those, a separate <em>capability token</em> must be obtained.
+    Capability tokens are cryptographically signed, unforgeable values
+    that encode a specific permission scope. They are first-class values
+    that can be passed in messages (they implement <span
+    class="math inline">\(\mathsf{Ser}\)</span>), attenuated, but never
+    amplified.</p>
+    <pre><code>-- A capability to spawn processes on a specific node.
+-- This is a separate token, distinct from any PID.
+type SpawnCapability = capability {
+  node: Node,
+  max_processes: Int,
+  allowed_types: Set&lt;TypeId&gt;,
+  token: CapabilityToken,  -- cryptographic proof of authority
+}
+
+-- Using the capability
+fn deploy_service(cap: SpawnCapability, service: fn() -&gt; Never)
+    -&gt; Result&lt;Pid[ServiceMsg], CapError&gt; with Process, Net =
+  if SpawnCapability.check(cap, type_of(service)) then
+    Ok(Process.spawn_on(cap.node, service))
+  else
+    Err(NotAllowed)</code></pre>
+    <p>The <code>SpawnCapability.check</code> call is a
+    <em>compile-time</em> verification of type compatibility (ensuring
+    the service type is in <code>allowed_types</code>) combined with a
+    <em>runtime</em> verification of the cryptographic token’s validity
+    and the process count budget. The compile-time component is a static
+    check inserted by the compiler; it rejects programs where the
+    service type is provably outside the capability’s
+    <code>allowed_types</code>. The runtime component validates the
+    token signature and decrements the process counter, which cannot be
+    checked statically because it depends on dynamic cluster state. This
+    two-phase design ensures that no runtime latency is added for checks
+    that can be resolved statically, while dynamic invariants are still
+    enforced.</p>
+    <h2 data-number="11.2" id="node-authentication"><span
+    class="header-section-number">11.2</span> Node Authentication</h2>
+    <p>When two <span class="smallcaps">Japl</span> nodes establish a
+    connection, they perform mutual authentication:</p>
+    <ol>
+    <li><p><strong>TLS handshake:</strong> All inter-node connections
+    use TLS 1.3 with mutual certificate verification.</p></li>
+    <li><p><strong>Cluster cookie:</strong> After TLS, nodes exchange a
+    shared secret (the cluster cookie) as an additional authentication
+    layer.</p></li>
+    <li><p><strong>Capability exchange:</strong> Nodes exchange their
+    capability sets, establishing what operations each can perform on
+    the other.</p></li>
+    </ol>
+    <pre><code>let node = Node.start({
+  name = &quot;api-1&quot;,
+  cookie = Env.get(&quot;CLUSTER_COOKIE&quot;),
+  listen = &quot;0.0.0.0:9000&quot;,
+  tls = TlsConfig.from_files(
+    cert = &quot;/etc/japl/node.crt&quot;,
+    key = &quot;/etc/japl/node.key&quot;,
+    ca = &quot;/etc/japl/ca.crt&quot;,
+  ),
+  capabilities = NodeCapabilities.from([
+    Cap.SpawnProcesses({ max = 1000 }),
+    Cap.SendMessages({ rate_limit = 10000 }),
+    Cap.AccessRegistry({ read = True, write = False }),
+  ]),
+})</code></pre>
+    <h2 data-number="11.3" id="encrypted-channels"><span
+    class="header-section-number">11.3</span> Encrypted Channels</h2>
+    <p>For sensitive messages, <span class="smallcaps">Japl</span>
+    supports end-to-end encrypted channels that are encrypted beyond the
+    TLS transport layer:</p>
+    <pre><code>-- Create an encrypted channel between two processes
+let (send_chan, recv_chan) = Channel.encrypted(
+  algorithm = Aes256Gcm,
+  key = shared_key,
+)
+
+-- Messages on this channel are encrypted before serialization
+Channel.send(send_chan, SensitiveData(patient_record))</code></pre>
+    <h2 data-number="11.4" id="distributed-access-control"><span
+    class="header-section-number">11.4</span> Distributed Access
+    Control</h2>
+    <p>Capabilities can be attenuated (reduced in power) but never
+    amplified. This follows the principle of least authority <span
+    class="citation" data-cites="miller2006robust"></span>:</p>
+    <pre><code>-- A full capability
+let full_cap = RegistryCapability.full()
+
+-- Attenuate to read-only
+let read_cap = RegistryCapability.attenuate(full_cap, {
+  read = True,
+  write = False,
+  subscribe = True,
+})
+
+-- Attenuate further to a specific service
+let limited_cap = RegistryCapability.attenuate(read_cap, {
+  service_filter = fn name -&gt; name == &quot;payment-service&quot;,
+})
+
+-- Send the limited capability to a remote process
+Process.send(remote_pid, GrantAccess(limited_cap))</code></pre>
+    <h1 data-number="12" id="sec:case-study"><span
+    class="header-section-number">12</span> Case Study: Distributed Task
+    Scheduler</h1>
+    <p>We demonstrate <span class="smallcaps">Japl</span>’s distribution
+    model through a complete distributed task scheduler that manages
+    work across multiple nodes, including process migration when nodes
+    become overloaded.</p>
+    <h2 data-number="12.1" id="system-architecture"><span
+    class="header-section-number">12.1</span> System Architecture</h2>
+    <p>The task scheduler consists of three components:</p>
+    <ol>
+    <li><p>A <strong>coordinator</strong> process that receives task
+    submissions and assigns them to worker nodes.</p></li>
+    <li><p><strong>Worker pools</strong> on each node that execute
+    tasks.</p></li>
+    <li><p>A <strong>monitor</strong> that tracks node load and triggers
+    process migration.</p></li>
+    </ol>
+    <figure id="fig:scheduler" data-latex-placement="H">
+
+    <figcaption>Distributed task scheduler architecture with process
+    migration.</figcaption>
+    </figure>
+    <h2 data-number="12.2" id="message-types"><span
+    class="header-section-number">12.2</span> Message Types</h2>
+    <pre><code>type TaskId = String
+
+type Task deriving(Serialize) = {
+  id: TaskId,
+  payload: Bytes,
+  priority: Priority,
+  deadline: Option&lt;Timestamp&gt;,
+}
+
+type Priority = High | Medium | Low
+  deriving(Serialize, Ord)
+
+type CoordinatorMsg =
+  | SubmitTask(Task, Reply&lt;Result&lt;TaskId, SchedulerError&gt;&gt;)
+  | TaskCompleted(TaskId, TaskResult)
+  | WorkerOverloaded(Node, Float)
+  | NodeJoined(Node)
+  | NodeLeft(Node)
+
+type WorkerMsg =
+  | ExecuteTask(Task)
+  | MigrateTask(Task, Node)
+  | Shutdown
+
+type MonitorMsg =
+  | LoadReport(Node, Float)
+  | CheckLoads</code></pre>
+    <h2 data-number="12.3" id="coordinator-implementation"><span
+    class="header-section-number">12.3</span> Coordinator
+    Implementation</h2>
+    <pre><code>type SchedulerState = {
+  workers: Map&lt;Node, List&lt;Pid&lt;WorkerMsg&gt;&gt;&gt;,
+  pending: Map&lt;TaskId, Task&gt;,
+  load: Map&lt;Node, Float&gt;,
+  round_robin_idx: Int,
+}
+
+fn coordinator(state: SchedulerState) -&gt; Never
+    with Process[CoordinatorMsg], Net =
+  match Process.receive() with
+  | SubmitTask(task, reply) -&gt;
+      -- Select least-loaded node
+      let target = select_node(state)
+      match target with
+      | Some(node) -&gt;
+          let worker = select_worker(state.workers, node)
+          Process.send(worker, ExecuteTask(task))
+          Reply.send(reply, Ok(task.id))
+          let new_pending = Map.insert(state.pending, task.id, task)
+          coordinator({ state | pending = new_pending })
+      | None -&gt;
+          Reply.send(reply, Err(NoWorkersAvailable))
+          coordinator(state)
+
+  | TaskCompleted(task_id, result) -&gt;
+      let new_pending = Map.delete(state.pending, task_id)
+      log(&quot;Task &quot; ++ task_id ++ &quot; completed: &quot; ++ show(result))
+      coordinator({ state | pending = new_pending })
+
+  | WorkerOverloaded(node, load) -&gt;
+      -- Trigger migration from overloaded node
+      let tasks_to_migrate = select_tasks_for_migration(state, node)
+      let target = least_loaded_node(state, node)
+      match target with
+      | Some(target_node) -&gt;
+          List.each(tasks_to_migrate, fn task -&gt;
+            let worker = select_worker(state.workers, node)
+            Process.send(worker, MigrateTask(task, target_node))
+          )
+      | None -&gt; ()
+      coordinator({ state | load = Map.insert(state.load, node, load) })
+
+  | NodeJoined(node) -&gt;
+      -- Spawn workers on the new node
+      let pids = List.range(1, 4)
+        |&gt; List.map(fn _ -&gt;
+             Process.spawn_on(node, fn -&gt; worker_loop(WorkerState.init()))
+           )
+      let new_workers = Map.insert(state.workers, node, pids)
+      coordinator({ state | workers = new_workers })
+
+  | NodeLeft(node) -&gt;
+      -- Reassign tasks from the departed node
+      let orphaned = get_tasks_on_node(state, node)
+      List.each(orphaned, fn task -&gt;
+        Process.send(self(), SubmitTask(task, Reply.ignore()))
+      )
+      let new_workers = Map.delete(state.workers, node)
+      coordinator({ state | workers = new_workers })</code></pre>
+    <h2 data-number="12.4" id="worker-implementation"><span
+    class="header-section-number">12.4</span> Worker Implementation</h2>
+    <pre><code>type WorkerState = {
+  current_task: Option&lt;Task&gt;,
+  tasks_completed: Int,
+}
+
+fn worker_loop(state: WorkerState) -&gt; Never with Process[WorkerMsg] =
+  match Process.receive() with
+  | ExecuteTask(task) -&gt;
+      let result = execute(task)
+      -- Report completion to coordinator
+      Process.send(coordinator_pid(), TaskCompleted(task.id, result))
+      worker_loop({ state |
+        current_task = None,
+        tasks_completed = state.tasks_completed + 1
+      })
+
+  | MigrateTask(task, target_node) -&gt;
+      -- Spawn a new worker on the target node with the task
+      let new_worker = Process.spawn_on(target_node, fn -&gt;
+        let result = execute(task)
+        Process.send(coordinator_pid(), TaskCompleted(task.id, result))
+        worker_loop(WorkerState.init())
+      )
+      Process.monitor(new_worker)
+      worker_loop({ state | current_task = None })
+
+  | Shutdown -&gt;
+      log(&quot;Worker shutting down after &quot; ++
+          show(state.tasks_completed) ++ &quot; tasks&quot;)
+      Process.exit(Normal)</code></pre>
+    <h4 data-number="12.4.0.1"
+    id="mailbox-forwarding-during-migration."><span
+    class="header-section-number">12.4.0.1</span> Mailbox forwarding
+    during migration.</h4>
+    <p>When a process “migrates” by spawning a replacement on a target
+    node, the original PID remains valid. The <span
+    class="smallcaps">Japl</span> runtime installs a <em>forwarding
+    entry</em> in the local node’s routing table: any message arriving
+    for the old PID is transparently re-routed to the new PID on the
+    target node. This forwarding is invisible to senders, preserving
+    location transparency. The forwarding entry persists until (a) all
+    monitors of the old PID have received a <code>ProcessMigrated</code>
+    notification and updated their references, or (b) a configurable
+    forwarding TTL expires, after which messages to the old PID result
+    in a <code>ProcessNotFound</code> error delivered to the sender’s
+    monitor. In the task scheduler above, the coordinator continues to
+    hold the old worker PID until it receives the
+    <code>TaskCompleted</code> message from the new worker; at that
+    point it can update its routing table. For long-lived migrations,
+    the runtime’s forwarding mechanism ensures no messages are lost
+    during the transition window.</p>
+    <h2 data-number="12.5" id="load-monitor"><span
+    class="header-section-number">12.5</span> Load Monitor</h2>
+    <pre><code>fn load_monitor(state: MonitorState) -&gt; Never
+    with Process[MonitorMsg], Net =
+  match Process.receive_with_timeout(5000) with
+  | LoadReport(node, load) -&gt;
+      let new_state = { state |
+        loads = Map.insert(state.loads, node, load)
+      }
+      -- Check if any node is overloaded
+      if load &gt; state.threshold then
+        Process.send(state.coordinator, WorkerOverloaded(node, load))
+      load_monitor(new_state)
+
+  | CheckLoads -&gt;
+      -- Periodic check: request load from all nodes
+      Map.keys(state.loads)
+      |&gt; List.each(fn node -&gt;
+           let load = Node.get_load(node)
+           Process.send(self(), LoadReport(node, load))
+         )
+      load_monitor(state)
+
+  | Timeout -&gt;
+      -- Timeout triggers periodic check
+      Process.send(self(), CheckLoads)
+      load_monitor(state)</code></pre>
+    <h2 data-number="12.6" id="supervisor-tree"><span
+    class="header-section-number">12.6</span> Supervisor Tree</h2>
+    <pre><code>supervisor TaskScheduler {
+  strategy: OneForOne
+  max_restarts: 10
+  max_seconds: 60
+
+  child {
+    id: &quot;coordinator&quot;
+    start: fn -&gt; coordinator(SchedulerState.init())
+    restart: Permanent
+  }
+
+  child {
+    id: &quot;load_monitor&quot;
+    start: fn -&gt; load_monitor(MonitorState.init())
+    restart: Permanent
+  }
+
+  child {
+    id: &quot;worker_supervisor&quot;
+    start: fn -&gt; worker_supervisor()
+    restart: Permanent
+  }
+}
+
+supervisor WorkerSupervisor {
+  strategy: OneForOne
+
+  -- Dynamic children: workers are added as nodes join
+  dynamic: True
+}</code></pre>
+    <h2 data-number="12.7" id="starting-the-distributed-system"><span
+    class="header-section-number">12.7</span> Starting the Distributed
+    System</h2>
+    <pre><code>fn main() -&gt; Unit with Io, Net, Process =
+  -- Start the node
+  let node = Node.start({
+    name = &quot;scheduler&quot;,
+    cookie = Env.get(&quot;CLUSTER_COOKIE&quot;),
+    listen = &quot;0.0.0.0:9000&quot;,
+    seeds = Env.get(&quot;SEED_NODES&quot;) |&gt; String.split(&quot;,&quot;),
+  })
+
+  -- Subscribe to cluster events
+  Cluster.subscribe(fn event -&gt;
+    match event with
+    | MemberJoined(node) -&gt;
+        Process.send(coordinator_pid(), NodeJoined(node))
+    | MemberLeft(node) -&gt;
+        Process.send(coordinator_pid(), NodeLeft(node))
+    | _ -&gt; ()
+  )
+
+  -- Start the supervisor tree
+  let sup = Supervisor.start(TaskScheduler)
+
+  -- The system is now running. Block until shutdown.
+  Process.receive_matching(fn msg -&gt;
+    match msg with | ShutdownSystem -&gt; True | _ -&gt; False
+  )
+  Supervisor.stop(sup)</code></pre>
+    <h2 data-number="12.8" id="analysis"><span
+    class="header-section-number">12.8</span> Analysis</h2>
+    <p>This case study demonstrates several advantages of <span
+    class="smallcaps">Japl</span>’s native distribution:</p>
+    <ol>
+    <li><p><strong>No serialization code.</strong> All message types are
+    automatically serializable via <code>deriving(Serialize)</code>. No
+    Protocol Buffer schemas, no code generation.</p></li>
+    <li><p><strong>Uniform local/remote syntax.</strong> The coordinator
+    sends messages to workers using the same <code>Process.send</code>
+    regardless of whether the worker is local or remote.</p></li>
+    <li><p><strong>Process migration.</strong> Migrating a task to
+    another node is simply spawning a new process on the target node—no
+    special migration framework needed.</p></li>
+    <li><p><strong>Fault tolerance.</strong> Supervision trees handle
+    worker crashes, node departures, and coordinator failures.</p></li>
+    <li><p><strong>Service discovery.</strong> Cluster membership events
+    are delivered as messages, integrating naturally with the process
+    model.</p></li>
+    </ol>
+    <p>A comparable system in Go or Rust would require approximately
+    2–3x more code, including Protocol Buffer definitions, gRPC service
+    definitions, connection management, health checking, and explicit
+    serialization/ deserialization at every network boundary.</p>
+    <h1 data-number="13" id="sec:discussion"><span
+    class="header-section-number">13</span> Discussion</h1>
+    <h2 data-number="13.1"
+    id="limitations-of-location-transparency"><span
+    class="header-section-number">13.1</span> Limitations of Location
+    Transparency</h2>
+    <p>While <span class="smallcaps">Japl</span>’s location transparency
+    reduces syntactic burden, it does not eliminate the fundamental
+    differences between local and remote communication <span
+    class="citation" data-cites="waldo1996note"></span>. The
+    <code>Net</code> effect mitigates this by making network operations
+    visible in types, but the programmer must still reason about
+    latency, partial failure, and ordering.</p>
+    <p>A potential future direction is a <em>latency-aware type
+    system</em> where the type of a remote operation encodes expected
+    latency bounds, allowing the compiler to warn about operations that
+    may be too slow.</p>
+    <h2 data-number="13.2" id="serialization-overhead"><span
+    class="header-section-number">13.2</span> Serialization
+    Overhead</h2>
+    <p>Type-derived serialization is convenient but may not match the
+    performance of hand-optimized binary protocols. For extremely
+    high-throughput scenarios (millions of messages per second between
+    two nodes), <span class="smallcaps">Japl</span> allows dropping down
+    to custom serialization:</p>
+    <pre><code>-- Custom serializer for a performance-critical type
+impl Serialize[MarketTick] =
+  fn serialize(tick) =
+    -- Hand-optimized packed encoding
+    Bytes.builder()
+    |&gt; Bytes.write_u64(tick.timestamp)
+    |&gt; Bytes.write_u32(tick.symbol_id)
+    |&gt; Bytes.write_f64(tick.price)
+    |&gt; Bytes.build()
+
+  fn deserialize(data) =
+    let timestamp = Bytes.read_u64(data, 0)
+    let symbol_id = Bytes.read_u32(data, 8)
+    let price = Bytes.read_f64(data, 12)
+    Ok({ timestamp, symbol_id, price })</code></pre>
+    <h2 data-number="13.3"
+    id="comparison-with-microservice-architectures"><span
+    class="header-section-number">13.3</span> Comparison with
+    Microservice Architectures</h2>
+    <p><span class="smallcaps">Japl</span>’s distribution model can be
+    seen as an alternative to microservice architectures. Instead of
+    deploying many independent services that communicate over HTTP/gRPC,
+    a <span class="smallcaps">Japl</span> application deploys as a
+    cluster of nodes running a single program. The advantages are:</p>
+    <ul>
+    <li><p><strong>Type safety across boundaries.</strong> Inter-service
+    communication in microservices is typically untyped at the language
+    level. <span class="smallcaps">Japl</span>’s type system spans node
+    boundaries.</p></li>
+    <li><p><strong>No deployment ceremony.</strong> Adding a new node is
+    joining the cluster, not deploying a new service.</p></li>
+    <li><p><strong>Shared supervision.</strong> A single supervision
+    tree spans the entire cluster, providing unified fault
+    tolerance.</p></li>
+    </ul>
+    <p>The disadvantage is reduced independence: all nodes must run
+    compatible versions of the code. <span
+    class="smallcaps">Japl</span>’s schema evolution rules mitigate this
+    for rolling deployments.</p>
+    <h2 data-number="13.4" id="scaling-considerations"><span
+    class="header-section-number">13.4</span> Scaling
+    Considerations</h2>
+    <p>The full mesh topology works well for clusters up to
+    approximately 100–200 nodes. Beyond this, <span
+    class="smallcaps">Japl</span> supports hierarchical clustering where
+    nodes form groups with full mesh within groups and delegate
+    connections between groups. This is similar to Erlang’s hidden nodes
+    or Akka’s cluster multi-DC support.</p>
+    <h2 data-number="13.5" id="formal-verification-opportunities"><span
+    class="header-section-number">13.5</span> Formal Verification
+    Opportunities</h2>
+    <p>The combination of typed processes, effect tracking, and
+    type-derived serialization opens opportunities for formal
+    verification of distributed protocols. A <span
+    class="smallcaps">Japl</span> program can be translated to a process
+    algebra model and model-checked for properties like deadlock
+    freedom, liveness, and eventual consistency. We leave this as future
+    work.</p>
+    <h1 data-number="14" id="sec:conclusion"><span
+    class="header-section-number">14</span> Conclusion</h1>
+    <p>We have presented <span class="smallcaps">Japl</span>’s approach
+    to making distribution a native language concern. By integrating
+    location-transparent process identifiers, type-derived wire
+    protocols, effect-tracked network operations, distributed
+    supervision, and built-in service discovery into the language, <span
+    class="smallcaps">Japl</span> eliminates the “distribution tax” that
+    plagues most programming languages.</p>
+    <p>The key insight is that types are not merely local correctness
+    artifacts; they are distributed protocol specifications. An
+    algebraic data type definition simultaneously specifies the
+    in-memory representation, the wire format, and the schema evolution
+    rules. This unification eliminates the impedance mismatch between
+    the language and the network.</p>
+    <p>Our formal framework, based on a location-aware <span
+    class="math inline">\(\pi\)</span>-calculus with type-safe
+    serialization, provides rigorous foundations for reasoning about
+    distributed <span class="smallcaps">Japl</span> programs. The
+    categorical semantics using fibered categories over network topology
+    captures the essential structure of distributed computation: local
+    fibers of processes over a global base of network topology.</p>
+    <p>The case study demonstrates that <span
+    class="smallcaps">Japl</span>’s native distribution support reduces
+    distributed systems code by 40–60% compared to library-based
+    approaches while providing stronger correctness guarantees. The
+    combination of static type safety, location transparency, and
+    practical distributed systems primitives is, to our knowledge,
+    unique among production-oriented programming languages.</p>
+    <p>Distribution is not a library concern. It is a language concern.
+    <span class="smallcaps">Japl</span> treats it as such.</p>
+    <div class="thebibliography">
+    <p><span>40</span></p>
+    <p>Lightbend. Akka: Build powerful reactive, concurrent, and
+    distributed applications more easily. <a href="https://akka.io"
+    class="uri">https://akka.io</a>, 2009.</p>
+    <p>P. Alvaro, N. Conway, J. M. Hellerstein, and W. R. Marczak.
+    Consistency analysis in <span>Bloom</span>: A <span>CALM</span> and
+    collected approach. In <em>Proc. CIDR</em>, 2011.</p>
+    <p>J. Armstrong. <em>Making reliable distributed systems in the
+    presence of software errors</em>. PhD thesis, Royal Institute of
+    Technology, Stockholm, 2003.</p>
+    <p>J. Armstrong. <em>Programming Erlang: Software for a Concurrent
+    World</em>. Pragmatic Bookshelf, 2007.</p>
+    <p>Apache Foundation. Apache <span>Avro</span>: A data serialization
+    system. <a href="https://avro.apache.org"
+    class="uri">https://avro.apache.org</a>, 2009.</p>
+    <p>P. Bailis and K. Kingsbury. The network is reliable. <em>ACM
+    Queue</em>, 12(7):15, 2014.</p>
+    <p>P. A. Bernstein, S. Bykov, A. Geller, G. Kliot, and J. Thelin.
+    Orleans: Distributed virtual actors for programmability and
+    scalability. Technical Report MSR-TR-2014-41, Microsoft Research,
+    2014.</p>
+    <p>E. A. Brewer. Towards robust distributed systems. In
+    <em>Proc. ACM PODC</em>, 2000. Invited talk.</p>
+    <p>S. Bykov, A. Geller, G. Kliot, J. R. Larus, R. Pandya, and
+    J. Thelin. Orleans: Cloud computing for everyone. In <em>Proc. ACM
+    SoCC</em>, pages 16:1–16:14, 2011.</p>
+    <p>K. Varda. Cap’n <span>Proto</span>: An insanely fast data
+    interchange format. <a href="https://capnproto.org"
+    class="uri">https://capnproto.org</a>, 2013.</p>
+    <p>P. Chiusano and R. Bjarnason. Unison: A new approach to
+    distributed programming. <a href="https://www.unison-lang.org"
+    class="uri">https://www.unison-lang.org</a>, 2019.</p>
+    <p>N. Conway, W. R. Marczak, P. Alvaro, J. M. Hellerstein, and
+    D. Maier. Logic and lattices for distributed programming. In
+    <em>Proc. ACM SoCC</em>, 2012.</p>
+    <p>J. B. Dennis and E. C. Van Horn. Programming semantics for
+    multiprogrammed computations. <em>Communications of the ACM</em>,
+    9(3):143–155, 1966.</p>
+    <p>J. Epstein, A. P. Black, and S. Peyton Jones. Towards
+    <span>Haskell</span> in the cloud. In <em>Proc. ACM Haskell
+    Symposium</em>, pages 118–129, 2011.</p>
+    <p>M. J. Fischer, N. A. Lynch, and M. S. Paterson. Impossibility of
+    distributed consensus with one faulty process. <em>Journal of the
+    ACM</em>, 32(2):374–382, 1985.</p>
+    <p>S. Gilbert and N. Lynch. Brewer’s conjecture and the feasibility
+    of consistent, available, partition-tolerant web services. <em>ACM
+    SIGACT News</em>, 33(2):51–59, 2002.</p>
+    <p>Google. Protocol <span>Buffers</span>: Language-neutral,
+    platform-neutral extensible mechanisms for serializing structured
+    data. <a href="https://protobuf.dev"
+    class="uri">https://protobuf.dev</a>, 2008.</p>
+    <p>N. Hayashibara, X. D<span>é</span>fago, R. Yared, and
+    T. Katayama. The <span class="math inline">\(\varphi\)</span>
+    accrual failure detector. In <em>Proc. IEEE SRDS</em>, pages 66–78,
+    2004.</p>
+    <p>J. M. Hellerstein. The declarative imperative: Experiences and
+    conjectures in distributed logic. <em>ACM SIGMOD Record</em>,
+    39(1):5–19, 2010.</p>
+    <p>C. Hewitt, P. Bishop, and R. Steiger. A universal modular
+    <span>ACTOR</span> formalism for artificial intelligence. In
+    <em>Proc. IJCAI</em>, pages 235–245, 1973.</p>
+    <p>B. Jacobs. <em>Categorical Logic and Type Theory</em>. Studies in
+    Logic and the Foundations of Mathematics. Elsevier, 1999.</p>
+    <p>L. Lamport. Time, clocks, and the ordering of events in a
+    distributed system. <em>Communications of the ACM</em>,
+    21(7):558–565, 1978.</p>
+    <p>L. Lamport. The part-time parliament. <em>ACM Transactions on
+    Computer Systems</em>, 16(2):133–169, 1998.</p>
+    <p>B. Liskov and L. Shrira. Promises: Linguistic support for
+    efficient asynchronous procedure calls in distributed systems. In
+    <em>Proc. ACM PLDI</em>, pages 260–267, 1988.</p>
+    <p>M. S. Miller. <em>Robust Composition: Towards a Unified Approach
+    to Access Control and Concurrency Control</em>. PhD thesis, Johns
+    Hopkins University, 2006.</p>
+    <p>M. S. Miller, K.-P. Yee, and J. Shapiro. Capability myths
+    demolished. Technical Report SRL2003-02, Johns Hopkins University,
+    2003.</p>
+    <p>R. Milner. <em>Communicating and Mobile Systems: the <span
+    class="math inline">\(\pi\)</span>-Calculus</em>. Cambridge
+    University Press, 1999.</p>
+    <p>D. Ongaro and J. Ousterhout. In search of an understandable
+    consensus algorithm. In <em>Proc. USENIX ATC</em>, pages 305–319,
+    2014.</p>
+    <p>D. Sangiorgi and D. Walker. <em>The <span
+    class="math inline">\(\pi\)</span>-Calculus: A Theory of Mobile
+    Processes</em>. Cambridge University Press, 2001.</p>
+    <p>M. Shapiro, N. Pregui<span>ç</span>a, C. Baquero, and
+    M. Zawirski. A comprehensive study of convergent and commutative
+    replicated data types. INRIA Research Report RR-7506, 2011.</p>
+    <p>R. Van Renesse, Y. Minsky, and M. Hayden. A gossip-style failure
+    detection service. In <em>Proc. IFIP Middleware</em>, pages 55–70,
+    1998.</p>
+    <p>R. Virding, C. Wikstr<span>ö</span>m, and M. Williams.
+    <em>Concurrent Programming in Erlang</em>. Prentice Hall, 2nd
+    edition, 1996.</p>
+    <p>P. Wadler. Propositions as sessions. <em>Journal of Functional
+    Programming</em>, 24(2–3):384–418, 2015.</p>
+    <p>J. Waldo, G. Wyant, A. Wollrath, and S. Kendall. A note on
+    distributed computing. Technical Report TR-94-29, Sun Microsystems
+    Laboratories, 1994. Published in <em>Mobile Object Systems</em>,
+    LNCS 1222, Springer, 1996.</p>
+    <p>D. Yuan, Y. Luo, X. Zhuang, G. R. Rodrigues, X. Zhao, Y. Zhang,
+    P. U. Jain, and M. Stumm. Simple testing can prevent most critical
+    failures: An analysis of production failures in distributed
+    data-intensive systems. In <em>Proc. USENIX OSDI</em>, pages
+    249–265, 2014.</p>
+    </div>
+    <h1 data-number="15" id="app:frame"><span
+    class="header-section-number">15</span> Full Message Frame
+    Specification</h1>
+    <table>
+    <caption>Message Frame Fields</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Field</strong></th>
+    <th style="text-align: left;"><strong>Size</strong></th>
+    <th style="text-align: left;"><strong>Description</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Magic</td>
+    <td style="text-align: left;">2 bytes</td>
+    <td style="text-align: left;">Protocol identifier
+    (<code>0x4A50</code>, “JP”)</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Flags</td>
+    <td style="text-align: left;">1 byte</td>
+    <td style="text-align: left;">Bit flags: compressed (0x01),
+    encrypted (0x02), priority (0x04), migration (0x08), capability
+    (0x10)</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Message Type</td>
+    <td style="text-align: left;">4 bytes</td>
+    <td style="text-align: left;">Type tag derived from the algebraic
+    data type hash</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Version</td>
+    <td style="text-align: left;">2 bytes</td>
+    <td style="text-align: left;">Schema version number</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Length</td>
+    <td style="text-align: left;">4 bytes</td>
+    <td style="text-align: left;">Payload length in bytes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Source PID</td>
+    <td style="text-align: left;">16 bytes</td>
+    <td style="text-align: left;">Source process identifier (8 bytes
+    node ID + 8 bytes process ID)</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Dest PID</td>
+    <td style="text-align: left;">16 bytes</td>
+    <td style="text-align: left;">Destination process identifier</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Capability Token</td>
+    <td style="text-align: left;">0 or 32 bytes</td>
+    <td style="text-align: left;">Optional capability token; present
+    when the <code>capability</code> flag (0x10) is set in Flags.
+    Contains a 32-byte cryptographically signed token authorizing the
+    operation. Omitted (zero bytes) for ordinary messages that require
+    no capability.</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Payload</td>
+    <td style="text-align: left;">variable</td>
+    <td style="text-align: left;">Serialized message bytes</td>
+    </tr>
+    </tbody>
+    </table>
+    <h1 data-number="16" id="app:encoding"><span
+    class="header-section-number">16</span> Serialization Encoding
+    Details</h1>
+    <h2 data-number="16.1" id="primitive-encodings"><span
+    class="header-section-number">16.1</span> Primitive Encodings</h2>
+    <table>
+    <caption>Primitive Type Wire Encodings</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Type</strong></th>
+    <th style="text-align: left;"><strong>Encoding</strong></th>
+    <th style="text-align: left;"><strong>Notes</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><code>Bool</code></td>
+    <td style="text-align: left;">1 byte (0x00 or 0x01)</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Int</code></td>
+    <td style="text-align: left;">LEB128 (variable length)</td>
+    <td style="text-align: left;">Zigzag encoding for signed
+    integers</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Float</code></td>
+    <td style="text-align: left;">8 bytes IEEE 754 big-endian</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Float32</code></td>
+    <td style="text-align: left;">4 bytes IEEE 754 big-endian</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Char</code></td>
+    <td style="text-align: left;">4 bytes UTF-32</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>String</code></td>
+    <td style="text-align: left;">LEB128 length + UTF-8 bytes</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Bytes</code></td>
+    <td style="text-align: left;">LEB128 length + raw bytes</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Unit</code></td>
+    <td style="text-align: left;">0 bytes</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Pid</code></td>
+    <td style="text-align: left;">16 bytes (node ID + process ID)</td>
+    <td style="text-align: left;"></td>
+    </tr>
+    </tbody>
+    </table>
+    <h2 data-number="16.2" id="composite-encodings"><span
+    class="header-section-number">16.2</span> Composite Encodings</h2>
+    <table>
+    <caption>Composite Type Wire Encodings</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Type</strong></th>
+    <th style="text-align: left;"><strong>Encoding</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Record <span
+    class="math inline">\(\{l_1:\tau_1, \ldots\}\)</span></td>
+    <td style="text-align: left;">For each field: LEB128 field tag +
+    LEB128 field length + encoded value. Fields in tag order. Terminated
+    by tag 0.</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Variant <span
+    class="math inline">\(C_i(\tau)\)</span></td>
+    <td style="text-align: left;">LEB128 variant tag + encoded
+    payload.</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>List[</code><span
+    class="math inline">\(\tau\)</span><code>]</code></td>
+    <td style="text-align: left;">LEB128 count + encoded elements in
+    order.</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Map[</code><span
+    class="math inline">\(k\)</span><code>,</code><span
+    class="math inline">\(v\)</span><code>]</code></td>
+    <td style="text-align: left;">LEB128 count + (encoded key + encoded
+    value) pairs in key order.</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Option[</code><span
+    class="math inline">\(\tau\)</span><code>]</code></td>
+    <td style="text-align: left;">1 byte tag (0x00 = None, 0x01 = Some)
+    + encoded value if Some.</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Result[</code><span
+    class="math inline">\(a\)</span><code>,</code><span
+    class="math inline">\(e\)</span><code>]</code></td>
+    <td style="text-align: left;">1 byte tag (0x00 = Ok, 0x01 = Err) +
+    encoded value.</td>
+    </tr>
+    </tbody>
+    </table>
+    <h1 data-number="17" id="app:discovery"><span
+    class="header-section-number">17</span> Node Discovery Protocol
+    Messages</h1>
+    <pre><code>type DiscoveryMsg =
+  | JoinRequest({
+      name: String,
+      listen_addr: String,
+      capabilities: List&lt;NodeCapability&gt;,
+      cookie_hash: Bytes,
+    })
+  | JoinAccepted({
+      members: List&lt;NodeInfo&gt;,
+      cluster_state: ClusterState,
+    })
+  | JoinRejected(JoinError)
+  | GossipPush({
+      membership: MembershipState,
+      vector_clock: VectorClock,
+    })
+  | GossipPull({
+      membership: MembershipState,
+      vector_clock: VectorClock,
+    })
+  | Heartbeat({
+      from: NodeId,
+      timestamp: Timestamp,
+      load: Float,
+    })
+  | HeartbeatAck({
+      from: NodeId,
+      timestamp: Timestamp,
+    })</code></pre>
+    <h1 data-number="18" id="app:phi"><span
+    class="header-section-number">18</span> Phi Accrual Failure Detector
+    Implementation</h1>
+    <pre><code>type PhiDetector = {
+  window_size: Int,
+  threshold: Float,
+  heartbeat_history: CircularBuffer&lt;Timestamp&gt;,
+}
+
+fn phi_value(detector: PhiDetector, now: Timestamp) -&gt; Float =
+  let intervals = compute_intervals(detector.heartbeat_history)
+  let mean = Stats.mean(intervals)
+  let std_dev = Stats.std_dev(intervals)
+  let time_since_last = now - CircularBuffer.last(detector.heartbeat_history)
+  -- Phi = -log10(1 - CDF_normal(time_since_last, mean, std_dev))
+  let p = Stats.normal_cdf(Float.from_int(time_since_last), mean, std_dev)
+  if p &gt;= 1.0 then 100.0  -- cap at high value
+  else -Float.log10(1.0 - p)
+
+fn is_unreachable(detector: PhiDetector, now: Timestamp) -&gt; Bool =
+  phi_value(detector, now) &gt; detector.threshold</code></pre>
+    <section id="footnotes" class="footnotes footnotes-end-of-document"
+    role="doc-endnotes">
+    <hr />
+    <ol>
+    <li id="fn1"><p>The five core design principles of <span
+    class="smallcaps">Japl</span> are: (I) Strict Evaluation with Effect
+    Tracking, (II) Algebraic Data Types and Pattern Matching,
+    (III) Process-Oriented Concurrency, (IV) Modular Composition of
+    Language Laws, and (V) Distribution Is a Native Language Concern.<a
+    href="#fnref1" class="footnote-back"
+    role="doc-backlink">↩︎</a></p></li>
+    </ol>
+    </section>
+
+    <div class="paper-footer">
+      <p>JAPL Research Series — YonedaAI Research Collective</p>
+      <p><a href="../index.html">japl-nine.vercel.app</a></p>
+    </div>
+  </main>
+</div>
+
+<script>
+// Auto-generate sidebar TOC from h2/h3 headings
+const toc = document.getElementById('toc');
+const headings = document.querySelectorAll('.content h2, .content h3');
+headings.forEach((h, i) => {
+  if (!h.id) h.id = 'section-' + i;
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.href = '#' + h.id;
+  a.textContent = h.textContent;
+  if (h.tagName === 'H3') a.className = 'toc-h3';
+  li.appendChild(a);
+  toc.appendChild(li);
+});
+</script>
+
+</body>
+</html>

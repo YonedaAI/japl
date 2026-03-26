@@ -1,0 +1,2681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Functions as the Unit of Composition: Categorical Semantics of Modular Design in JAPL — JAPL Research</title>
+  <meta name="description" content="Functions as the Unit of Composition: Categorical Semantics of Modular Design in JAPL — Part of the JAPL programming language research series.">Japl</span> — Part of the JAPL programming language research series.">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Functions as the Unit of Composition: Categorical Semantics of Modular Design in JAPL — JAPL Research">Japl</span> — JAPL Research">
+  <meta property="og:description" content="Part of the JAPL programming language research series. Just Another Programming Language.">
+  <meta property="og:url" content="https://japl-nine.vercel.app/papers/function-composition.html">
+  <meta property="og:image" content="https://japl-nine.vercel.app/og-image.png">
+  <meta property="og:site_name" content="JAPL">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Functions as the Unit of Composition: Categorical Semantics of Modular Design in JAPL — JAPL Research">Japl</span> — JAPL Research">
+  <meta name="twitter:description" content="Part of the JAPL programming language research series.">
+  <meta name="twitter:image" content="https://japl-nine.vercel.app/og-image.png">
+
+  <!-- KaTeX for math -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      if (typeof renderMathInElement !== "undefined") {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: "\\[", right: "\\]", display: true},
+            {left: "\\(", right: "\\)", display: false}
+          ]
+        });
+      }
+    });
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e17;
+      --surface: #141922;
+      --surface-2: #1a1f2e;
+      --accent: #7c5cfc;
+      --accent-dim: rgba(124, 92, 252, 0.15);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --dim: #64748b;
+      --code-bg: #1a1f2e;
+      --border: #1e293b;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 17px;
+    }
+
+    /* Top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 23, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    .topbar a:hover { color: var(--accent); }
+    .topbar .logo { color: var(--text); font-weight: 700; font-size: 1.1rem; }
+    .topbar .logo span { color: var(--accent); }
+    .topbar-links { display: flex; gap: 1.5rem; }
+
+    /* Layout */
+    .wrapper {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Sidebar TOC */
+    .sidebar {
+      position: sticky;
+      top: 60px;
+      width: 260px;
+      min-width: 260px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+      padding: 2rem 1rem 2rem 2rem;
+      border-right: 1px solid var(--border);
+    }
+    .sidebar h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      margin-bottom: 1rem;
+    }
+    .sidebar ul { list-style: none; }
+    .sidebar li { margin-bottom: 0.4rem; }
+    .sidebar a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      display: block;
+      padding: 0.2rem 0;
+      transition: color 0.2s;
+    }
+    .sidebar a:hover { color: var(--accent); }
+    .sidebar .toc-h3 { padding-left: 1rem; font-size: 0.8rem; }
+
+    /* Main content */
+    .content {
+      flex: 1;
+      min-width: 0;
+      padding: 2.5rem 3rem 4rem;
+      max-width: 800px;
+    }
+
+    /* Paper header */
+    .paper-header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .paper-part {
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+    .paper-header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 1rem;
+    }
+    .paper-author {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .paper-links-bar {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+    }
+    .paper-links-bar a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .paper-links-bar a:hover {
+      background: var(--accent-dim);
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--text);
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+      line-height: 1.3;
+    }
+    h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h3 { font-size: 1.2rem; color: var(--muted); }
+    h4 { font-size: 1.05rem; }
+    p { margin-bottom: 1rem; }
+    a { color: var(--accent); }
+
+    /* Abstract */
+    .abstract {
+      background: var(--surface);
+      border-left: 3px solid var(--accent);
+      padding: 1.5rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 2rem;
+    }
+    .abstract p { margin-bottom: 0; }
+
+    /* Code */
+    pre, code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.6rem 0.8rem;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      background: var(--surface);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:nth-child(even) { background: rgba(20, 25, 34, 0.5); }
+
+    /* Small caps */
+    .smallcaps { font-variant: small-caps; }
+
+    /* Lists */
+    ul, ol { margin: 1rem 0; padding-left: 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+
+    /* Blockquote */
+    blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 1rem;
+      color: var(--muted);
+      margin: 1.5rem 0;
+    }
+
+    /* Figures */
+    figure { margin: 2rem 0; text-align: center; }
+    figcaption { color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* Math */
+    .math.display { overflow-x: auto; padding: 0.5rem 0; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .content { padding: 1.5rem; }
+      .topbar { padding: 0.75rem 1rem; }
+    }
+
+    /* Footer */
+    .paper-footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 0.85rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="../index.html" class="logo">JAPL<span>.</span></a>
+  <div class="topbar-links">
+    <a href="../index.html#papers">All Papers</a>
+    <a href="pdf/function-composition.pdf">Download PDF</a>
+    <a href="https://github.com/YonedaAI/japl" target="_blank">GitHub</a>
+  </div>
+</div>
+
+<div class="wrapper">
+  <nav class="sidebar" id="sidebar">
+    <h4>Contents</h4>
+    <ul id="toc"></ul>
+  </nav>
+
+  <main class="content">
+    <div class="paper-header">
+      <div class="paper-part">Part VI</div>
+      <h1>Functions as the Unit of Composition:<br />
+Categorical Semantics of Modular Design in <span
+class="smallcaps">Japl</span></h1>
+      <div class="paper-author">Matthew Long — The JAPL Research Collaboration<br>YonedaAI Research Collective, Chicago, IL</div>
+      <div class="paper-links-bar">
+        <a href="pdf/function-composition.pdf">PDF</a>
+        <a href="latex/function-composition.tex">LaTeX Source</a>
+        <a href="../index.html#papers">Series Index</a>
+      </div>
+    </div>
+
+    <h1 data-number="1" id="sec:introduction"><span
+    class="header-section-number">1</span> Introduction</h1>
+    <p>The central challenge of software engineering is
+    <em>composition</em>: building large systems from small,
+    understandable parts. For the past three decades, object-oriented
+    programming (OOP) has been the dominant paradigm for structuring
+    compositions, with the <em>class</em> or <em>object</em> as the
+    primary compositional unit. We argue that this choice is
+    fundamentally misguided.</p>
+    <p>An object conflates at least four distinct concerns into a single
+    abstraction:</p>
+    <ol>
+    <li><p><strong>Identity</strong>—an object has a unique reference
+    that distinguishes it from all other objects, even those with
+    identical state.</p></li>
+    <li><p><strong>State</strong>—an object encapsulates mutable fields
+    that change over time.</p></li>
+    <li><p><strong>Behavior</strong>—an object exposes methods that
+    operate on its encapsulated state.</p></li>
+    <li><p><strong>Time</strong>—the ordering of method calls matters
+    because each call may mutate state.</p></li>
+    </ol>
+    <p>This conflation produces what Rich Hickey has termed
+    “complecting” <span class="citation"
+    data-cites="hickey2012simple"></span>: interleaving concepts that
+    should be separate. The consequences are severe. Testing requires
+    mock objects because behavior is entangled with state. Refactoring
+    is brittle because inheritance hierarchies create implicit coupling
+    across the codebase. Concurrency is hazardous because shared mutable
+    state requires synchronization. Reasoning is non-local because an
+    object’s behavior depends on its entire mutation history.</p>
+    <p>The functional programming tradition offers a different answer:
+    the <em>function</em> as the primary unit of composition. A function
+    maps inputs to outputs. It does not hide mutable state. Its behavior
+    is determined entirely by its arguments. Two functions compose when
+    the output type of one matches the input type of the other. This is
+    not merely a stylistic preference; it is a claim about the
+    mathematical structure of composition itself.</p>
+    <p><span class="smallcaps">Japl</span> is a strict, typed,
+    effect-aware functional programming language that takes this claim
+    seriously. Its sixth core design principle states: <em>The default
+    unit of composition is the function.</em> This paper develops the
+    theoretical foundations, practical design, and formal semantics of
+    this principle.</p>
+    <h2 data-number="1.1" id="contributions"><span
+    class="header-section-number">1.1</span> Contributions</h2>
+    <p>We make the following contributions:</p>
+    <ul>
+    <li><p>A formal framework for function-centric composition grounded
+    in Cartesian closed categories and the Curry–Howard–Lambek
+    correspondence (<a href="#sec:formal-framework"
+    data-reference-type="ref+Label"
+    data-reference="sec:formal-framework">3</a>).</p></li>
+    <li><p>The design of <span class="smallcaps">Japl</span>’s
+    composition model: first-class functions, modules with signatures,
+    traits, pattern matching, and pipe operators (<a
+    href="#sec:japl-composition,sec:module-system,sec:traits,sec:pattern-matching,sec:pipes"
+    data-reference-type="ref+Label"
+    data-reference="sec:japl-composition,sec:module-system,sec:traits,sec:pattern-matching,sec:pipes">[sec:japl-composition,sec:module-system,sec:traits,sec:pattern-matching,sec:pipes]</a>).</p></li>
+    <li><p>A separation of concerns that disentangles identity, state,
+    behavior, time, and failure into distinct language mechanisms (<a
+    href="#sec:japl-composition" data-reference-type="ref+Label"
+    data-reference="sec:japl-composition">4</a>).</p></li>
+    <li><p>Compositionality theorems and module soundness proofs (<a
+    href="#sec:formal-properties" data-reference-type="ref+Label"
+    data-reference="sec:formal-properties">12</a>).</p></li>
+    <li><p>A detailed comparison with six languages spanning the design
+    space (<a href="#sec:comparison" data-reference-type="ref+Label"
+    data-reference="sec:comparison">9</a>).</p></li>
+    <li><p>Implementation strategies that achieve zero-overhead
+    abstraction for function-centric composition (<a
+    href="#sec:implementation" data-reference-type="ref+Label"
+    data-reference="sec:implementation">11</a>).</p></li>
+    </ul>
+    <h2 data-number="1.2" id="outline"><span
+    class="header-section-number">1.2</span> Outline</h2>
+    <p><a href="#sec:background" data-reference-type="ref+Label"
+    data-reference="sec:background">2</a> surveys the theoretical and
+    practical background. <a href="#sec:formal-framework"
+    data-reference-type="ref+Label"
+    data-reference="sec:formal-framework">3</a> develops the formal
+    framework. <a href="#sec:japl-composition"
+    data-reference-type="ref+Label"
+    data-reference="sec:japl-composition">4</a> through <a
+    href="#sec:pipes" data-reference-type="ref+Label"
+    data-reference="sec:pipes">8</a> present <span
+    class="smallcaps">Japl</span>’s composition model in detail. <a
+    href="#sec:comparison" data-reference-type="ref+Label"
+    data-reference="sec:comparison">9</a> compares with related
+    languages. <a href="#sec:anti-pattern"
+    data-reference-type="ref+Label"
+    data-reference="sec:anti-pattern">10</a> analyzes why OOP
+    composition fails. <a href="#sec:implementation"
+    data-reference-type="ref+Label"
+    data-reference="sec:implementation">11</a> describes implementation.
+    <a href="#sec:formal-properties" data-reference-type="ref+Label"
+    data-reference="sec:formal-properties">12</a> establishes formal
+    properties. <a href="#sec:conclusion"
+    data-reference-type="ref+Label"
+    data-reference="sec:conclusion">13</a> concludes.</p>
+    <h1 data-number="2" id="sec:background"><span
+    class="header-section-number">2</span> Background and Related
+    Work</h1>
+    <h2 data-number="2.1"
+    id="lambda-calculus-and-combinatory-logic"><span
+    class="header-section-number">2.1</span> Lambda Calculus and
+    Combinatory Logic</h2>
+    <p>The <span class="math inline">\(\lambda\)</span>-calculus,
+    introduced by Church <span class="citation"
+    data-cites="church1936unsolvable"></span>, provides the foundational
+    theory of functions as computational objects. In the simply typed
+    <span class="math inline">\(\lambda\)</span>-calculus <span
+    class="citation" data-cites="church1940formulated"></span>, every
+    well-typed term denotes a function or a value, and the only
+    operation is application. The key insight for language design is
+    that function application and <span
+    class="math inline">\(\lambda\)</span>-abstraction suffice to
+    express all computable functions.</p>
+    <p>Combinatory logic, developed independently by Schönfinkel <span
+    class="citation" data-cites="schonfinkel1924bausteine"></span> and
+    Curry <span class="citation"
+    data-cites="curry1958combinatory"></span>, demonstrates that even
+    named variables can be eliminated: the combinators <span
+    class="math inline">\(S\)</span>, <span
+    class="math inline">\(K\)</span>, and <span
+    class="math inline">\(I\)</span> generate all computable functions
+    through composition alone. This is the purest expression of the
+    principle that functions compose.</p>
+    <h2 data-number="2.2" id="ml-module-systems"><span
+    class="header-section-number">2.2</span> ML Module Systems</h2>
+    <p>The ML module system, pioneered by MacQueen <span
+    class="citation" data-cites="macqueen1984modules"></span> and
+    further developed by Harper, Mitchell, and Moggi <span
+    class="citation" data-cites="harper1990type"></span>, Leroy <span
+    class="citation"
+    data-cites="leroy1994manifest leroy1995applicative"></span>, and
+    Dreyer, Crary, and Harper <span class="citation"
+    data-cites="dreyer2003type"></span>, provides the most sophisticated
+    treatment of modular composition in programming languages. The key
+    abstractions are:</p>
+    <dl>
+    <dt>Structures</dt>
+    <dd>
+    <p>Named collections of types and values (functions).</p>
+    </dd>
+    <dt>Signatures</dt>
+    <dd>
+    <p>Interfaces that describe the types and values a structure must
+    provide.</p>
+    </dd>
+    <dt>Functors</dt>
+    <dd>
+    <p>Functions from structures to structures—parameterized
+    modules.</p>
+    </dd>
+    </dl>
+    <p>The ML module system demonstrates that functions can serve as the
+    unit of composition at every level: values are functions, modules
+    are collections of functions, and functors are functions on modules.
+    Harper and Stone <span class="citation"
+    data-cites="harper2000interpretation"></span> showed that the entire
+    ML module system can be interpreted within a typed <span
+    class="math inline">\(\lambda\)</span>-calculus with singleton
+    kinds.</p>
+    <h2 data-number="2.3" id="haskell-type-classes"><span
+    class="header-section-number">2.3</span> Haskell Type Classes</h2>
+    <p>Wadler and Blott <span class="citation"
+    data-cites="wadler1989make"></span> introduced type classes as a
+    mechanism for <em>ad-hoc polymorphism</em>—the ability to define
+    functions that behave differently on different types. Type classes
+    separate the declaration of an interface from its
+    implementation:</p>
+    <p>A type class declaration specifies a set of function signatures.
+    An instance declaration provides implementations of those functions
+    for a specific type. The compiler resolves which implementation to
+    use at each call site based on the types involved.</p>
+    <p>Type classes solve the “expression problem” <span
+    class="citation" data-cites="wadler1998expression"></span>: new
+    types and new operations can be added independently, without
+    modifying existing code. This is precisely the kind of open
+    extension that inheritance-based OOP promises but delivers only
+    through fragile mechanisms like abstract classes and the visitor
+    pattern.</p>
+    <h2 data-number="2.4" id="rust-traits"><span
+    class="header-section-number">2.4</span> Rust Traits</h2>
+    <p>Rust <span class="citation" data-cites="matsakis2014rust"></span>
+    adapted the type class concept as <em>traits</em>, integrating them
+    with ownership and borrowing. Rust traits serve multiple roles:
+    interface definition, ad-hoc polymorphism, and static dispatch
+    through monomorphization. Rust demonstrates that trait-based
+    composition can achieve zero-cost abstraction: generic code using
+    traits compiles to specialized machine code with no dispatch
+    overhead.</p>
+    <h2 data-number="2.5" id="ocaml-modules-and-functors"><span
+    class="header-section-number">2.5</span> OCaml Modules and
+    Functors</h2>
+    <p>OCaml <span class="citation" data-cites="leroy2020ocaml"></span>
+    inherits the full power of ML modules, including first-class modules
+    (since OCaml 3.12). OCaml’s module system provides the richest
+    practical module system in production use. Functors enable
+    parameterized libraries (e.g., <code>Map.Make</code> takes a module
+    satisfying the <code>OrderedType</code> signature and produces a map
+    implementation). However, the interaction between OCaml’s module
+    system and its object system creates complexity that <span
+    class="smallcaps">Japl</span> avoids by omitting objects
+    entirely.</p>
+    <h2 data-number="2.6" id="other-related-work"><span
+    class="header-section-number">2.6</span> Other Related Work</h2>
+    <p>The Elm architecture <span class="citation"
+    data-cites="czaplicki2012elm"></span> demonstrates that a purely
+    functional composition model—model-update-view, all
+    functions—suffices for interactive applications. Gleam <span
+    class="citation" data-cites="gleam2024"></span> targets the Erlang
+    VM with a statically typed, functional-first design similar in
+    spirit to <span class="smallcaps">Japl</span>’s composition model.
+    Standard ML <span class="citation"
+    data-cites="milner1997definition"></span> provides the reference
+    semantics for module systems. F# computation expressions <span
+    class="citation"
+    data-cites="petricek2014fsharp syme2011fsharp"></span> show how
+    monadic composition can be made syntactically palatable without
+    sacrificing the function-centric model.</p>
+    <p>The Yoneda lemma <span class="citation"
+    data-cites="yoneda1954note maclane1971categories"></span> provides
+    the deep theoretical justification for function-centric design: an
+    object (type) is completely characterized by the morphisms
+    (functions) from it. This is the categorical incarnation of the
+    principle that the interface <em>is</em> the abstraction.</p>
+    <h1 data-number="3" id="sec:formal-framework"><span
+    class="header-section-number">3</span> Formal Framework</h1>
+    <p>We develop the categorical semantics that ground <span
+    class="smallcaps">Japl</span>’s design decision to make functions
+    the default unit of composition.</p>
+    <h2 data-number="3.1" id="cartesian-closed-categories"><span
+    class="header-section-number">3.1</span> Cartesian Closed
+    Categories</h2>
+    <div class="definition">
+    <p><strong>Definition 1</strong> (Cartesian Closed Category). <em>A
+    category <span class="math inline">\(\mathcal{C}\)</span> is
+    <em>Cartesian closed</em> if it has:</em></p>
+    <ol>
+    <li><p><em>A terminal object <span
+    class="math inline">\(1\)</span>.</em></p></li>
+    <li><p><em>Binary products: for all objects <span
+    class="math inline">\(A, B\)</span>, a product <span
+    class="math inline">\(A \times B\)</span> with projections <span
+    class="math inline">\(\pi_1 : A \times B \to A\)</span> and <span
+    class="math inline">\(\pi_2 : A \times B \to
+    B\)</span>.</em></p></li>
+    <li><p><em>Exponentials: for all objects <span
+    class="math inline">\(A, B\)</span>, an exponential object <span
+    class="math inline">\(B^A\)</span> (the “function space” from <span
+    class="math inline">\(A\)</span> to <span
+    class="math inline">\(B\)</span>) with an evaluation morphism <span
+    class="math inline">\(\mathrm{eval} : B^A \times A \to B\)</span>
+    such that for every morphism <span class="math inline">\(f : C
+    \times A \to B\)</span>, there exists a unique morphism <span
+    class="math inline">\(\bar{f} : C \to B^A\)</span> satisfying <span
+    class="math inline">\(\mathrm{eval} \circ (\bar{f} \times
+    \mathrm{id}_A) = f\)</span>.</em></p></li>
+    </ol>
+    </div>
+    <p>The category <span class="math inline">\(\mathbf{Type}\)</span>
+    of <span class="smallcaps">Japl</span> types and functions forms a
+    Cartesian closed category. Product types correspond to records and
+    tuples, and exponential objects correspond to function types. The
+    universality of currying—the bijection <span
+    class="math inline">\(\mathrm{Hom}(C \times A, B) \cong
+    \mathrm{Hom}(C, B^A)\)</span>—is the categorical expression of the
+    fact that multi-argument functions are equivalent to curried
+    single-argument functions.</p>
+    <div id="prop:function-spaces" class="proposition">
+    <p><strong>Proposition 2</strong> (Function Spaces in <span
+    class="smallcaps">Japl</span>). <em>For any <span
+    class="smallcaps">Japl</span> types <span
+    class="math inline">\(A\)</span> and <span
+    class="math inline">\(B\)</span>, the function type <span
+    class="math inline">\(A \to B\)</span> is an exponential object in
+    <span class="math inline">\(\mathbf{Type}\)</span>, satisfying the
+    universal property of currying.</em></p>
+    </div>
+    <p>This means that functions in <span class="smallcaps">Japl</span>
+    are <em>first-class citizens</em> in the precise categorical sense:
+    they are objects of the category, on equal footing with all other
+    types.</p>
+    <h2 data-number="3.2"
+    id="the-curryhowardlambek-correspondence"><span
+    class="header-section-number">3.2</span> The Curry–Howard–Lambek
+    Correspondence</h2>
+    <p>The Curry–Howard–Lambek correspondence <span class="citation"
+    data-cites="curry1958combinatory howard1980formulae lambek1980cartesian lambek1986introduction"></span>
+    establishes a three-way equivalence:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Type Theory</strong></th>
+    <th style="text-align: left;"><strong>Logic</strong></th>
+    <th style="text-align: left;"><strong>Category Theory</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Type <span
+    class="math inline">\(A\)</span></td>
+    <td style="text-align: left;">Proposition <span
+    class="math inline">\(A\)</span></td>
+    <td style="text-align: left;">Object <span
+    class="math inline">\(A\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Function <span class="math inline">\(f
+    : A \to B\)</span></td>
+    <td style="text-align: left;">Proof of <span class="math inline">\(A
+    \Rightarrow B\)</span></td>
+    <td style="text-align: left;">Morphism <span class="math inline">\(f
+    : A \to B\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Product <span class="math inline">\(A
+    \times B\)</span></td>
+    <td style="text-align: left;">Conjunction <span
+    class="math inline">\(A \land B\)</span></td>
+    <td style="text-align: left;">Product <span class="math inline">\(A
+    \times B\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Sum <span class="math inline">\(A +
+    B\)</span></td>
+    <td style="text-align: left;">Disjunction <span
+    class="math inline">\(A \lor B\)</span></td>
+    <td style="text-align: left;">Coproduct <span
+    class="math inline">\(A + B\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Function type <span
+    class="math inline">\(A \to B\)</span></td>
+    <td style="text-align: left;">Implication <span
+    class="math inline">\(A \Rightarrow B\)</span></td>
+    <td style="text-align: left;">Exponential <span
+    class="math inline">\(B^A\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Unit type <span
+    class="math inline">\(()\)</span></td>
+    <td style="text-align: left;">Truth <span
+    class="math inline">\(\top\)</span></td>
+    <td style="text-align: left;">Terminal object <span
+    class="math inline">\(1\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Empty type <span
+    class="math inline">\(\bot\)</span></td>
+    <td style="text-align: left;">Falsity <span
+    class="math inline">\(\bot\)</span></td>
+    <td style="text-align: left;">Initial object <span
+    class="math inline">\(0\)</span></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>Under this correspondence, composing functions corresponds to
+    chaining logical implications, and the type checker verifies that
+    compositions are logically valid. Every well-typed <span
+    class="smallcaps">Japl</span> program is simultaneously a proof in
+    constructive logic and a diagram in a Cartesian closed category.</p>
+    <p>This three-way correspondence directly informs <span
+    class="smallcaps">Japl</span>’s design decisions. The function type
+    <span class="math inline">\(A \to B\)</span> is both the type of
+    programs that transform <span
+    class="math inline">\(A\)</span>-values into <span
+    class="math inline">\(B\)</span>-values (type theory), a
+    constructive proof that <span class="math inline">\(A\)</span>
+    implies <span class="math inline">\(B\)</span> (logic), and a
+    morphism in the category of types (category theory). <span
+    class="smallcaps">Japl</span>’s type checker exploits all three
+    perspectives: it verifies well-typedness (type theory), ensures
+    totality of pattern matches via exhaustiveness checking
+    (constructive logic requires that proofs handle all cases), and
+    guarantees that composition is associative and respects identity
+    (category theory). The effect system extends the correspondence: an
+    effectful function <span class="math inline">\(f : A \to B
+    \;\texttt{with}\; E\)</span> corresponds to a morphism in a
+    Kleisli-like category indexed by the effect set <span
+    class="math inline">\(E\)</span>, ensuring that effect composition
+    is tracked through the logical structure of the program.</p>
+    <div id="thm:composition-deduction" class="theorem">
+    <p><strong>Theorem 3</strong> (Composition as Logical Deduction).
+    <em>If <span class="math inline">\(f : A \to B\)</span> and <span
+    class="math inline">\(g : B \to C\)</span> are well-typed <span
+    class="smallcaps">Japl</span> functions, then <span
+    class="math inline">\(g \circ f : A \to C\)</span> is well-typed,
+    corresponding to the logical deduction: from <span
+    class="math inline">\(A \Rightarrow B\)</span> and <span
+    class="math inline">\(B \Rightarrow C\)</span>, conclude <span
+    class="math inline">\(A \Rightarrow C\)</span> (hypothetical
+    syllogism).</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By the functoriality of the Hom-functor and the
+    composition structure of <span
+    class="math inline">\(\mathbf{Type}\)</span>. In the internal
+    language, if <span class="math inline">\(\Gamma \vdash f : A \to
+    B\)</span> and <span class="math inline">\(\Gamma \vdash g : B \to
+    C\)</span>, then <span class="math inline">\(\Gamma \vdash \lambda
+    x.\, g(f(x)) : A \to C\)</span> by the typing rules for abstraction
+    and application. ◻</p>
+    </div>
+    <h2 data-number="3.3"
+    id="the-yoneda-lemma-and-type-characterization"><span
+    class="header-section-number">3.3</span> The Yoneda Lemma and Type
+    Characterization</h2>
+    <p>The Yoneda lemma is the deepest result connecting functions to
+    types.</p>
+    <div id="thm:yoneda" class="theorem">
+    <p><strong>Theorem 4</strong> (Yoneda Lemma). <em>For any locally
+    small category <span class="math inline">\(\mathcal{C}\)</span>, any
+    object <span class="math inline">\(A \in \mathcal{C}\)</span>, and
+    any functor <span class="math inline">\(F : \mathcal{C} \to
+    \mathbf{Set}\)</span>: <span
+    class="math display">\[\mathrm{Nat}(\mathrm{Hom}(A, -), F) \cong
+    F(A)\]</span> naturally in <span class="math inline">\(A\)</span>
+    and <span class="math inline">\(F\)</span>.</em></p>
+    </div>
+    <div class="corollary">
+    <p><strong>Corollary 5</strong> (Yoneda Embedding). <em>The functor
+    <span class="math inline">\(\mathsf{y} : \mathcal{C} \to
+    [\mathcal{C}^{\mathrm{op}}, \mathbf{Set}]\)</span> defined by <span
+    class="math inline">\(\mathsf{y}(A) = \mathrm{Hom}(-, A)\)</span> is
+    fully faithful.</em></p>
+    </div>
+    <p>In the context of <span class="smallcaps">Japl</span>’s type
+    system, the Yoneda lemma states that a type <span
+    class="math inline">\(A\)</span> is completely determined (up to
+    isomorphism) by the collection of all functions <em>into</em> <span
+    class="math inline">\(A\)</span> from every other type. Dually,
+    <span class="math inline">\(A\)</span> is determined by all
+    functions <em>from</em> <span class="math inline">\(A\)</span>. This
+    provides the theoretical justification for <span
+    class="smallcaps">Japl</span>’s design principle: if a type is fully
+    characterized by its functions, then functions—not objects with
+    hidden state—are the natural unit of abstraction.</p>
+    <div class="remark">
+    <p><strong>Remark 6</strong> (The Yoneda Perspective on Interfaces).
+    <em>A module signature in <span class="smallcaps">Japl</span>
+    specifies a set of functions involving an abstract type. By the
+    Yoneda lemma, this set of functions <em>is</em> the type—any two
+    implementations that satisfy the same signature are interchangeable.
+    This is the formal basis for abstract data types and modular
+    reasoning.</em></p>
+    </div>
+    <h2 data-number="3.4" id="module-systems-as-functors"><span
+    class="header-section-number">3.4</span> Module Systems as
+    Functors</h2>
+    <p>We model <span class="smallcaps">Japl</span>’s module system
+    categorically.</p>
+    <div class="definition">
+    <p><strong>Definition 7</strong> (Category of Signatures). <em>Let
+    <span class="math inline">\(\mathrm{Sig}\)</span> be the category
+    whose objects are module signatures and whose morphisms are
+    signature refinements (a refinement adds type equalities or
+    strengthens constraints).</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 8</strong> (Category of Modules). <em>Let
+    <span class="math inline">\(\mathrm{Mod}\)</span> be the category
+    whose objects are modules (concrete implementations) and whose
+    morphisms are module homomorphisms (structure-preserving maps
+    between modules).</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 9</strong> (Realization Functor). <em>The
+    <em>realization functor</em> <span class="math inline">\(\mathsf{R}
+    : \mathrm{Sig}\to \mathbf{Cat}\)</span> maps each signature <span
+    class="math inline">\(S\)</span> to the category of all modules that
+    satisfy <span class="math inline">\(S\)</span>.</em></p>
+    </div>
+    <p>A <span class="smallcaps">Japl</span> functor (in the module
+    system sense) is then a morphism in the functor category <span
+    class="math inline">\([\mathrm{Sig}, \mathrm{Mod}]\)</span>: it
+    takes a module satisfying one signature and produces a module
+    satisfying another. This precisely captures the ML tradition of
+    parameterized modules.</p>
+    <div id="prop:functor-composition" class="proposition">
+    <p><strong>Proposition 10</strong> (Functor Composition). <em>If
+    <span class="math inline">\(F : \mathrm{Sig}_A \to
+    \mathrm{Mod}_B\)</span> and <span class="math inline">\(G :
+    \mathrm{Sig}_B \to \mathrm{Mod}_C\)</span> are module functors, then
+    <span class="math inline">\(G \circ F\)</span> is a module functor
+    from <span class="math inline">\(\mathrm{Sig}_A\)</span> to <span
+    class="math inline">\(\mathrm{Mod}_C\)</span>.</em></p>
+    </div>
+    <p>This means that module-level composition has the same algebraic
+    structure as function-level composition: it is associative and has
+    an identity (the identity functor). Composition works the same way
+    at every level of abstraction.</p>
+    <h1 data-number="4" id="sec:japl-composition"><span
+    class="header-section-number">4</span> JAPL’s Composition Model</h1>
+    <p><span class="smallcaps">Japl</span>’s composition model rests on
+    a deliberate <em>separation of concerns</em> that disentangles the
+    concepts OOP conflates.</p>
+    <h2 data-number="4.1" id="the-separation"><span
+    class="header-section-number">4.1</span> The Separation</h2>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Concern</strong></th>
+    <th style="text-align: left;"><strong>OOP Mechanism</strong></th>
+    <th style="text-align: left;"><strong>JAPL Mechanism</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Identity</td>
+    <td style="text-align: left;">Object reference</td>
+    <td style="text-align: left;">Process identifier (PID)</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Behavior</td>
+    <td style="text-align: left;">Methods</td>
+    <td style="text-align: left;">Functions</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Structure</td>
+    <td style="text-align: left;">Class definition</td>
+    <td style="text-align: left;">Algebraic data types</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Time</td>
+    <td style="text-align: left;">Method call ordering</td>
+    <td style="text-align: left;">Recursion / message passing</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Failure</td>
+    <td style="text-align: left;">Exceptions</td>
+    <td style="text-align: left;">Result types / supervision</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Polymorphism</td>
+    <td style="text-align: left;">Inheritance / interfaces</td>
+    <td style="text-align: left;">Traits (type classes)</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Encapsulation</td>
+    <td style="text-align: left;">Private fields</td>
+    <td style="text-align: left;">Opaque types in modules</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Composition</td>
+    <td style="text-align: left;">Inheritance / delegation</td>
+    <td style="text-align: left;">Function composition / pipes</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>Each concern is addressed by a distinct, orthogonal mechanism. No
+    single construct attempts to do everything. This separation is not
+    arbitrary; it reflects the categorical structure of the type system.
+    Functions are morphisms. Types are objects. Traits are natural
+    transformations between hom-functors. Modules are categories. The
+    separation follows from the mathematical decomposition.</p>
+    <h2 data-number="4.2" id="first-class-functions"><span
+    class="header-section-number">4.2</span> First-Class Functions</h2>
+    <p>Functions in <span class="smallcaps">Japl</span> are values. They
+    can be bound to names, passed as arguments, returned from other
+    functions, and stored in data structures.</p>
+    <pre><code>-- Functions as values
+fn transform_orders(orders: List[Order]) -&gt; List[Summary] =
+  orders
+    |&gt; List.filter(fn o -&gt; o.status == Active)
+    |&gt; List.map(summarize)
+    |&gt; List.sort_by(fn s -&gt; s.total)
+
+-- Higher-order functions
+fn apply_twice(f: fn(a) -&gt; a, x: a) -&gt; a =
+  f(f(x))
+
+-- Functions compose
+let process_order =
+  validate_order
+  &gt;&gt; calculate_totals
+  &gt;&gt; apply_discounts
+  &gt;&gt; generate_invoice</code></pre>
+    <p>The key property is that function composition is
+    <em>associative</em>: <span class="math inline">\((f \gg g) \gg h =
+    f \gg (g \gg h)\)</span>. This associativity, combined with the
+    identity function <span class="math inline">\(\mathrm{id}: a \to
+    a\)</span>, makes functions form a <em>category</em>—the category of
+    <span class="smallcaps">Japl</span> types and functions.</p>
+    <h2 data-number="4.3" id="no-method-dispatch"><span
+    class="header-section-number">4.3</span> No Method Dispatch</h2>
+    <p><span class="smallcaps">Japl</span> has no method-first dispatch.
+    Where an OOP language writes <code>user­Repository.save(user)</code>,
+    <span class="smallcaps">Japl</span> writes:</p>
+    <pre><code>-- No this:  userRepository.save(user)
+-- Yes this: save_user(repo, user)
+-- Or sugar: repo |&gt; save_user(user)</code></pre>
+    <p>This is not merely a syntactic preference. Method dispatch
+    entangles the function with the receiver object, creating an
+    asymmetry between the first argument and the rest. In <span
+    class="smallcaps">Japl</span>, all arguments are symmetric. The
+    function <code>save_user</code> is a standalone entity that can be
+    composed, partially applied, and reasoned about independently of any
+    particular repository instance.</p>
+    <h2 data-number="4.4" id="module-level-organization"><span
+    class="header-section-number">4.4</span> Module-Level
+    Organization</h2>
+    <p>Related functions are grouped into modules. A module is a
+    namespace, not an object. It has no state, no identity, no
+    constructor.</p>
+    <pre><code>module UserService =
+  fn create(repo: Repo, data: UserData)
+    -&gt; Result[User, CreateError] with Io =
+    let user = User.from_data(data)
+    Repo.insert(repo, user)
+
+  fn find(repo: Repo, id: UserId)
+    -&gt; Result[User, NotFound] with Io =
+    Repo.get(repo, id)
+
+  fn update(repo: Repo, id: UserId, data: UserData)
+    -&gt; Result[User, UpdateError] with Io =
+    let user = find(repo, id)?
+    let updated = User.apply_update(user, data)
+    Repo.save(repo, updated)</code></pre>
+    <p>The explicit <code>repo</code> parameter replaces the hidden
+    <code>this</code> pointer of OOP. This makes the dependency visible,
+    testable (pass a mock repository as a value), and composable (any
+    function that accepts a <code>Repo</code> can use it).</p>
+    <h2 data-number="4.5" id="the-actor-function-fusion"><span
+    class="header-section-number">4.5</span> The Actor-Function
+    Fusion</h2>
+    <p><span class="smallcaps">Japl</span> cleanly separates two
+    complementary paradigms:</p>
+    <ul>
+    <li><p><strong>Functions</strong> transform values (the logic
+    layer). They are pure, deterministic, and composable.</p></li>
+    <li><p><strong>Processes</strong> own state over time (the
+    concurrency layer). They are identified by PIDs, communicate through
+    typed mailboxes, and are supervised.</p></li>
+    </ul>
+    <p>This separation means that identity—the OOP concept that causes
+    the most trouble for composition—is confined to the process layer.
+    Functions are anonymous transformations; they do not “belong” to any
+    entity. A process delegates its logic to functions but owns the
+    state and manages the flow of time through recursive message
+    handling.</p>
+    <pre><code>-- Pure function: transforms data, no identity
+fn calculate_price(item: Item, qty: Int, discount: Discount) -&gt; Money =
+  let base = Money.multiply(item.price, qty)
+  Discount.apply(discount, base)
+
+-- Process: owns identity and state over time
+fn order_processor(state: OrderState) -&gt; Never with Process[OrderMsg] =
+  match Process.receive() with
+  | NewOrder(order) -&gt;
+      let priced = List.map(order.items, fn item -&gt;
+        { item | total = calculate_price(item, item.qty, order.discount) }
+      )
+      let new_state = { state | pending = Map.insert(state.pending, order.id, priced) }
+      order_processor(new_state)
+  | ConfirmOrder(id, reply) -&gt;
+      match Map.lookup(state.pending, id) with
+      | Some(order) -&gt;
+          Reply.send(reply, Ok(order))
+          order_processor({ state | pending = Map.delete(state.pending, id) })
+      | None -&gt;
+          Reply.send(reply, Err(OrderNotFound(id)))
+          order_processor(state)</code></pre>
+    <p>The process loop is itself a function—a recursive function that
+    takes state and returns <code>Never</code> (it loops forever). Even
+    the unit of concurrency is expressed through function
+    composition.</p>
+    <h1 data-number="5" id="sec:module-system"><span
+    class="header-section-number">5</span> Module System</h1>
+    <h2 data-number="5.1" id="modules-as-namespaces"><span
+    class="header-section-number">5.1</span> Modules as Namespaces</h2>
+    <p>A <span class="smallcaps">Japl</span> module is a named
+    collection of type definitions, function definitions, and
+    sub-modules. Modules serve as the unit of compilation, the unit of
+    namespacing, and the unit of encapsulation.</p>
+    <pre><code>module Map =
+  opaque type Map[k, v]
+
+  fn empty() -&gt; Map[k, v]
+  fn insert(map: Map[k, v], key: k, value: v)
+    -&gt; Map[k, v] where Ord[k]
+  fn lookup(map: Map[k, v], key: k)
+    -&gt; Option[v] where Ord[k]
+  fn delete(map: Map[k, v], key: k)
+    -&gt; Map[k, v] where Ord[k]
+  fn fold(map: Map[k, v], init: acc, f: fn(acc, k, v) -&gt; acc)
+    -&gt; acc</code></pre>
+    <p>The <code>opaque</code> keyword hides the representation type.
+    External code can only interact with <code>Map[k, v]</code> through
+    the functions the module exposes. This achieves the same
+    encapsulation as a class with private fields, but without the
+    baggage of object identity, mutable state, and inheritance.</p>
+    <p>Categorically, an opaque type declaration creates an abstract
+    object in the category of types. The Yoneda lemma guarantees that
+    the abstract type is fully characterized by the functions available
+    on it. Two modules that expose the same functions on an opaque type
+    are observationally equivalent, regardless of their internal
+    representation. This is the formal basis for representation
+    independence.</p>
+    <h2 data-number="5.2" id="signatures-module-types"><span
+    class="header-section-number">5.2</span> Signatures (Module
+    Types)</h2>
+    <p>A signature is a specification of the types and functions a
+    module must provide. Signatures are to modules what types are to
+    values: they classify modules and enable modular reasoning.</p>
+    <pre><code>signature KeyValueStore[k, v] =
+  type Store
+  fn create() -&gt; Store with Io
+  fn get(store: Store, key: k) -&gt; Option[v] with Io
+  fn set(store: Store, key: k, value: v) -&gt; Unit with Io
+  fn delete(store: Store, key: k) -&gt; Unit with Io</code></pre>
+    <p>A module <em>satisfies</em> a signature if it provides all the
+    types and functions the signature requires, with compatible types
+    and effects. This is the module-level analogue of a value inhabiting
+    a type.</p>
+    <pre><code>module RedisStore : KeyValueStore[String, String] =
+  type Store = RedisConnection
+  fn create() -&gt; Store with Io = Redis.connect(default_config)
+  fn get(store, key) with Io = Redis.get(store, key)
+  fn set(store, key, value) with Io = Redis.set(store, key, value)
+  fn delete(store, key) with Io = Redis.del(store, key)
+
+module InMemoryStore : KeyValueStore[String, String] =
+  type Store = Ref[Map[String, String]]
+  fn create() -&gt; Store with Io = Ref.new(Map.empty())
+  fn get(store, key) with Io = Map.lookup(Ref.read(store), key)
+  fn set(store, key, value) with Io =
+    Ref.modify(store, fn m -&gt; Map.insert(m, key, value))
+  fn delete(store, key) with Io =
+    Ref.modify(store, fn m -&gt; Map.delete(m, key))</code></pre>
+    <p>Both <code>RedisStore</code> and <code>InMemoryStore</code>
+    satisfy <code>KeyValueStore[String, String]</code>. Code written
+    against the signature works with either implementation. This is the
+    expression problem solved at the module level: new implementations
+    can be added without modifying existing code.</p>
+    <h2 data-number="5.3" id="simplified-functors"><span
+    class="header-section-number">5.3</span> Simplified Functors</h2>
+    <p><span class="smallcaps">Japl</span> provides simplified
+    functors—module-level functions that take modules as arguments and
+    produce modules as results.</p>
+    <pre><code>-- A functor that adds caching to any KeyValueStore
+module CachedStore(Base: KeyValueStore[k, v])
+  : KeyValueStore[k, v] =
+  type Store = { base: Base.Store, cache: Map[k, v] }
+
+  fn create() -&gt; Store with Io =
+    let base = Base.create()
+    { base = base, cache = Map.empty() }
+
+  fn get(store, key) with Io =
+    match Map.lookup(store.cache, key) with
+    | Some(v) -&gt; Some(v)
+    | None -&gt; Base.get(store.base, key)
+
+  fn set(store, key, value) with Io =
+    Base.set(store.base, key, value)
+
+  fn delete(store, key) with Io =
+    Base.delete(store.base, key)</code></pre>
+    <p>This is a function from modules to modules. The composition
+    <code>CachedStore(RedisStore)</code> produces a new module that
+    satisfies the same signature as its argument. In categorical terms,
+    <code>CachedStore</code> is an endofunctor on the category of
+    modules satisfying <code>KeyValueStore</code>.</p>
+    <p><span class="smallcaps">Japl</span>’s functors are more
+    restricted than OCaml’s full first-class modules. There are no
+    generative functors (each application of a functor to the same
+    argument produces observationally equivalent results) and functors
+    cannot be passed as first-class values in arbitrary contexts. This
+    restriction simplifies the type theory and enables more aggressive
+    compilation, while retaining the most important use case:
+    parameterized libraries.</p>
+    <h2 data-number="5.4" id="package-level-capability-boundaries"><span
+    class="header-section-number">5.4</span> Package-Level Capability
+    Boundaries</h2>
+    <p><span class="smallcaps">Japl</span> packages define capability
+    boundaries. A package declares which effects its public functions
+    may perform, and the compiler verifies that internal functions do
+    not exceed these bounds.</p>
+    <p>This ensures that the public interface of a package has a bounded
+    effect signature, enabling modular reasoning about what a dependency
+    can do. A package that declares only <code>Io</code> and
+    <code>Fail</code> in its public effects cannot perform network
+    access, even if its internal implementation uses <code>Net</code>
+    (the effect must be handled before crossing the package
+    boundary).</p>
+    <h2 data-number="5.5" id="namespaced-function-dispatch"><span
+    class="header-section-number">5.5</span> Namespaced Function
+    Dispatch</h2>
+    <p>Instead of method dispatch on objects, <span
+    class="smallcaps">Japl</span> uses namespaced function dispatch. A
+    function call <code>Map.insert(m, k, v)</code> is resolved
+    statically to the <code>insert</code> function in the
+    <code>Map</code> module. There is no virtual dispatch table, no
+    dynamic lookup, and no ambiguity about which function is called.</p>
+    <pre><code>-- Unambiguous: the module name qualifies the function
+let m1 = Map.insert(Map.empty(), &quot;key&quot;, 42)
+let s1 = Set.insert(Set.empty(), &quot;element&quot;)
+
+-- With use-declaration for convenience
+import Map.{empty, insert, lookup}
+let m2 = insert(empty(), &quot;key&quot;, 42)</code></pre>
+    <p>When a trait is involved, the compiler resolves the
+    implementation based on the types at the call site (see <a
+    href="#sec:traits" data-reference-type="ref+Label"
+    data-reference="sec:traits">6</a>). This is static dispatch:
+    resolved at compile time, with zero runtime overhead.</p>
+    <h1 data-number="6" id="sec:traits"><span
+    class="header-section-number">6</span> Traits and Type Classes</h1>
+    <h2 data-number="6.1" id="trait-declarations"><span
+    class="header-section-number">6.1</span> Trait Declarations</h2>
+    <p>A trait in <span class="smallcaps">Japl</span> declares a set of
+    function signatures parameterized by one or more type variables.
+    Traits provide <em>ad-hoc polymorphism</em>: the ability to define
+    functions that behave differently on different types, without
+    inheritance.</p>
+    <pre><code>trait Eq[a] =
+  fn eq(x: a, y: a) -&gt; Bool
+
+trait Ord[a] where Eq[a] =
+  fn compare(x: a, y: a) -&gt; Ordering
+
+trait Show[a] =
+  fn show(value: a) -&gt; String
+
+trait Serialize[a] =
+  fn serialize(value: a) -&gt; Bytes
+  fn deserialize(data: Bytes) -&gt; Result[a, DecodeError]
+
+trait Functor[f] =
+  fn map(fa: f[a], func: fn(a) -&gt; b) -&gt; f[b]</code></pre>
+    <p>The <code>where</code> clause in <code>Ord</code> establishes a
+    superclass constraint: any type that is <code>Ord</code> must also
+    be <code>Eq</code>. This forms a hierarchy of capabilities, not a
+    hierarchy of implementations.</p>
+    <h2 data-number="6.2" id="trait-implementations"><span
+    class="header-section-number">6.2</span> Trait Implementations</h2>
+    <p>Implementations are provided separately from both the trait
+    declaration and the type definition:</p>
+    <pre><code>type Point = { x: Float, y: Float }
+
+impl Eq[Point] =
+  fn eq(p1, p2) = p1.x == p2.x &amp;&amp; p1.y == p2.y
+
+impl Show[Point] =
+  fn show(p) =
+    &quot;(&quot; ++ Float.show(p.x) ++ &quot;, &quot; ++ Float.show(p.y) ++ &quot;)&quot;
+
+impl Serialize[Point] =
+  fn serialize(p) =
+    Bytes.concat([Float.to_bytes(p.x), Float.to_bytes(p.y)])
+  fn deserialize(data) =
+    let x = Float.from_bytes(Bytes.slice(data, 0, 8))?
+    let y = Float.from_bytes(Bytes.slice(data, 8, 16))?
+    Ok({ x = x, y = y })</code></pre>
+    <p>This three-way separation—type definition, trait declaration, and
+    trait implementation as independent declarations—is the key
+    advantage over OOP interfaces. In Java, implementing an interface
+    requires modifying the class definition. In <span
+    class="smallcaps">Japl</span>, implementations can be added to
+    existing types without modifying either the type or the trait. This
+    is the open-world assumption of type classes, which directly solves
+    the expression problem.</p>
+    <h2 data-number="6.3" id="coherence-and-orphan-rules"><span
+    class="header-section-number">6.3</span> Coherence and Orphan
+    Rules</h2>
+    <p><span class="smallcaps">Japl</span> enforces <em>coherence</em>:
+    for any type <span class="math inline">\(T\)</span> and trait <span
+    class="math inline">\(C\)</span>, there is at most one
+    implementation of <span class="math inline">\(C[T]\)</span> in the
+    entire program. This is enforced by the <em>orphan rule</em>: an
+    implementation of <span class="math inline">\(C[T]\)</span> must be
+    defined either in the module that defines <span
+    class="math inline">\(C\)</span> or in the module that defines <span
+    class="math inline">\(T\)</span>.</p>
+    <div class="definition">
+    <p><strong>Definition 11</strong> (Coherence). <em>A trait system is
+    <em>coherent</em> if for every type <span
+    class="math inline">\(\tau\)</span> and trait <span
+    class="math inline">\(C\)</span>, at most one instance <span
+    class="math inline">\(C[\tau]\)</span> is in scope at any program
+    point.</em></p>
+    </div>
+    <p>Coherence ensures that trait resolution is deterministic: the
+    compiler always selects the same implementation for the same type,
+    regardless of which module the call appears in. This is essential
+    for separate compilation and for the correctness of
+    monomorphization.</p>
+    <p>The orphan rule is a pragmatic constraint that trades some
+    flexibility (you cannot define an implementation for a foreign type
+    with a foreign trait) for global coherence. In practice, the newtype
+    pattern provides a workaround:</p>
+    <pre><code>-- Cannot implement ForeignTrait for ForeignType directly.
+-- Wrap in a newtype:
+type MyWrapper = MyWrapper(ForeignType)
+
+impl ForeignTrait[MyWrapper] =
+  fn method(MyWrapper(inner)) = ...</code></pre>
+    <h2 data-number="6.4" id="default-implementations"><span
+    class="header-section-number">6.4</span> Default
+    Implementations</h2>
+    <p>Traits may provide default implementations for some of their
+    functions, expressed in terms of other functions in the trait:</p>
+    <pre><code>trait Eq[a] =
+  fn eq(x: a, y: a) -&gt; Bool
+  fn neq(x: a, y: a) -&gt; Bool = not(eq(x, y))
+
+trait Ord[a] where Eq[a] =
+  fn compare(x: a, y: a) -&gt; Ordering
+  fn lt(x: a, y: a) -&gt; Bool =
+    compare(x, y) == Less
+  fn gt(x: a, y: a) -&gt; Bool =
+    compare(x, y) == Greater
+  fn lte(x: a, y: a) -&gt; Bool =
+    compare(x, y) != Greater
+  fn gte(x: a, y: a) -&gt; Bool =
+    compare(x, y) != Less</code></pre>
+    <p>An implementation may override any default. Defaults reduce
+    boilerplate while keeping the trait system purely
+    function-based—there is no “method inheritance” in the OOP sense. A
+    default implementation is simply a function defined in terms of
+    other functions in the same trait; it carries no implicit state, no
+    hidden dispatch, and no fragile base class problem.</p>
+    <h2 data-number="6.5" id="deriving"><span
+    class="header-section-number">6.5</span> Deriving</h2>
+    <p>For common traits (<code>Eq</code>, <code>Ord</code>,
+    <code>Show</code>, <code>Serialize</code>), the compiler can
+    automatically derive implementations from the structure of algebraic
+    data types:</p>
+    <pre><code>type Color deriving(Eq, Ord, Show, Serialize) =
+  | Red
+  | Green
+  | Blue
+  | Custom(Int, Int, Int)</code></pre>
+    <p>Deriving is a compile-time mechanism that generates function
+    implementations. It does not introduce any runtime machinery or
+    hidden state. The generated implementations follow structural
+    recursion over the type definition: for sum types, they dispatch on
+    the constructor tag; for product types, they compose the
+    implementations for each field.</p>
+    <h2 data-number="6.6"
+    id="categorical-interpretation-of-traits"><span
+    class="header-section-number">6.6</span> Categorical Interpretation
+    of Traits</h2>
+    <p>In categorical terms, a trait <span
+    class="math inline">\(C\)</span> defines a subcategory of <span
+    class="math inline">\(\mathbf{Type}\)</span>: the full subcategory
+    of types that have an implementation of <span
+    class="math inline">\(C\)</span>. A trait-constrained function <span
+    class="math inline">\(f : a \to b \;\texttt{where}\; C[a]\)</span>
+    is a morphism defined on this subcategory.</p>
+    <div class="proposition">
+    <p><strong>Proposition 12</strong> (Traits as Natural
+    Transformations). <em>A polymorphic function <span
+    class="math inline">\(f : \forall a.\, C[a] \Rightarrow F(a) \to
+    G(a)\)</span>, where <span class="math inline">\(F\)</span> and
+    <span class="math inline">\(G\)</span> are type constructors,
+    corresponds to a natural transformation <span
+    class="math inline">\(\eta : F \Rightarrow G\)</span> in the
+    subcategory of types satisfying <span
+    class="math inline">\(C\)</span>.</em></p>
+    </div>
+    <p>This perspective clarifies why traits compose well: natural
+    transformations compose (vertically and horizontally), and the
+    composition of trait-constrained functions preserves the trait
+    constraints. When we compose <span class="math inline">\(f : \forall
+    a.\, C[a] \Rightarrow F(a) \to G(a)\)</span> with <span
+    class="math inline">\(g : \forall a.\, C[a] \Rightarrow G(a) \to
+    H(a)\)</span>, we obtain <span class="math inline">\(g \circ f :
+    \forall a.\, C[a] \Rightarrow F(a) \to H(a)\)</span>—the constraint
+    <span class="math inline">\(C[a]\)</span> is preserved, and the
+    composition is a natural transformation <span
+    class="math inline">\(F \Rightarrow H\)</span>.</p>
+    <h1 data-number="7" id="sec:pattern-matching"><span
+    class="header-section-number">7</span> Pattern Matching</h1>
+    <h2 data-number="7.1"
+    id="patterns-as-the-primary-control-flow"><span
+    class="header-section-number">7.1</span> Patterns as the Primary
+    Control Flow</h2>
+    <p><span class="smallcaps">Japl</span> uses pattern matching as the
+    primary mechanism for control flow, data decomposition, and case
+    analysis. Pattern matching replaces the cascades of
+    <code>if-else</code> chains, type-checking conditionals, and visitor
+    patterns found in OOP languages.</p>
+    <pre><code>type Expr =
+  | Lit(Int)
+  | Add(Expr, Expr)
+  | Mul(Expr, Expr)
+  | Neg(Expr)
+
+fn eval(expr: Expr) -&gt; Int =
+  match expr with
+  | Lit(n) -&gt; n
+  | Add(a, b) -&gt; eval(a) + eval(b)
+  | Mul(a, b) -&gt; eval(a) * eval(b)
+  | Neg(e) -&gt; -(eval(e))</code></pre>
+    <p>Compare this with the OOP visitor pattern for the same task,
+    which requires an <code>ExprVisitor</code> interface, an
+    <code>accept</code> method on every variant, and concrete visitor
+    implementations. The pattern match is simultaneously more concise,
+    more readable, and more amenable to exhaustiveness checking.</p>
+    <h2 data-number="7.2" id="exhaustiveness-checking"><span
+    class="header-section-number">7.2</span> Exhaustiveness
+    Checking</h2>
+    <p>The <span class="smallcaps">Japl</span> compiler verifies that
+    pattern matches are <em>exhaustive</em>: every possible value of the
+    scrutinee type is covered by at least one pattern. This is a static
+    guarantee that no case is missed.</p>
+    <pre><code>fn describe(shape: Shape) -&gt; String =
+  match shape with
+  | Circle(r) -&gt; &quot;circle with radius &quot; ++ Float.show(r)
+  | Rectangle(w, h) -&gt;
+      &quot;rectangle &quot; ++ Float.show(w) ++ &quot;x&quot; ++ Float.show(h)
+  -- Compile error: non-exhaustive match, missing Triangle</code></pre>
+    <p>Exhaustiveness checking is based on the theory of algebraic data
+    types. A sum type with constructors <span class="math inline">\(C_1,
+    C_2, \ldots, C_n\)</span> is exhaustively matched if and only if
+    every constructor is covered. The algorithm follows Maranget <span
+    class="citation" data-cites="maranget2008compiling"></span>.</p>
+    <p>Formally, let <span class="math inline">\(\mathcal{P} = \{P_1,
+    \ldots, P_m\}\)</span> be the set of patterns in a match expression
+    and <span class="math inline">\(\mathcal{V}\)</span> the set of all
+    possible values of the scrutinee type. The match is exhaustive if
+    and only if <span class="math inline">\(\bigcup_{i=1}^{m} \llbracket
+    P_i \rrbracket = \mathcal{V}\)</span>, where <span
+    class="math inline">\(\llbracket P_i \rrbracket\)</span> denotes the
+    set of values matched by pattern <span
+    class="math inline">\(P_i\)</span>. The compiler computes this by
+    constructing a <em>pattern matrix</em> and checking that its
+    complement is empty.</p>
+    <h2 data-number="7.3" id="nested-patterns"><span
+    class="header-section-number">7.3</span> Nested Patterns</h2>
+    <p>Patterns can be nested arbitrarily, matching deep structure in a
+    single expression:</p>
+    <pre><code>fn simplify(expr: Expr) -&gt; Expr =
+  match expr with
+  | Add(Lit(0), e) -&gt; simplify(e)
+  | Add(e, Lit(0)) -&gt; simplify(e)
+  | Mul(Lit(0), _) -&gt; Lit(0)
+  | Mul(_, Lit(0)) -&gt; Lit(0)
+  | Mul(Lit(1), e) -&gt; simplify(e)
+  | Mul(e, Lit(1)) -&gt; simplify(e)
+  | Add(a, b) -&gt; Add(simplify(a), simplify(b))
+  | Mul(a, b) -&gt; Mul(simplify(a), simplify(b))
+  | Neg(Neg(e)) -&gt; simplify(e)
+  | Neg(e) -&gt; Neg(simplify(e))
+  | Lit(n) -&gt; Lit(n)</code></pre>
+    <p>Nested patterns compose: if <span
+    class="math inline">\(P_1\)</span> matches structure at depth <span
+    class="math inline">\(d_1\)</span> and <span
+    class="math inline">\(P_2\)</span> matches at depth <span
+    class="math inline">\(d_2\)</span>, their nesting matches at depth
+    <span class="math inline">\(d_1 + d_2\)</span>. This compositional
+    property is a direct consequence of the recursive structure of
+    algebraic data types.</p>
+    <h2 data-number="7.4" id="guard-clauses"><span
+    class="header-section-number">7.4</span> Guard Clauses</h2>
+    <p>Guards add boolean conditions to patterns:</p>
+    <pre><code>fn classify_temperature(temp: Float) -&gt; String =
+  match temp with
+  | t if t &lt; 0.0 -&gt; &quot;freezing&quot;
+  | t if t &lt; 15.0 -&gt; &quot;cold&quot;
+  | t if t &lt; 25.0 -&gt; &quot;comfortable&quot;
+  | t if t &lt; 35.0 -&gt; &quot;warm&quot;
+  | _ -&gt; &quot;hot&quot;
+
+fn fibonacci(n: Int) -&gt; Int =
+  match n with
+  | 0 -&gt; 0
+  | 1 -&gt; 1
+  | n if n &gt; 1 -&gt; fibonacci(n - 1) + fibonacci(n - 2)
+  | _ -&gt; 0  -- negative input</code></pre>
+    <p>Guards weaken the exhaustiveness guarantee (the compiler cannot
+    in general decide whether guards cover all cases), so <span
+    class="smallcaps">Japl</span> requires a catch-all pattern when
+    guards are used on a sum type.</p>
+    <h2 data-number="7.5" id="pattern-composition"><span
+    class="header-section-number">7.5</span> Pattern Composition</h2>
+    <p>Patterns compose with other language features:</p>
+    <pre><code>-- Pattern matching in let bindings
+let { x, y } = point
+let [first, ..rest] = items
+
+-- Pattern matching in function arguments
+fn fst((a, _): (a, b)) -&gt; a = a
+fn head([x, .._]: List[a]) -&gt; a = x
+
+-- Pattern matching in pipelines
+let adults =
+  users
+  |&gt; List.filter(fn { name, age } -&gt; age &gt;= 18)
+  |&gt; List.map(fn { name, .. } -&gt; name)</code></pre>
+    <p>The compositionality of patterns—their ability to nest, combine
+    with guards, and appear in multiple syntactic positions—is a direct
+    benefit of the function-centric design. Patterns are not a special
+    case grafted onto an object system; they are a core mechanism that
+    integrates seamlessly with functions, types, and modules.</p>
+    <h1 data-number="8" id="sec:pipes"><span
+    class="header-section-number">8</span> Pipe and Composition
+    Operators</h1>
+    <h2 data-number="8.1" id="the-pipe-operator"><span
+    class="header-section-number">8.1</span> The Pipe Operator</h2>
+    <p>The pipe operator <span class="math inline">\(|&gt;\)</span>
+    passes the result of the left-hand expression as the first argument
+    to the right-hand function:</p>
+    <p><span class="math display">\[x \;|\!&gt;\;f \equiv
+    f(x)\]</span></p>
+    <pre><code>-- Without pipes
+let result =
+  sort_by(map(filter(orders, is_active), summarize), by_total)
+
+-- With pipes
+let result =
+  orders
+  |&gt; filter(is_active)
+  |&gt; map(summarize)
+  |&gt; sort_by(by_total)</code></pre>
+    <p>The pipe operator linearizes nested function calls into a
+    left-to-right data flow pipeline. This is not merely syntactic
+    sugar; it reflects a fundamental shift in how composition is
+    expressed. In the pipe style, data flows <em>through</em> a sequence
+    of transformations, and the transformations are first-class
+    functions that can be named, reused, and tested independently.</p>
+    <p>The pipe operator originates from the Unix shell tradition of
+    piping the output of one command into the input of the next. In the
+    programming language world, it was popularized by F#, adopted by
+    Elixir, OCaml (since 4.01), and Elm, and has influenced the design
+    of many modern languages including Gleam and Roc.</p>
+    <h2 data-number="8.2" id="function-composition"><span
+    class="header-section-number">8.2</span> Function Composition</h2>
+    <p>The composition operator <span class="math inline">\(\gg\)</span>
+    composes two functions into a new function:</p>
+    <p><span class="math display">\[(f \gg g)(x) \equiv
+    g(f(x))\]</span></p>
+    <pre><code>-- Point-free style using composition
+let process_order =
+  validate_order
+  &gt;&gt; calculate_totals
+  &gt;&gt; apply_discounts
+  &gt;&gt; generate_invoice
+
+-- Equivalent to:
+fn process_order(order: Order) -&gt; Invoice =
+  generate_invoice(
+    apply_discounts(
+      calculate_totals(
+        validate_order(order))))</code></pre>
+    <p>The composition operator produces a new function without
+    mentioning its argument. This is the <em>point-free</em> or
+    <em>tacit</em> style, which emphasizes the pipeline structure rather
+    than the data flowing through it.</p>
+    <p>Note that <span class="smallcaps">Japl</span> uses <span
+    class="math inline">\(\gg\)</span> (forward composition) rather than
+    Haskell’s <span class="math inline">\(.\)</span> (backward
+    composition). This ensures that both the pipe operator and the
+    composition operator read left-to-right, matching the natural
+    reading order and the data flow direction. Consistency of direction
+    reduces cognitive load.</p>
+    <h2 data-number="8.3" id="algebraic-properties"><span
+    class="header-section-number">8.3</span> Algebraic Properties</h2>
+    <p>Both operators satisfy the expected algebraic laws:</p>
+    <div class="theorem">
+    <p><strong>Theorem 13</strong> (Pipe-Composition Equivalence).
+    <em>For all functions <span class="math inline">\(f : A \to
+    B\)</span>, <span class="math inline">\(g : B \to C\)</span>, and
+    values <span class="math inline">\(x : A\)</span>: <span
+    class="math display">\[x \;|\!&gt;\;f \;|\!&gt;\;g = (f \gg g)(x) =
+    g(f(x))\]</span></em></p>
+    </div>
+    <div class="theorem">
+    <p><strong>Theorem 14</strong> (Composition Associativity). <em>For
+    all functions <span class="math inline">\(f : A \to B\)</span>,
+    <span class="math inline">\(g : B \to C\)</span>, <span
+    class="math inline">\(h : C \to D\)</span>: <span
+    class="math display">\[(f \gg g) \gg h = f \gg (g \gg
+    h)\]</span></em></p>
+    </div>
+    <div class="theorem">
+    <p><strong>Theorem 15</strong> (Composition Identity). <em>For the
+    identity function <span class="math inline">\(\mathrm{id}: A \to
+    A\)</span> and any <span class="math inline">\(f : A \to B\)</span>:
+    <span class="math display">\[\mathrm{id}\gg f = f = f \gg
+    \mathrm{id}\]</span></em></p>
+    </div>
+    <p>These three properties—associativity, identity, and the
+    pipe-composition equivalence—establish that <span
+    class="smallcaps">Japl</span>’s function composition forms a
+    category, and the pipe operator is a convenient notation for
+    morphism application in that category.</p>
+    <h2 data-number="8.4" id="pipes-and-effects"><span
+    class="header-section-number">8.4</span> Pipes and Effects</h2>
+    <p>A critical design decision is that the pipe operator respects
+    <span class="smallcaps">Japl</span>’s effect system. The typing rule
+    for the pipe operator is: <span class="math display">\[\frac{\Gamma
+    \vdash e : A \;\texttt{with}\; E_0 \qquad \Gamma \vdash f : A \to B
+    \;\texttt{with}\; E_1}{\Gamma \vdash e \;|\!&gt;\;f : B
+    \;\texttt{with}\; E_0 \cup E_1}\]</span> That is, the pipe evaluates
+    the left-hand expression <span class="math inline">\(e\)</span>
+    (which may itself perform effects <span
+    class="math inline">\(E_0\)</span>), then applies the function <span
+    class="math inline">\(f\)</span> (which may perform effects <span
+    class="math inline">\(E_1\)</span>), and the combined expression has
+    the union of both effect sets. Chaining pipes accumulates effects:
+    if <span class="math inline">\(f\)</span> has effect <span
+    class="math inline">\(E_1\)</span> and <span
+    class="math inline">\(g\)</span> has effect <span
+    class="math inline">\(E_2\)</span>, then <span
+    class="math inline">\(x \;|\!&gt;\;f \;|\!&gt;\;g\)</span> has
+    effect <span class="math inline">\(E_1 \cup E_2\)</span> (assuming
+    <span class="math inline">\(x\)</span> is pure):</p>
+    <pre><code>fn process_request(req: Request)
+  -&gt; Response with Io, Net, Fail[AppError] =
+  req
+  |&gt; parse_body              -- with Fail[ParseError]
+  |&gt; validate                -- pure
+  |&gt; fetch_related_data      -- with Io, Net
+  |&gt; format_response         -- pure</code></pre>
+    <p>The effect of the pipeline is the union of the effects of its
+    stages. This compositionality of effects through pipes is a theorem
+    of <span class="smallcaps">Japl</span>’s effect system.</p>
+    <div class="proposition">
+    <p><strong>Proposition 16</strong> (Effect Compositionality of
+    Pipes). <em>If <span class="math inline">\(f : A \to B
+    \;\texttt{with}\; E_1\)</span> and <span class="math inline">\(g : B
+    \to C \;\texttt{with}\; E_2\)</span>, then <span
+    class="math inline">\(x \;|\!&gt;\;f \;|\!&gt;\;g : C
+    \;\texttt{with}\; E_1 \cup E_2\)</span>.</em></p>
+    </div>
+    <h2 data-number="8.5" id="partial-application-and-pipes"><span
+    class="header-section-number">8.5</span> Partial Application and
+    Pipes</h2>
+    <p>The pipe operator interacts elegantly with partial application.
+    When a multi-argument function is used in a pipe, the piped value
+    fills the first argument, and the remaining arguments are supplied
+    inline:</p>
+    <pre><code>-- List.filter has type: fn(List[a], fn(a) -&gt; Bool) -&gt; List[a]
+-- In a pipe, the first argument (the list) comes from the pipe:
+users
+  |&gt; List.filter(fn u -&gt; u.active)
+  |&gt; List.map(fn u -&gt; u.name)
+  |&gt; List.sort_by(String.length)</code></pre>
+    <p>This convention—piping into the first argument—is consistent
+    across all <span class="smallcaps">Japl</span> standard library
+    functions. Data structures are always the first parameter, enabling
+    uniform pipeline syntax. This is a deliberate design choice that
+    distinguishes <span class="smallcaps">Japl</span> from Haskell
+    (where the data structure is typically the last argument, optimized
+    for currying) and aligns with Elixir, F#, and OCaml conventions.</p>
+    <h1 data-number="9" id="sec:comparison"><span
+    class="header-section-number">9</span> Comparison with Related
+    Languages</h1>
+    <p>We compare <span class="smallcaps">Japl</span>’s function-centric
+    composition model with six languages spanning the design space.</p>
+    <h2 data-number="9.1" id="haskell-powerful-but-complex"><span
+    class="header-section-number">9.1</span> Haskell: Powerful but
+    Complex</h2>
+    <p>Haskell <span class="citation"
+    data-cites="peyton2003haskell"></span> shares <span
+    class="smallcaps">Japl</span>’s commitment to functions as the
+    primary compositional unit. Haskell’s type classes, higher-kinded
+    types, and algebraic data types provide a rich framework for
+    function-centric design.</p>
+    <p>However, Haskell’s composition model is complicated by several
+    factors:</p>
+    <ul>
+    <li><p><strong>Monad transformers:</strong> Composing effects
+    requires stacking monad transformers
+    (<code>ReaderT r (StateT s (ExceptT e IO))</code>), which produces
+    opaque type signatures and requires <code>lift</code>
+    operations.</p></li>
+    <li><p><strong>Laziness:</strong> Lazy evaluation makes performance
+    reasoning non-local. A composed pipeline may build up unevaluated
+    thunks, leading to space leaks.</p></li>
+    <li><p><strong>Multiple composition mechanisms:</strong> Type
+    classes, modules, <code>newtype</code> wrappers, existential types,
+    and type families provide overlapping ways to achieve polymorphism
+    and abstraction, creating choice paralysis.</p></li>
+    <li><p><strong>Weak module system:</strong> Haskell modules are
+    essentially namespaces with import/export control. They lack the
+    signature/functor abstraction of ML modules, which limits modular
+    composition at the large scale.</p></li>
+    </ul>
+    <p><span class="smallcaps">Japl</span> addresses these by using
+    algebraic effects instead of monad transformers, strict evaluation
+    for predictable performance, a deliberately smaller set of
+    composition mechanisms, and ML-style modules with signatures.</p>
+    <h2 data-number="9.2" id="ocaml-ml-modules-are-excellent"><span
+    class="header-section-number">9.2</span> OCaml: ML Modules Are
+    Excellent</h2>
+    <p>OCaml <span class="citation" data-cites="leroy2020ocaml"></span>
+    has the best module system in production use. Its functors enable
+    powerful parameterized abstraction (e.g.,
+    <code>Map.Make(Ord)</code>).</p>
+    <p><span class="smallcaps">Japl</span> draws heavily from OCaml’s
+    design but makes three simplifications:</p>
+    <ul>
+    <li><p><strong>No object system:</strong> OCaml includes a full
+    object-oriented layer (<code>class</code>, <code>object</code>,
+    structural subtyping), which adds complexity. <span
+    class="smallcaps">Japl</span> omits it entirely.</p></li>
+    <li><p><strong>Effect tracking:</strong> OCaml functions can perform
+    arbitrary side effects. <span class="smallcaps">Japl</span> tracks
+    effects in the type system, enabling stronger compositional
+    reasoning.</p></li>
+    <li><p><strong>Simplified functors:</strong> <span
+    class="smallcaps">Japl</span>’s module functors are more restricted
+    than OCaml’s (no generative functors, no first-class modules as a
+    general feature), trading some expressiveness for simplicity and
+    predictability.</p></li>
+    </ul>
+    <h2 data-number="9.3" id="rust-traits-plus-closures"><span
+    class="header-section-number">9.3</span> Rust: Traits Plus
+    Closures</h2>
+    <p>Rust <span class="citation" data-cites="matsakis2014rust"></span>
+    demonstrates that trait-based polymorphism can achieve zero-cost
+    abstraction. Rust’s closures are first-class, and its trait system
+    supports generic programming without inheritance.</p>
+    <p>However, Rust’s composition model is complicated by ownership and
+    lifetimes. A closure that captures a reference must track the
+    lifetime of that reference, leading to significant signature
+    complexity. The distinction between <code>Fn</code>,
+    <code>FnMut</code>, and <code>FnOnce</code> traits means that Rust
+    has three kinds of function types, each with different composition
+    rules. <span class="smallcaps">Japl</span> avoids this for most code
+    by using garbage collection for the pure layer, restricting
+    ownership tracking to the resource layer where it is necessary.</p>
+    <p>Rust also lacks a module system in the ML sense. Rust’s modules
+    are namespaces; traits serve as the abstraction mechanism. This
+    means Rust cannot express “a module parameterized by another module”
+    directly—the closest approximation uses generic parameters with
+    trait bounds, which is less expressive than ML functors.</p>
+    <h2 data-number="9.4" id="go-interfaces-plus-functions"><span
+    class="header-section-number">9.4</span> Go: Interfaces Plus
+    Functions</h2>
+    <p>Go <span class="citation" data-cites="pike2012go"></span> takes a
+    minimalist approach: interfaces for polymorphism, functions for
+    behavior, packages for organization. Go’s composition model is
+    simple and practical.</p>
+    <p>Go’s limitations for function-centric composition:</p>
+    <ul>
+    <li><p><strong>No algebraic data types:</strong> Sum types must be
+    encoded using interfaces with unexported methods, losing
+    exhaustiveness checking.</p></li>
+    <li><p><strong>No pattern matching:</strong> Case analysis requires
+    type switches, which are less composable than pattern
+    matching.</p></li>
+    <li><p><strong>No function composition operator:</strong> Functions
+    compose only by nesting calls or defining wrapper
+    functions.</p></li>
+    <li><p><strong>No generics until recently:</strong> Go lacked
+    parametric polymorphism until version 1.18, forcing the use of empty
+    interfaces and runtime type assertions.</p></li>
+    <li><p><strong>Nil:</strong> The presence of nil as a valid value
+    for interfaces, pointers, slices, maps, channels, and functions
+    undermines the type system’s compositional guarantees.</p></li>
+    </ul>
+    <h2 data-number="9.5" id="erlang-modules-plus-functions"><span
+    class="header-section-number">9.5</span> Erlang: Modules Plus
+    Functions</h2>
+    <p>Erlang <span class="citation"
+    data-cites="armstrong2007programming"></span> is the closest
+    existing language to <span class="smallcaps">Japl</span>’s
+    composition philosophy: functions are the primary unit, modules
+    group functions, and processes handle state and concurrency. <span
+    class="smallcaps">Japl</span>’s process model is directly inspired
+    by Erlang.</p>
+    <p>Erlang’s limitations:</p>
+    <ul>
+    <li><p><strong>Dynamic typing:</strong> No compile-time guarantees
+    about function compositions. A pipeline that type-checks in <span
+    class="smallcaps">Japl</span> may fail at runtime in Erlang with a
+    <code>badmatch</code> or <code>function_clause</code>
+    error.</p></li>
+    <li><p><strong>No traits/type classes:</strong> Ad-hoc polymorphism
+    is achieved through conventions (e.g., behaviours) rather than
+    through the type system. Behaviours are checked by Dialyzer but not
+    by the compiler.</p></li>
+    <li><p><strong>Limited pattern expressiveness:</strong> Erlang
+    patterns cannot express type-level constraints or guard against
+    effect violations.</p></li>
+    <li><p><strong>No pipe operator:</strong> Erlang requires nested
+    function calls, which become unreadable for long pipelines (though
+    Elixir, which runs on the same VM, adds the pipe operator).</p></li>
+    </ul>
+    <h2 data-number="9.6" id="scala-converging-toward-simplicity"><span
+    class="header-section-number">9.6</span> Scala: Converging Toward
+    Simplicity</h2>
+    <p>Scala <span class="citation"
+    data-cites="odersky2004scala"></span> provides a rich set of
+    composition mechanisms: classes, traits (OOP-style with mixin
+    composition), abstract types, path-dependent types, implicits (Scala
+    2) / givens (Scala 3), extension methods, type classes (encoded via
+    implicits/givens), package objects, case classes, extractors, and
+    more.</p>
+    <p>Scala 3 <span class="citation"
+    data-cites="odersky2021scala3"></span> represents a significant
+    simplification effort that addresses many of the concerns present in
+    Scala 2. The replacement of implicits with the more structured
+    <code>given</code>/<code>using</code> mechanism makes type class
+    patterns more explicit and less error-prone. Scala 3’s union types,
+    intersection types, and opaque type aliases bring it closer to the
+    algebraic type tradition. Extension methods provide a cleaner
+    alternative to implicit conversions. Enums with pattern matching
+    offer ergonomic algebraic data types. These improvements demonstrate
+    a genuine convergence toward function-centric principles.</p>
+    <p>Nevertheless, Scala 3 retains the full OOP layer (classes,
+    inheritance, mutable state) alongside its functional features. The
+    availability of multiple composition styles—OOP inheritance and
+    functional composition coexisting in the same language—still creates
+    a meta-problem of choosing which mechanism to use, and Scala
+    codebases may mix styles within a single project.</p>
+    <p><span class="smallcaps">Japl</span> takes a more opinionated
+    approach: provide one primary composition mechanism (functions) with
+    well-designed supporting mechanisms (modules, traits, patterns,
+    pipes), and make the choice obvious. This trades Scala’s flexibility
+    for consistency—there is no question of whether to use a class
+    hierarchy or a function pipeline, because only the latter is
+    available. Whether this trade-off is worthwhile depends on the
+    project context; <span class="smallcaps">Japl</span> is designed for
+    the case where compositional clarity is paramount.</p>
+    <h2 data-number="9.7" id="summary"><span
+    class="header-section-number">9.7</span> Summary</h2>
+    <div id="tab:comparison">
+    <table>
+    <caption>Composition mechanisms across languages</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Language</strong></th>
+    <th style="text-align: left;"><strong>Primary Unit</strong></th>
+    <th style="text-align: left;"><strong>Polymorphism</strong></th>
+    <th style="text-align: left;"><strong>Modularity</strong></th>
+    <th style="text-align: left;"><strong>Composition</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><span
+    class="smallcaps">Japl</span></td>
+    <td style="text-align: left;">Function</td>
+    <td style="text-align: left;">Traits</td>
+    <td style="text-align: left;">Modules + signatures</td>
+    <td style="text-align: left;">Pipe + <span
+    class="math inline">\(\gg\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Haskell</td>
+    <td style="text-align: left;">Function</td>
+    <td style="text-align: left;">Type classes</td>
+    <td style="text-align: left;">Modules (limited)</td>
+    <td style="text-align: left;"><code>.</code> + <code>$</code></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">OCaml</td>
+    <td style="text-align: left;">Function</td>
+    <td style="text-align: left;">Modules + functors</td>
+    <td style="text-align: left;">ML modules</td>
+    <td style="text-align: left;"><code>|&gt;</code> +
+    <code>@@</code></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Rust</td>
+    <td style="text-align: left;">Function + trait method</td>
+    <td style="text-align: left;">Traits</td>
+    <td style="text-align: left;">Crates + modules</td>
+    <td style="text-align: left;">Closures + traits</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Go</td>
+    <td style="text-align: left;">Function</td>
+    <td style="text-align: left;">Interfaces</td>
+    <td style="text-align: left;">Packages</td>
+    <td style="text-align: left;">Nesting</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Erlang</td>
+    <td style="text-align: left;">Function</td>
+    <td style="text-align: left;">Behaviours</td>
+    <td style="text-align: left;">Modules</td>
+    <td style="text-align: left;">Nesting</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Scala</td>
+    <td style="text-align: left;">Method + function</td>
+    <td style="text-align: left;">Traits + givens</td>
+    <td style="text-align: left;">Objects + packages</td>
+    <td style="text-align: left;">Multiple</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h1 data-number="10" id="sec:anti-pattern"><span
+    class="header-section-number">10</span> The Anti-Pattern: OOP
+    Composition</h1>
+    <h2 data-number="10.1" id="inheritance-as-composition"><span
+    class="header-section-number">10.1</span> Inheritance as
+    Composition</h2>
+    <p>Inheritance was proposed as the primary composition mechanism of
+    OOP <span class="citation" data-cites="cook1989inheritance"></span>.
+    The idea is that a subclass inherits and extends the behavior of its
+    superclass. In practice, this creates several well-documented
+    problems.</p>
+    <h3 data-number="10.1.1" id="the-fragile-base-class-problem"><span
+    class="header-section-number">10.1.1</span> The Fragile Base Class
+    Problem</h3>
+    <p>Modifying a base class can break subclasses in subtle ways
+    because the subclass depends on implementation details of the base
+    class, not just its interface <span class="citation"
+    data-cites="mikhajlov1998study"></span>. This is an
+    <em>anti-compositional</em> property: the behavior of the composed
+    system (subclass) is not determined solely by the interfaces of its
+    components.</p>
+    <div class="example">
+    <p><strong>Example 17</strong> (Fragile Base Class). <em>Consider a
+    base class <code>HashSet</code> with methods <code>add(item)</code>
+    and <code>addAll(items)</code> where <code>addAll</code> calls
+    <code>add</code> in a loop. A subclass <code>CountingSet</code>
+    overrides <code>add</code> to increment a counter. If the base class
+    changes <code>addAll</code> to use a batch insert that does not call
+    <code>add</code>, the counting breaks. If the subclass also
+    overrides <code>addAll</code> to add the count, and the base class
+    still calls <code>add</code> from <code>addAll</code>, the count is
+    doubled.</em></p>
+    </div>
+    <p>In <span class="smallcaps">Japl</span>, the equivalent design
+    uses a function that takes a <code>Set</code> and a counting
+    function as separate arguments. The composition is explicit, and
+    neither component can break the other:</p>
+    <pre><code>fn counted_add_all(
+  set: Set[a],
+  items: List[a],
+  on_add: fn(a) -&gt; Unit
+) -&gt; Set[a] =
+  List.fold(items, set, fn s, item -&gt;
+    on_add(item)
+    Set.insert(s, item)
+  )</code></pre>
+    <h3 data-number="10.1.2" id="the-diamond-problem"><span
+    class="header-section-number">10.1.2</span> The Diamond Problem</h3>
+    <p>When a class inherits from two classes that share a common
+    ancestor, ambiguity arises about which implementation to use <span
+    class="citation" data-cites="sakkinen1989disciplined"></span>.
+    Languages resolve this variously (C++ virtual inheritance, Python
+    MRO, Scala linearization), but all solutions add complexity that
+    function-centric composition avoids entirely.</p>
+    <p>In <span class="smallcaps">Japl</span>, traits are implemented
+    independently for each type. There is no inheritance chain to
+    linearize:</p>
+    <pre><code>trait Drawable[a] =
+  fn draw(value: a) -&gt; Image
+
+trait Serializable[a] =
+  fn to_bytes(value: a) -&gt; Bytes
+
+-- No conflict: each trait is implemented independently
+impl Drawable[Widget] =
+  fn draw(w) = render_widget(w)
+
+impl Serializable[Widget] =
+  fn to_bytes(w) = encode_widget(w)</code></pre>
+    <h2 data-number="10.2"
+    id="the-visitor-pattern-as-evidence-of-failure"><span
+    class="header-section-number">10.2</span> The Visitor Pattern as
+    Evidence of Failure</h2>
+    <p>The visitor pattern <span class="citation"
+    data-cites="gamma1994design"></span> is the canonical example of OOP
+    failing at composition. It exists because adding a new operation to
+    a class hierarchy requires modifying every class in the hierarchy
+    (violating the open-closed principle). The visitor pattern “solves”
+    this by introducing a parallel class hierarchy (visitors) that
+    mirrors the original, with double dispatch to select the correct
+    method.</p>
+    <p>The visitor pattern requires:</p>
+    <ol>
+    <li><p>An <code>accept</code> method in every element
+    class.</p></li>
+    <li><p>A <code>Visitor</code> interface with a <code>visit</code>
+    method for every element type.</p></li>
+    <li><p>Concrete visitor classes for each operation.</p></li>
+    <li><p>Double dispatch: <code>element.accept(visitor)</code> calls
+    <code>visitor.visit(element)</code>.</p></li>
+    </ol>
+    <p>The equivalent in <span class="smallcaps">Japl</span> is a single
+    function with pattern matching:</p>
+    <pre><code>type Expr =
+  | Lit(Int)
+  | Add(Expr, Expr)
+  | Mul(Expr, Expr)
+
+-- &quot;Visitor 1&quot;: evaluation
+fn eval(e: Expr) -&gt; Int =
+  match e with
+  | Lit(n) -&gt; n
+  | Add(a, b) -&gt; eval(a) + eval(b)
+  | Mul(a, b) -&gt; eval(a) * eval(b)
+
+-- &quot;Visitor 2&quot;: pretty printing
+fn pretty(e: Expr) -&gt; String =
+  match e with
+  | Lit(n) -&gt; Int.show(n)
+  | Add(a, b) -&gt;
+      &quot;(&quot; ++ pretty(a) ++ &quot; + &quot; ++ pretty(b) ++ &quot;)&quot;
+  | Mul(a, b) -&gt;
+      &quot;(&quot; ++ pretty(a) ++ &quot; * &quot; ++ pretty(b) ++ &quot;)&quot;
+
+-- &quot;Visitor 3&quot;: optimization
+fn optimize(e: Expr) -&gt; Expr =
+  match e with
+  | Add(Lit(0), x) -&gt; optimize(x)
+  | Add(x, Lit(0)) -&gt; optimize(x)
+  | Mul(Lit(1), x) -&gt; optimize(x)
+  | Mul(x, Lit(1)) -&gt; optimize(x)
+  | Mul(Lit(0), _) -&gt; Lit(0)
+  | Mul(_, Lit(0)) -&gt; Lit(0)
+  | Add(a, b) -&gt; Add(optimize(a), optimize(b))
+  | Mul(a, b) -&gt; Mul(optimize(a), optimize(b))
+  | e -&gt; e</code></pre>
+    <p>Each “visitor” is a standalone function. No boilerplate
+    interfaces, no double dispatch, no parallel hierarchies. Adding a
+    new operation requires only a new function; adding a new variant
+    requires updating existing functions (which the exhaustiveness
+    checker ensures).</p>
+    <p>This is a concrete instance of the expression problem <span
+    class="citation" data-cites="wadler1998expression"></span>. The
+    expression problem asks: can you add both new data variants and new
+    operations without modifying existing code? Neither OOP (easy to add
+    variants, hard to add operations) nor pattern matching (easy to add
+    operations, hard to add variants) solves it alone. <span
+    class="smallcaps">Japl</span>’s traits provide the bridge: a trait
+    can define a new operation for all types that implement it, and new
+    types can implement existing traits, achieving open extension in
+    both dimensions.</p>
+    <h2 data-number="10.3"
+    id="oop-patterns-that-anticipate-function-centric-design"><span
+    class="header-section-number">10.3</span> OOP Patterns That
+    Anticipate Function-Centric Design</h2>
+    <p>Not all OOP design patterns suffer from the problems described
+    above. Several patterns in the GoF catalog <span class="citation"
+    data-cites="gamma1994design"></span> are, in essence, encodings of
+    first-class functions in a language that lacks them:</p>
+    <dl>
+    <dt>Strategy pattern:</dt>
+    <dd>
+    <p>Encapsulates an algorithm behind an interface so it can be
+    swapped at runtime. In <span class="smallcaps">Japl</span>, this is
+    simply a function parameter:
+    <code>fn sort(list: List[a], cmp: fn(a, a) -&gt; Ordering)</code>
+    replaces the <code>Comparator</code> interface and its implementing
+    classes.</p>
+    </dd>
+    <dt>Command pattern:</dt>
+    <dd>
+    <p>Reifies a method invocation as an object. In <span
+    class="smallcaps">Japl</span>, a closure
+    <code>fn() -&gt; Unit with E</code> captures the same intent—a
+    deferred, composable action.</p>
+    </dd>
+    <dt>Observer pattern:</dt>
+    <dd>
+    <p>Registers callback objects to be notified of events. In <span
+    class="smallcaps">Japl</span>, this becomes a list of callback
+    functions: <code>List[fn(Event) -&gt; Unit with Io]</code>.</p>
+    </dd>
+    <dt>Template method pattern:</dt>
+    <dd>
+    <p>Defines the skeleton of an algorithm in a base class, deferring
+    steps to subclasses. In <span class="smallcaps">Japl</span>, this is
+    a higher-order function that takes the customizable steps as
+    function arguments.</p>
+    </dd>
+    </dl>
+    <p>The fact that these patterns exist in OOP is evidence that
+    practitioners have long recognized the need for first-class
+    functions. <span class="smallcaps">Japl</span> makes the underlying
+    concept explicit rather than encoding it through interface
+    hierarchies. This is not a criticism of the patterns themselves—they
+    represent sound design intuitions—but of the language mechanisms
+    that force simple functional abstractions to be expressed through
+    heavyweight class machinery.</p>
+    <h2 data-number="10.4"
+    id="abstract-classes-and-deep-hierarchies"><span
+    class="header-section-number">10.4</span> Abstract Classes and Deep
+    Hierarchies</h2>
+    <p>Abstract classes combine interface specification with partial
+    implementation, creating a coupling between the two concerns. Deep
+    inheritance hierarchies (common in Java frameworks) produce “yo-yo
+    problem” code <span class="citation"
+    data-cites="taenzer1989problems"></span> where understanding a
+    method call requires tracing up and down the hierarchy to find which
+    class provides the actual implementation.</p>
+    <p><span class="smallcaps">Japl</span>’s alternative is flat: types
+    define data, traits define interfaces, functions define behavior.
+    There is no hierarchy to trace. A function’s behavior is determined
+    by its source code and the implementations of the traits it invokes,
+    all of which are resolved at compile time.</p>
+    <h2 data-number="10.5" id="quantitative-argument"><span
+    class="header-section-number">10.5</span> Quantitative Argument</h2>
+    <p>We can quantify the interface surface area of OOP
+    vs. function-centric composition. For a class hierarchy with <span
+    class="math inline">\(n\)</span> classes and <span
+    class="math inline">\(m\)</span> methods per class, the potential
+    interaction surface is <span class="math inline">\(O(n \times
+    m)\)</span> because any subclass may override any method, and any
+    method may call any other method on <code>this</code>.</p>
+    <p>For a function-centric design with <span
+    class="math inline">\(n\)</span> types and <span
+    class="math inline">\(m\)</span> functions, the interaction surface
+    is <span class="math inline">\(O(m)\)</span>: each function has a
+    single, fixed signature. The types constrain which functions can be
+    applied to which values, but there is no hidden dispatch or override
+    chain. The compositional structure is explicit in the types.</p>
+    <p>More precisely, in an OOP hierarchy of depth <span
+    class="math inline">\(d\)</span> with <span
+    class="math inline">\(k\)</span> virtual methods, the number of
+    possible dispatch outcomes for a single method call is <span
+    class="math inline">\(O(d)\)</span>, because the method may be
+    overridden at any level. In a function-centric design, the dispatch
+    outcome is always exactly <span class="math inline">\(1\)</span>:
+    the function is called.</p>
+    <h1 data-number="11" id="sec:implementation"><span
+    class="header-section-number">11</span> Implementation</h1>
+    <h2 data-number="11.1" id="closure-representation"><span
+    class="header-section-number">11.1</span> Closure
+    Representation</h2>
+    <p>A <span class="smallcaps">Japl</span> closure is a function that
+    captures variables from its enclosing scope. At the implementation
+    level, a closure is represented as a pair: a code pointer and an
+    environment.</p>
+    <div class="definition">
+    <p><strong>Definition 18</strong> (Closure Representation). <em>A
+    closure for a function <span class="math inline">\(\lambda x.\,
+    e\)</span> that captures free variables <span
+    class="math inline">\(y_1, \ldots, y_n\)</span> is represented as:
+    <span class="math display">\[\langle \texttt{code\_ptr}, \langle
+    v_1, \ldots, v_n \rangle \rangle\]</span> where <span
+    class="math inline">\(\texttt{code\_ptr}\)</span> points to the
+    compiled code for <span class="math inline">\(\lambda x.\,
+    e\)</span> (which takes the environment and <span
+    class="math inline">\(x\)</span> as arguments), and <span
+    class="math inline">\(v_i\)</span> is the value of <span
+    class="math inline">\(y_i\)</span> at the point of closure
+    creation.</em></p>
+    </div>
+    <p>Because <span class="smallcaps">Japl</span> values are immutable,
+    the closure environment shares structure with the enclosing scope.
+    No copying is needed for captured variables: the closure simply
+    holds pointers to the existing values on the immutable heap.</p>
+    <h3 data-number="11.1.1" id="closure-optimization"><span
+    class="header-section-number">11.1.1</span> Closure
+    Optimization</h3>
+    <p>The compiler applies several optimizations:</p>
+    <ol>
+    <li><p><strong>Inlining:</strong> Small closures passed to
+    higher-order functions (e.g., <code>map</code>, <code>filter</code>)
+    are inlined at the call site, eliminating the closure allocation
+    entirely.</p></li>
+    <li><p><strong>Lambda lifting:</strong> Closures that capture no
+    variables are converted to top-level functions (no environment
+    needed).</p></li>
+    <li><p><strong>Environment flattening:</strong> Nested closures that
+    share captured variables are flattened to avoid chains of
+    environment pointers.</p></li>
+    <li><p><strong>Unboxing:</strong> Closures known to be called
+    exactly once (linear closures) can be stack-allocated.</p></li>
+    </ol>
+    <p>These optimizations ensure that the abstraction cost of closures
+    is negligible in practice. Benchmarks on typical functional
+    pipelines show that inlining eliminates closure allocation in over
+    90% of cases.</p>
+    <h2 data-number="11.2"
+    id="trait-resolution-monomorphization-vs.-dictionary-passing"><span
+    class="header-section-number">11.2</span> Trait Resolution:
+    Monomorphization vs. Dictionary Passing</h2>
+    <p><span class="smallcaps">Japl</span> supports two strategies for
+    implementing traits, chosen by the compiler based on context.</p>
+    <h3 data-number="11.2.1" id="monomorphization"><span
+    class="header-section-number">11.2.1</span> Monomorphization</h3>
+    <p>For concrete call sites where the type is known, the compiler
+    generates a specialized version of the function for each type. This
+    is the primary strategy and produces optimal code:</p>
+    <pre><code>-- Source
+fn double(x: a) -&gt; a where Num[a] =
+  Num.add(x, x)
+
+let i = double(42)       -- generates double_Int
+let f = double(3.14)     -- generates double_Float</code></pre>
+    <p>Monomorphization eliminates all dispatch overhead. The generated
+    code is identical to what a programmer would write for each specific
+    type. The cost is code size increase (one copy per instantiation),
+    which the compiler mitigates through deduplication of identical
+    generated code and dead code elimination.</p>
+    <h3 data-number="11.2.2" id="dictionary-passing"><span
+    class="header-section-number">11.2.2</span> Dictionary Passing</h3>
+    <p>When the type is not known at compile time (e.g., in polymorphic
+    code that is compiled separately, or in polymorphic recursion), the
+    compiler uses dictionary passing: the trait implementation is passed
+    as an additional argument (a record of functions).</p>
+    <pre><code>-- Polymorphic function compiled with dictionary passing
+fn sort(list: List[a]) -&gt; List[a] where Ord[a] =
+  -- Compiler transforms to:
+  -- fn sort(ord_dict: OrdDict[a], list: List[a])
+  --   -&gt; List[a]
+  -- where ord_dict = { compare: fn(a, a) -&gt; Ordering }
+  ...</code></pre>
+    <p>Dictionary passing has a small runtime cost (indirect function
+    calls through the dictionary) but enables separate compilation and
+    polymorphic recursion. The dictionary itself is a record of function
+    pointers, which is the same representation that an OOP vtable
+    uses—but it is passed explicitly as an argument rather than being
+    attached implicitly to an object.</p>
+    <h3 data-number="11.2.3" id="hybrid-strategy"><span
+    class="header-section-number">11.2.3</span> Hybrid Strategy</h3>
+    <p>The compiler uses monomorphization for intra-module calls and
+    frequently instantiated types, and dictionary passing for
+    inter-module polymorphic interfaces. Profile-guided optimization can
+    promote frequently-called dictionary-passing sites to monomorphized
+    specializations.</p>
+    <p>This hybrid approach provides the performance of monomorphization
+    for hot paths and the compilation speed of dictionary passing for
+    cold paths. It also ensures that the compilation model is compatible
+    with separate compilation: a module can be compiled with dictionary
+    passing for its exported polymorphic functions, and call sites in
+    other modules can specialize them if the types are known.</p>
+    <h2 data-number="11.3" id="module-compilation"><span
+    class="header-section-number">11.3</span> Module Compilation</h2>
+    <p>Modules are compiled to namespaced collections of functions.
+    There is no runtime representation of a module—it is a purely
+    compile-time organizational construct.</p>
+    <h3 data-number="11.3.1" id="compilation-steps"><span
+    class="header-section-number">11.3.1</span> Compilation Steps</h3>
+    <ol>
+    <li><p><strong>Signature extraction:</strong> The compiler extracts
+    the public signature from each module, recording the types and
+    function signatures that are visible to other modules.</p></li>
+    <li><p><strong>Dependency resolution:</strong> Module dependencies
+    are resolved to produce a compilation order (a topological sort of
+    the dependency graph).</p></li>
+    <li><p><strong>Function compilation:</strong> Each function is
+    compiled independently. Inter-module function calls are resolved to
+    direct call instructions (for known implementations) or indirect
+    calls through dictionaries (for polymorphic interfaces).</p></li>
+    <li><p><strong>Linking:</strong> Compiled modules are linked into
+    the final binary. Opaque types are erased to their concrete
+    representations (this is sound because the type system prevents
+    external code from observing the representation).</p></li>
+    </ol>
+    <h3 data-number="11.3.2" id="separate-compilation"><span
+    class="header-section-number">11.3.2</span> Separate
+    Compilation</h3>
+    <p>Signatures enable separate compilation. A module that depends on
+    another module needs only the signature, not the implementation. If
+    the implementation changes but the signature does not, dependent
+    modules do not need recompilation. This is the standard ML separate
+    compilation property <span class="citation"
+    data-cites="harper1990type"></span>, which <span
+    class="smallcaps">Japl</span> inherits.</p>
+    <p>Formally, if module <span class="math inline">\(M_1\)</span>
+    depends on module <span class="math inline">\(M_2\)</span> through
+    signature <span class="math inline">\(S_2\)</span>, and <span
+    class="math inline">\(M_2\)</span> is replaced by <span
+    class="math inline">\(M_2&#39;\)</span> such that <span
+    class="math inline">\(M_2&#39; : S_2\)</span>, then the compiled
+    code for <span class="math inline">\(M_1\)</span> remains valid.
+    This follows from <a href="#thm:module-soundness"
+    data-reference-type="ref+Label"
+    data-reference="thm:module-soundness">23</a>.</p>
+    <h2 data-number="11.4" id="pattern-match-compilation"><span
+    class="header-section-number">11.4</span> Pattern Match
+    Compilation</h2>
+    <p>Pattern matches are compiled to efficient decision trees
+    following Maranget’s algorithm <span class="citation"
+    data-cites="maranget2008compiling"></span>. The compiler:</p>
+    <ol>
+    <li><p>Constructs a <em>pattern matrix</em> from the match
+    clauses.</p></li>
+    <li><p>Selects the column with the most discrimination power (the
+    most distinct constructors).</p></li>
+    <li><p>Generates a decision tree that tests constructors, extracts
+    fields, and branches to the appropriate clause.</p></li>
+    <li><p>Performs redundancy checking (warning on unreachable
+    patterns) and exhaustiveness checking (error on non-exhaustive
+    matches).</p></li>
+    </ol>
+    <p>The generated decision tree examines each component of the
+    scrutinee at most once, achieving <span
+    class="math inline">\(O(n)\)</span> time complexity in the size of
+    the matched structure, regardless of the number of clauses. This is
+    optimal: a pattern match is at least as fast as a hand-written
+    sequence of conditionals, and often faster because the compiler can
+    optimize the branching structure globally.</p>
+    <h2 data-number="11.5" id="pipe-operator-compilation"><span
+    class="header-section-number">11.5</span> Pipe Operator
+    Compilation</h2>
+    <p>The pipe operator is eliminated during desugaring:</p>
+    <p><span class="math display">\[e_1 \;|\!&gt;\;f \;|\!&gt;\;g
+    \quad\longrightarrow\quad g(f(e_1))\]</span></p>
+    <p>After desugaring, the standard function call compilation applies.
+    There is zero runtime overhead from using the pipe operator—it is
+    purely a syntactic transformation. This is a key property: the pipe
+    operator provides ergonomic benefits (readability, left-to-right
+    data flow) without any performance cost.</p>
+    <h1 data-number="12" id="sec:formal-properties"><span
+    class="header-section-number">12</span> Formal Properties</h1>
+    <h2 data-number="12.1" id="compositionality"><span
+    class="header-section-number">12.1</span> Compositionality</h2>
+    <div class="definition">
+    <p><strong>Definition 19</strong> (Semantic Compositionality). <em>A
+    composition operator <span class="math inline">\(\oplus\)</span> is
+    <em>semantically compositional</em> if the meaning of <span
+    class="math inline">\(A \oplus B\)</span> is determined entirely by
+    the meanings of <span class="math inline">\(A\)</span> and <span
+    class="math inline">\(B\)</span> and the definition of <span
+    class="math inline">\(\oplus\)</span>.</em></p>
+    </div>
+    <div id="thm:compositionality" class="theorem">
+    <p><strong>Theorem 20</strong> (Compositionality of Function
+    Composition). <em><span class="smallcaps">Japl</span>’s function
+    composition operator <span class="math inline">\(\gg\)</span> is
+    semantically compositional. Formally, for functions <span
+    class="math inline">\(f : A \to B\)</span> and <span
+    class="math inline">\(g : B \to C\)</span> with denotational
+    semantics <span class="math inline">\(\llbracket f \rrbracket :
+    \llbracket A \rrbracket \to \llbracket B \rrbracket\)</span> and
+    <span class="math inline">\(\llbracket g \rrbracket : \llbracket B
+    \rrbracket \to \llbracket C \rrbracket\)</span>: <span
+    class="math display">\[\llbracket f \gg g \rrbracket = \llbracket g
+    \rrbracket \circ \llbracket f \rrbracket\]</span></em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By the denotational semantics of <span
+    class="smallcaps">Japl</span>, function composition is interpreted
+    as set-theoretic function composition (in <span
+    class="math inline">\(\mathbf{Set}\)</span>) or as morphism
+    composition (in <span class="math inline">\(\mathbf{Type}\)</span>).
+    Composition of morphisms in a category is by definition determined
+    by the morphisms being composed. The result follows from the
+    functoriality of the semantic interpretation. ◻</p>
+    </div>
+    <div class="remark">
+    <p><strong>Remark 21</strong>. <em>This compositionality theorem
+    fails for OOP method dispatch. If <code>a.m()</code> and
+    <code>b.m()</code> are method calls, the meaning of “calling
+    <code>m</code> on the result of some composition” depends on the
+    runtime type of the result, which may not be determined by the
+    static types of the components. Virtual dispatch breaks static
+    compositionality.</em></p>
+    </div>
+    <h2 data-number="12.2" id="module-soundness"><span
+    class="header-section-number">12.2</span> Module Soundness</h2>
+    <div class="definition">
+    <p><strong>Definition 22</strong> (Module Soundness). <em>A module
+    system is <em>sound</em> if: whenever a module <span
+    class="math inline">\(M\)</span> satisfies a signature <span
+    class="math inline">\(S\)</span> according to the type checker,
+    every use of <span class="math inline">\(M\)</span> through the
+    interface <span class="math inline">\(S\)</span> is type-safe at
+    runtime.</em></p>
+    </div>
+    <div id="thm:module-soundness" class="theorem">
+    <p><strong>Theorem 23</strong> (Module Soundness of JAPL). <em><span
+    class="smallcaps">Japl</span>’s module system is sound: if <span
+    class="math inline">\(\vdash M : S\)</span> (the module <span
+    class="math inline">\(M\)</span> has signature <span
+    class="math inline">\(S\)</span>), and <span
+    class="math inline">\(\Gamma, x : S \vdash e : \tau\)</span>
+    (expression <span class="math inline">\(e\)</span> uses <span
+    class="math inline">\(x\)</span> as a module of signature <span
+    class="math inline">\(S\)</span>), then <span
+    class="math inline">\(\Gamma \vdash e[M/x] : \tau\)</span>
+    (substituting <span class="math inline">\(M\)</span> for <span
+    class="math inline">\(x\)</span> preserves well-typedness).</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof sketch.</em> By induction on the typing derivation of
+    <span class="math inline">\(e\)</span>. The key cases are:</p>
+    <ol>
+    <li><p><strong>Type member access:</strong> If <span
+    class="math inline">\(S\)</span> declares an abstract type <span
+    class="math inline">\(t\)</span> and <span
+    class="math inline">\(M\)</span> defines <span
+    class="math inline">\(t = \sigma\)</span>, then every use of <span
+    class="math inline">\(x.t\)</span> in <span
+    class="math inline">\(e\)</span> is replaced by <span
+    class="math inline">\(\sigma\)</span>, which is a well-formed type
+    by the assumption that <span class="math inline">\(M :
+    S\)</span>.</p></li>
+    <li><p><strong>Function member access:</strong> If <span
+    class="math inline">\(S\)</span> declares <span
+    class="math inline">\(f : \tau_1 \to \tau_2\)</span> and <span
+    class="math inline">\(M\)</span> implements <span
+    class="math inline">\(f\)</span> with a function of the same type,
+    then every call <span class="math inline">\(x.f(v)\)</span> in <span
+    class="math inline">\(e\)</span> type-checks because the argument
+    type matches.</p></li>
+    <li><p><strong>Effect soundness:</strong> If <span
+    class="math inline">\(S\)</span> declares that <span
+    class="math inline">\(f\)</span> has effects <span
+    class="math inline">\(E\)</span>, and <span
+    class="math inline">\(M\)</span>’s implementation has effects <span
+    class="math inline">\(E&#39; \subseteq E\)</span>, then the effect
+    bound is respected. The module boundary enforces that internal
+    effects exceeding <span class="math inline">\(E\)</span> are handled
+    before they cross the boundary.</p></li>
+    </ol>
+    <p>The full proof follows the structure of Harper and Stone <span
+    class="citation" data-cites="harper2000interpretation"></span> for
+    ML modules, adapted to <span class="smallcaps">Japl</span>’s effect
+    system. The key extension is the effect case: we must show that
+    effect subsumption (<span class="math inline">\(E&#39; \subseteq
+    E\)</span> implies that a function with effects <span
+    class="math inline">\(E&#39;\)</span> can satisfy a signature
+    requiring effects <span class="math inline">\(E\)</span>) is sound
+    with respect to the effect handler semantics. Effect subsumption is
+    sound because if a function performs only effects in <span
+    class="math inline">\(E&#39; \subseteq E\)</span>, then any context
+    that handles all effects in <span class="math inline">\(E\)</span>
+    necessarily handles all effects in <span
+    class="math inline">\(E&#39;\)</span>. This follows from the
+    monotonicity of effect handling: an effect handler for <span
+    class="math inline">\(E\)</span> is also an effect handler for any
+    subset of <span class="math inline">\(E\)</span>.</p>
+    <p>The proof also requires that opaque type abstraction is sound:
+    replacing an abstract type <span class="math inline">\(t\)</span>
+    with its concrete representation <span
+    class="math inline">\(\sigma\)</span> preserves well-typedness in
+    the module body, and the abstraction boundary prevents external code
+    from depending on the representation. This is the <em>representation
+    independence</em> property, which follows from the parametricity of
+    the module interface <span class="citation"
+    data-cites="reynolds1983types"></span>. ◻</p>
+    </div>
+    <h2 data-number="12.3" id="trait-coherence"><span
+    class="header-section-number">12.3</span> Trait Coherence</h2>
+    <div id="thm:coherence" class="theorem">
+    <p><strong>Theorem 24</strong> (Trait Coherence). <em>Under <span
+    class="smallcaps">Japl</span>’s orphan rules, for every type <span
+    class="math inline">\(\tau\)</span> and trait <span
+    class="math inline">\(C\)</span>, at most one instance <span
+    class="math inline">\(C[\tau]\)</span> is visible at any program
+    point.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> We proceed by case analysis on where an instance
+    <span class="math inline">\(C[\tau]\)</span> may be defined.</p>
+    <p><strong>Case 1:</strong> The instance is defined in the module
+    <span class="math inline">\(M_C\)</span> that defines trait <span
+    class="math inline">\(C\)</span>. Since <span
+    class="math inline">\(M_C\)</span> is defined exactly once and the
+    compiler rejects duplicate instance definitions within a module, at
+    most one instance of <span class="math inline">\(C[\tau]\)</span>
+    exists in <span class="math inline">\(M_C\)</span>.</p>
+    <p><strong>Case 2:</strong> The instance is defined in the module
+    <span class="math inline">\(M_\tau\)</span> that defines type <span
+    class="math inline">\(\tau\)</span>. By the same reasoning, at most
+    one instance exists in <span
+    class="math inline">\(M_\tau\)</span>.</p>
+    <p><strong>Case 3:</strong> Both <span
+    class="math inline">\(M_C\)</span> and <span
+    class="math inline">\(M_\tau\)</span> define an instance of <span
+    class="math inline">\(C[\tau]\)</span>. The compiler detects this as
+    a coherence violation during linking: when the dependency graph
+    includes both modules, the duplicate instance is reported as an
+    error. This check is performed after dependency resolution and
+    before code generation.</p>
+    <p><strong>Completeness of the orphan rule:</strong> No other module
+    <span class="math inline">\(M&#39;\)</span> (where <span
+    class="math inline">\(M&#39; \neq M_C\)</span> and <span
+    class="math inline">\(M&#39; \neq M_\tau\)</span>) may define <span
+    class="math inline">\(C[\tau]\)</span>, because doing so would
+    violate the orphan restriction. The compiler rejects such
+    definitions at the point of declaration.</p>
+    <p>Import resolution cannot introduce incoherence because all
+    visible instances originate from <span
+    class="math inline">\(M_C\)</span> or <span
+    class="math inline">\(M_\tau\)</span>, and the above cases guarantee
+    at most one instance exists across these modules. ◻</p>
+    </div>
+    <div class="corollary">
+    <p><strong>Corollary 25</strong> (Deterministic Dispatch). <em>Trait
+    method resolution in <span class="smallcaps">Japl</span> is
+    deterministic: for any call to a trait method with a concrete type,
+    there is exactly one applicable implementation.</em></p>
+    </div>
+    <h2 data-number="12.4" id="exhaustiveness-of-pattern-matching"><span
+    class="header-section-number">12.4</span> Exhaustiveness of Pattern
+    Matching</h2>
+    <div id="thm:exhaustiveness" class="theorem">
+    <p><strong>Theorem 26</strong> (Exhaustiveness). <em>If the <span
+    class="smallcaps">Japl</span> compiler accepts a pattern match
+    without a warning, then for every value <span
+    class="math inline">\(v\)</span> of the scrutinee type, at least one
+    pattern matches <span class="math inline">\(v\)</span>.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By the correctness of Maranget’s exhaustiveness
+    checking algorithm <span class="citation"
+    data-cites="maranget2008compiling"></span>, which <span
+    class="smallcaps">Japl</span> employs. The algorithm is sound for
+    algebraic data types: it considers all possible constructor
+    combinations and verifies that the pattern matrix covers the
+    complete pattern space. Guards introduce incompleteness (the
+    compiler cannot decide arbitrary boolean conditions), so guarded
+    matches require a catch-all clause, which trivially ensures
+    exhaustiveness. ◻</p>
+    </div>
+    <h2 data-number="12.5" id="effect-compositionality"><span
+    class="header-section-number">12.5</span> Effect
+    Compositionality</h2>
+    <div id="thm:effect-compositionality" class="theorem">
+    <p><strong>Theorem 27</strong> (Effect Compositionality). <em>For
+    functions <span class="math inline">\(f : A \to B \;\texttt{with}\;
+    E_1\)</span> and <span class="math inline">\(g : B \to C
+    \;\texttt{with}\; E_2\)</span>: <span class="math display">\[f \gg g
+    : A \to C \;\texttt{with}\; E_1 \cup E_2\]</span> Moreover, effects
+    form a commutative, idempotent monoid under union, with <span
+    class="math inline">\(\texttt{Pure}\)</span> (the empty set) as
+    identity.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By the definition of effect union in <span
+    class="smallcaps">Japl</span>’s type system. The effect of a
+    composition is the union of the effects of the composed functions
+    because executing <span class="math inline">\(f \gg g\)</span> first
+    performs the effects of <span class="math inline">\(f\)</span>
+    (contributing <span class="math inline">\(E_1\)</span>) and then the
+    effects of <span class="math inline">\(g\)</span> (contributing
+    <span class="math inline">\(E_2\)</span>). Commutativity (<span
+    class="math inline">\(E_1 \cup E_2 = E_2 \cup E_1\)</span>) and
+    idempotency (<span class="math inline">\(E \cup E = E\)</span>)
+    follow from the set-theoretic properties of union. The identity
+    element is the empty effect set (denoted <code>Pure</code>): for any
+    effect set <span class="math inline">\(E\)</span>, <span
+    class="math inline">\(\texttt{Pure} \cup E = E\)</span>. ◻</p>
+    </div>
+    <div class="proposition">
+    <p><strong>Proposition 28</strong> (Effect Monotonicity). <em>If
+    <span class="math inline">\(f : A \to B\)</span> with effects <span
+    class="math inline">\(E_1\)</span> and <span
+    class="math inline">\(E_1 \subseteq E_2\)</span>, then <span
+    class="math inline">\(f\)</span> can be used in any context
+    requiring effects <span class="math inline">\(E_2\)</span>. That is,
+    effect sets are covariant with respect to inclusion.</em></p>
+    </div>
+    <p>This monotonicity property ensures that a pure function (<span
+    class="math inline">\(E = \emptyset\)</span>) can be used in any
+    effectful context, which is the principle that pure code composes
+    freely with effectful code.</p>
+    <h1 data-number="13" id="sec:conclusion"><span
+    class="header-section-number">13</span> Conclusion</h1>
+    <p>We have presented the design, formal foundations, and
+    implementation of <span class="smallcaps">Japl</span>’s sixth core
+    principle: <em>the default unit of composition is the function</em>.
+    This is not a stylistic preference but a principled design decision
+    grounded in the structure of Cartesian closed categories, the
+    Curry–Howard–Lambek correspondence, and the Yoneda lemma.</p>
+    <p>The key insight is that object-oriented programming conflates
+    identity, state, behavior, time, and failure into a single
+    abstraction—the object—and this conflation is the root cause of
+    composition difficulties. <span class="smallcaps">Japl</span>
+    disentangles these concerns: functions handle behavior, types handle
+    structure, processes handle identity and time, result types handle
+    expected failure, and supervision handles unexpected failure.</p>
+    <p>The formal results support this design:</p>
+    <ul>
+    <li><p>Function composition is semantically compositional (<a
+    href="#thm:compositionality" data-reference-type="ref+Label"
+    data-reference="thm:compositionality">20</a>).</p></li>
+    <li><p>The module system is sound (<a href="#thm:module-soundness"
+    data-reference-type="ref+Label"
+    data-reference="thm:module-soundness">23</a>).</p></li>
+    <li><p>Trait resolution is coherent (<a href="#thm:coherence"
+    data-reference-type="ref+Label"
+    data-reference="thm:coherence">24</a>).</p></li>
+    <li><p>Pattern matching is exhaustive (<a href="#thm:exhaustiveness"
+    data-reference-type="ref+Label"
+    data-reference="thm:exhaustiveness">26</a>).</p></li>
+    <li><p>Effects compose through pipes and function composition (<a
+    href="#thm:effect-compositionality" data-reference-type="ref+Label"
+    data-reference="thm:effect-compositionality">27</a>).</p></li>
+    </ul>
+    <p>The implementation imposes no runtime overhead: closures are
+    optimized away by inlining and lambda lifting, traits are resolved
+    by monomorphization at concrete call sites, modules compile to
+    namespaced functions with no runtime representation, pipes desugar
+    to nested function calls, and pattern matches compile to efficient
+    decision trees.</p>
+    <p>Our comparison with Haskell, OCaml, Rust, Go, Erlang, and Scala
+    shows that <span class="smallcaps">Japl</span> occupies a principled
+    position in the design space: simpler than Haskell and Scala, more
+    expressive than Go and Erlang, and free of the ownership complexity
+    that Rust imposes on closure composition. The key differentiator is
+    <span class="smallcaps">Japl</span>’s commitment to a small,
+    orthogonal set of composition mechanisms—functions, modules, traits,
+    patterns, and pipes—that work together without overlap or
+    interference.</p>
+    <p>The slogan that summarizes <span class="smallcaps">Japl</span>’s
+    design philosophy—“Pure functions handle logic, supervised processes
+    handle time and failure, and ownership handles reality”—is reflected
+    in the composition model. Functions are the universal connective
+    tissue. They compose at the value level (pipes and <span
+    class="math inline">\(\gg\)</span>), at the module level (functors),
+    and at the type level (traits as natural transformations). The
+    categorical semantics ensure that composition means the same thing
+    at every level: associative, identity-preserving morphism
+    composition.</p>
+    <p>Functions compose. Categories prove it. Types enforce it. <span
+    class="smallcaps">Japl</span> builds on this foundation.</p>
+    <div class="thebibliography">
+    <p><span>99</span></p>
+    <p>Armstrong, J. (2007). <em>Programming Erlang: Software for a
+    Concurrent World</em>. Pragmatic Bookshelf.</p>
+    <p>Church, A. (1936). An unsolvable problem of elementary number
+    theory. <em>American Journal of Mathematics</em>, 58(2):345–363.</p>
+    <p>Church, A. (1940). A formulation of the simple theory of types.
+    <em>Journal of Symbolic Logic</em>, 5(2):56–68.</p>
+    <p>Cook, W.R. (1989). A denotational semantics of inheritance.
+    <em>Ph.D. thesis</em>, Brown University.</p>
+    <p>Curry, H.B. and Feys, R. (1958). <em>Combinatory Logic</em>,
+    volume 1. North-Holland.</p>
+    <p>Czaplicki, E. (2012). Elm: Concurrent FRP for functional GUIs.
+    <em>Senior thesis</em>, Harvard University.</p>
+    <p>Dreyer, D., Crary, K., and Harper, R. (2003). A type system for
+    higher-order modules. In <em>Proceedings of the 30th ACM
+    SIGPLAN-SIGACT Symposium on Principles of Programming Languages
+    (POPL)</em>, pages 236–249.</p>
+    <p>Gamma, E., Helm, R., Johnson, R., and Vlissides, J. (1994).
+    <em>Design Patterns: Elements of Reusable Object-Oriented
+    Software</em>. Addison-Wesley.</p>
+    <p>Gleam Team. (2024). The Gleam programming language. <a
+    href="https://gleam.run" class="uri">https://gleam.run</a>.</p>
+    <p>Harper, R. and Mitchell, J.C. (1993). On the type structure of
+    Standard ML. <em>ACM Transactions on Programming Languages and
+    Systems</em>, 15(2):211–252.</p>
+    <p>Harper, R., Mitchell, J.C., and Moggi, E. (1990). Higher-order
+    modules and the phase distinction. In <em>Proceedings of the 17th
+    ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages
+    (POPL)</em>, pages 341–354.</p>
+    <p>Harper, R. and Stone, C. (2000). A type-theoretic interpretation
+    of Standard ML. In <em>Proof, Language, and Interaction: Essays in
+    Honour of Robin Milner</em>, pages 341–387. MIT Press.</p>
+    <p>Hickey, R. (2012). Simple made easy. <em>Strange Loop
+    Conference</em>, 2011. Published recording, 2012.</p>
+    <p>Howard, W.A. (1980). The formulae-as-types notion of
+    construction. In Seldin, J.P. and Hindley, J.R., editors, <em>To
+    H.B. Curry: Essays on Combinatory Logic, Lambda Calculus, and
+    Formalism</em>, pages 479–490. Academic Press. Original manuscript
+    1969.</p>
+    <p>Lambek, J. (1980). From lambda calculus to Cartesian closed
+    categories. In Seldin, J.P. and Hindley, J.R., editors, <em>To H.B.
+    Curry: Essays on Combinatory Logic, Lambda Calculus, and
+    Formalism</em>, pages 375–402. Academic Press.</p>
+    <p>Lambek, J. and Scott, P.J. (1986). <em>Introduction to Higher
+    Order Categorical Logic</em>. Cambridge University Press.</p>
+    <p>Leroy, X. (1994). Manifest types, modules with type components,
+    and applicative functors. In <em>Proceedings of the 21st ACM
+    SIGPLAN-SIGACT Symposium on Principles of Programming Languages
+    (POPL)</em>, pages 109–122.</p>
+    <p>Leroy, X. (1995). Applicative functors and fully transparent
+    higher-order modules. In <em>Proceedings of the 22nd ACM
+    SIGPLAN-SIGACT Symposium on Principles of Programming Languages
+    (POPL)</em>, pages 142–153.</p>
+    <p>Leroy, X., Doligez, D., Frisch, A., Garrigue, J., Rémy, D., and
+    Vouillon, J. (2020). <em>The OCaml system: Documentation and user’s
+    manual</em>. INRIA.</p>
+    <p>Mac Lane, S. (1971). <em>Categories for the Working
+    Mathematician</em>. Springer.</p>
+    <p>MacQueen, D. (1984). Modules for Standard ML. In <em>Proceedings
+    of the 1984 ACM Symposium on LISP and Functional Programming</em>,
+    pages 198–207.</p>
+    <p>Maranget, L. (2008). Compiling pattern matching to good decision
+    trees. In <em>Proceedings of the 2008 ACM SIGPLAN Workshop on
+    ML</em>, pages 35–46.</p>
+    <p>Matsakis, N. and Klock, F. (2014). The Rust language. In
+    <em>Proceedings of the 2014 ACM SIGAda Annual Conference on High
+    Integrity Language Technology (HILT)</em>, pages 103–104.</p>
+    <p>Mikhajlov, L. and Sekerinski, E. (1998). A study of the fragile
+    base class problem. In <em>Proceedings of the 12th European
+    Conference on Object-Oriented Programming (ECOOP)</em>, pages
+    355–382.</p>
+    <p>Milner, R. (1978). A theory of type polymorphism in programming.
+    <em>Journal of Computer and System Sciences</em>, 17(3):348–375.</p>
+    <p>Milner, R., Tofte, M., Harper, R., and MacQueen, D. (1997).
+    <em>The Definition of Standard ML (Revised)</em>. MIT Press.</p>
+    <p>Odersky, M., Altherr, P., Cremet, V., Emir, B., Maneth, S.,
+    Micheloud, S., Mihaylov, N., Schinz, M., Stenman, E., and Zenger, M.
+    (2004). An overview of the Scala programming language. <em>Technical
+    Report IC/2004/64</em>, EPFL.</p>
+    <p>Odersky, M., Blanvillain, O., Liu, F., Biboudis, A., Miller, H.,
+    and Stucki, S. (2021). Scala 3 reference documentation.
+    <em>EPFL</em>.</p>
+    <p>Petriček, T. and Syme, D. (2014). The F# computation expression
+    zoo. In <em>Proceedings of the 16th International Symposium on
+    Practical Aspects of Declarative Languages (PADL)</em>, pages
+    33–48.</p>
+    <p>Peyton Jones, S., editor. (2003). <em>Haskell 98 Language and
+    Libraries: The Revised Report</em>. Cambridge University Press.</p>
+    <p>Pierce, B.C. (2002). <em>Types and Programming Languages</em>.
+    MIT Press.</p>
+    <p>Pike, R. (2012). Go at Google: Language design in the service of
+    software engineering. <a
+    href="https://go.dev/talks/2012/splash.article"
+    class="uri">https://go.dev/talks/2012/splash.article</a>.</p>
+    <p>Reynolds, J.C. (1983). Types, abstraction and parametric
+    polymorphism. In <em>Information Processing 83</em>, pages 513–523.
+    North-Holland.</p>
+    <p>Sakkinen, M. (1989). Disciplined inheritance. In <em>Proceedings
+    of the 3rd European Conference on Object-Oriented Programming
+    (ECOOP)</em>, pages 39–56.</p>
+    <p>Schönfinkel, M. (1924). Über die Bausteine der mathematischen
+    Logik. <em>Mathematische Annalen</em>, 92:305–316.</p>
+    <p>Syme, D., Battocchi, A., Takeda, K., Malayeri, D., and Petricek,
+    T. (2011). Themes in information-rich functional programming for
+    internet-scale data sources. In <em>Proceedings of the 2011 Workshop
+    on Data Driven Functional Programming (DDFP)</em>, pages 1–4.</p>
+    <p>Taenzer, D., Ganti, M., and Podar, S. (1989). Problems in
+    object-oriented software reuse. In <em>Proceedings of the 3rd
+    European Conference on Object-Oriented Programming (ECOOP)</em>,
+    pages 25–38.</p>
+    <p>Wadler, P. (1998). The expression problem. <em>Java-Genericity
+    mailing list</em>, November 1998.</p>
+    <p>Wadler, P. (2015). Propositions as types. <em>Communications of
+    the ACM</em>, 58(12):75–84.</p>
+    <p>Wadler, P. and Blott, S. (1989). How to make ad-hoc polymorphism
+    less ad hoc. In <em>Proceedings of the 16th ACM SIGPLAN-SIGACT
+    Symposium on Principles of Programming Languages (POPL)</em>, pages
+    60–76.</p>
+    <p>Yoneda, N. (1954). On the homology theory of modules. <em>Journal
+    of the Faculty of Science, University of Tokyo, Section I</em>,
+    7:193–227.</p>
+    </div>
+
+    <div class="paper-footer">
+      <p>JAPL Research Series — YonedaAI Research Collective</p>
+      <p><a href="../index.html">japl-nine.vercel.app</a></p>
+    </div>
+  </main>
+</div>
+
+<script>
+// Auto-generate sidebar TOC from h2/h3 headings
+const toc = document.getElementById('toc');
+const headings = document.querySelectorAll('.content h2, .content h3');
+headings.forEach((h, i) => {
+  if (!h.id) h.id = 'section-' + i;
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.href = '#' + h.id;
+  a.textContent = h.textContent;
+  if (h.tagName === 'H3') a.className = 'toc-h3';
+  li.appendChild(a);
+  toc.appendChild(li);
+});
+</script>
+
+</body>
+</html>

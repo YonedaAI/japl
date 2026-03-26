@@ -1,0 +1,2949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runtime Simplicity Matters as Much as Type Power: Predictable Execution and Operational Philosophy of JAPL — JAPL Research</title>
+  <meta name="description" content="Runtime Simplicity Matters as Much as Type Power: Predictable Execution and Operational Philosophy of JAPL — Part of the JAPL programming language research series.">Japl</span> — Part of the JAPL programming language research series.">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Runtime Simplicity Matters as Much as Type Power: Predictable Execution and Operational Philosophy of JAPL — JAPL Research">Japl</span> — JAPL Research">
+  <meta property="og:description" content="Part of the JAPL programming language research series. Just Another Programming Language.">
+  <meta property="og:url" content="https://japl-nine.vercel.app/papers/runtime-simplicity.html">
+  <meta property="og:image" content="https://japl-nine.vercel.app/og-image.png">
+  <meta property="og:site_name" content="JAPL">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Runtime Simplicity Matters as Much as Type Power: Predictable Execution and Operational Philosophy of JAPL — JAPL Research">Japl</span> — JAPL Research">
+  <meta name="twitter:description" content="Part of the JAPL programming language research series.">
+  <meta name="twitter:image" content="https://japl-nine.vercel.app/og-image.png">
+
+
+  <!-- KaTeX for math -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      if (typeof renderMathInElement !== "undefined") {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: "\\[", right: "\\]", display: true},
+            {left: "\\(", right: "\\)", display: false}
+          ]
+        });
+      }
+    });
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e17;
+      --surface: #141922;
+      --surface-2: #1a1f2e;
+      --accent: #7c5cfc;
+      --accent-dim: rgba(124, 92, 252, 0.15);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --dim: #64748b;
+      --code-bg: #1a1f2e;
+      --border: #1e293b;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 17px;
+    }
+
+    /* Top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 23, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    .topbar a:hover { color: var(--accent); }
+    .topbar .logo { color: var(--text); font-weight: 700; font-size: 1.1rem; }
+    .topbar .logo span { color: var(--accent); }
+    .topbar-links { display: flex; gap: 1.5rem; }
+
+    /* Layout */
+    .wrapper {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Sidebar TOC */
+    .sidebar {
+      position: sticky;
+      top: 60px;
+      width: 260px;
+      min-width: 260px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+      padding: 2rem 1rem 2rem 2rem;
+      border-right: 1px solid var(--border);
+    }
+    .sidebar h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      margin-bottom: 1rem;
+    }
+    .sidebar ul { list-style: none; }
+    .sidebar li { margin-bottom: 0.4rem; }
+    .sidebar a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      display: block;
+      padding: 0.2rem 0;
+      transition: color 0.2s;
+    }
+    .sidebar a:hover { color: var(--accent); }
+    .sidebar .toc-h3 { padding-left: 1rem; font-size: 0.8rem; }
+
+    /* Main content */
+    .content {
+      flex: 1;
+      min-width: 0;
+      padding: 2.5rem 3rem 4rem;
+      max-width: 800px;
+    }
+
+    /* Paper header */
+    .paper-header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .paper-part {
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+    .paper-header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 1rem;
+    }
+    .paper-author {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .paper-links-bar {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+    }
+    .paper-links-bar a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .paper-links-bar a:hover {
+      background: var(--accent-dim);
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--text);
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+      line-height: 1.3;
+    }
+    h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h3 { font-size: 1.2rem; color: var(--muted); }
+    h4 { font-size: 1.05rem; }
+    p { margin-bottom: 1rem; }
+    a { color: var(--accent); }
+
+    /* Abstract */
+    .abstract {
+      background: var(--surface);
+      border-left: 3px solid var(--accent);
+      padding: 1.5rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 2rem;
+    }
+    .abstract p { margin-bottom: 0; }
+
+    /* Code */
+    pre, code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.6rem 0.8rem;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      background: var(--surface);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:nth-child(even) { background: rgba(20, 25, 34, 0.5); }
+
+    /* Small caps */
+    .smallcaps { font-variant: small-caps; }
+
+    /* Lists */
+    ul, ol { margin: 1rem 0; padding-left: 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+
+    /* Blockquote */
+    blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 1rem;
+      color: var(--muted);
+      margin: 1.5rem 0;
+    }
+
+    /* Figures */
+    figure { margin: 2rem 0; text-align: center; }
+    figcaption { color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* Math */
+    .math.display { overflow-x: auto; padding: 0.5rem 0; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .content { padding: 1.5rem; }
+      .topbar { padding: 0.75rem 1rem; }
+    }
+
+    /* Footer */
+    .paper-footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 0.85rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="../index.html" class="logo">JAPL<span>.</span></a>
+  <div class="topbar-links">
+    <a href="../index.html#papers">All Papers</a>
+    <a href="pdf/runtime-simplicity.pdf">Download PDF</a>
+    <a href="https://github.com/YonedaAI/japl" target="_blank">GitHub</a>
+  </div>
+</div>
+
+<div class="wrapper">
+  <nav class="sidebar" id="sidebar">
+    <h4>Contents</h4>
+    <ul id="toc"></ul>
+  </nav>
+
+  <main class="content">
+    <div class="paper-header">
+      <div class="paper-part">Part VII</div>
+      <h1><strong>Runtime Simplicity Matters as Much as Type
+Power:</strong><br />
+Predictable Execution, Practical Tooling, and the Operational Philosophy
+of <span class="smallcaps">Japl</span></h1>
+      <div class="paper-author">Matthew Long — The JAPL Research Collaboration<br>YonedaAI Research Collective, Chicago, IL</div>
+      <div class="paper-links-bar">
+        <a href="pdf/runtime-simplicity.pdf">PDF</a>
+        <a href="latex/runtime-simplicity.tex">LaTeX Source</a>
+        <a href="../index.html#papers">Series Index</a>
+      </div>
+    </div>
+
+    <h1 data-number="1" id="sec:introduction"><span
+    class="header-section-number">1</span> Introduction</h1>
+    <p>The history of programming language design reveals a persistent
+    tension. On one side stand languages with powerful, expressive type
+    systems—Haskell <span class="citation"
+    data-cites="marlow2010haskell"></span>, Scala <span class="citation"
+    data-cites="odersky2004scala"></span>, Rust <span class="citation"
+    data-cites="matsakis2014rust"></span>—that offer strong compile-time
+    guarantees but impose significant operational costs: slow
+    compilation, complex deployment, steep learning curves, and opaque
+    runtime behavior. On the other side stand languages like Go <span
+    class="citation" data-cites="pike2012go"></span> and Lua <span
+    class="citation" data-cites="ierusalimschy2006lua"></span> that
+    prioritize simplicity, fast builds, and straightforward deployment,
+    but sacrifice type-level expressiveness that could prevent entire
+    classes of bugs.</p>
+    <p>This tension is not merely aesthetic. It has direct consequences
+    for software reliability, developer productivity, and organizational
+    adoption. A language with a perfect type system that takes thirty
+    minutes to compile a medium-sized project <em>will lose to</em> a
+    language with adequate types that compiles in two seconds—not
+    because practitioners are lazy, but because fast feedback loops are
+    a prerequisite for iterative development, and iterative development
+    is how working software gets built.</p>
+    <h2 data-number="1.1" id="the-usability-crisis"><span
+    class="header-section-number">1.1</span> The Usability Crisis</h2>
+    <p>We identify a <em>usability crisis</em> in modern programming
+    language design, characterized by several failure modes:</p>
+    <ol>
+    <li><p><strong>The compilation wall.</strong> Rust projects
+    routinely report clean-build times exceeding ten minutes for
+    moderate codebases <span class="citation"
+    data-cites="rust-compile-survey-2023"></span>. Haskell’s GHC is
+    notorious for slow Template Haskell compilation and long linking
+    phases. These delays compound: every failed CI run, every developer
+    context switch, every “let me check if this compiles” represents
+    lost time that accumulates to hours per week per developer.</p></li>
+    <li><p><strong>The deployment labyrinth.</strong> Deploying a
+    Haskell application requires navigating a maze of dynamically linked
+    libraries, Cabal/Stack version conflicts, and platform-specific GHC
+    builds <span class="citation"
+    data-cites="snoyman2017haskell-deployment"></span>. Erlang
+    applications require a BEAM VM installation on every target machine.
+    Even Rust, which produces static binaries, requires careful
+    management of C library dependencies on Linux.</p></li>
+    <li><p><strong>The tooling desert.</strong> Languages with rich type
+    systems often have fragmented tooling: multiple build systems
+    (Haskell’s Cabal vs. Stack vs. Nix), inconsistent formatting
+    conventions, third-party test frameworks with incompatible
+    interfaces, and language servers that lag behind compiler
+    features.</p></li>
+    <li><p><strong>The debugging opacity.</strong> Lazy evaluation in
+    Haskell produces stack traces that bear no relation to the source
+    code’s control flow <span class="citation"
+    data-cites="allwood2009stack-traces"></span>. Rust’s deeply nested
+    generic types produce error messages measured in kilobytes. Complex
+    type-level programming creates abstractions that debuggers cannot
+    inspect.</p></li>
+    </ol>
+    <h2 data-number="1.2" id="gos-social-lesson"><span
+    class="header-section-number">1.2</span> Go’s Social Lesson</h2>
+    <p>Go’s extraordinary adoption—despite a type system that
+    professional language designers consider primitive <span
+    class="citation"
+    data-cites="griesemer2020generics"></span>—demonstrates that
+    operational excellence creates its own gravitational pull. Go
+    compiles a 100,000-line project in under two seconds.
+    <code>go build</code> produces a single static binary.
+    <code>gofmt</code> ended all formatting debates.
+    <code>go test</code> requires zero configuration. Cross-compilation
+    is a single environment variable.</p>
+    <p>Pike <span class="citation" data-cites="pike2012go"></span> was
+    explicit about this: Go was designed for the <em>working
+    programmer</em> building <em>production systems</em>, not for the
+    language researcher exploring the type-theoretic frontier. The
+    result is a language that is mundane to write in and delightful to
+    deploy—and that combination proved to be exactly what a large
+    segment of the industry needed.</p>
+    <h2 data-number="1.3"
+    id="the-elegant-but-miserable-failure-mode"><span
+    class="header-section-number">1.3</span> The Elegant-but-Miserable
+    Failure Mode</h2>
+    <p>We coin the term <em>elegant but operationally miserable</em>
+    (EBOM) for languages that score highly on type-theoretic metrics but
+    poorly on operational ones. The EBOM failure mode is characterized
+    by:</p>
+    <ul>
+    <li><p>Conference papers praising the type system while production
+    users struggle with deployment</p></li>
+    <li><p>A small, devoted community that views operational complaints
+    as skill issues</p></li>
+    <li><p>A persistent gap between “Hello World” tutorials and
+    production readiness</p></li>
+    <li><p>Academic adoption without proportionate industrial
+    adoption</p></li>
+    </ul>
+    <p>Our thesis is that this failure mode is avoidable. The design
+    space of programming languages admits a Pareto frontier where
+    substantial type safety and operational simplicity coexist. <span
+    class="smallcaps">Japl</span> is an attempt to reach that frontier
+    through deliberate, principled trade-offs.</p>
+    <h2 data-number="1.4" id="contributions"><span
+    class="header-section-number">1.4</span> Contributions</h2>
+    <p>This paper makes the following contributions:</p>
+    <ol>
+    <li><p>A formal <em>type power budget</em> framework (<a
+    href="#sec:type-power-budget" data-reference-type="ref+Label"
+    data-reference="sec:type-power-budget">10</a>) that evaluates type
+    system features by their safety-per-complexity ratio, providing
+    principled criteria for feature inclusion/exclusion.</p></li>
+    <li><p>A detailed description of <span
+    class="smallcaps">Japl</span>’s hybrid GC/ownership memory model (<a
+    href="#sec:memory-model" data-reference-type="ref+Label"
+    data-reference="sec:memory-model">5</a>) that achieves GC ease for
+    common cases and ownership precision for resources.</p></li>
+    <li><p>An analysis of <span class="smallcaps">Japl</span>’s
+    compilation model (<a href="#sec:compilation"
+    data-reference-type="ref+Label"
+    data-reference="sec:compilation">6</a>) showing how effect types
+    enable optimization opportunities unavailable to languages with
+    unrestricted side effects.</p></li>
+    <li><p>A comparative case study (<a href="#sec:case-study"
+    data-reference-type="ref+Label"
+    data-reference="sec:case-study">12</a>) quantifying the operational
+    differences between <span class="smallcaps">Japl</span>, Go, Rust,
+    Haskell, and Erlang for a representative production
+    workload.</p></li>
+    <li><p>A design rationale for treating tooling as a language feature
+    (<a href="#sec:tooling" data-reference-type="ref+Label"
+    data-reference="sec:tooling">7</a>), not an afterthought.</p></li>
+    </ol>
+    <h1 data-number="2" id="sec:background"><span
+    class="header-section-number">2</span> Background and Related
+    Work</h1>
+    <h2 data-number="2.1" id="gos-design-philosophy"><span
+    class="header-section-number">2.1</span> Go’s Design Philosophy</h2>
+    <p>Go <span class="citation"
+    data-cites="pike2012go donovan2015go"></span> was designed at Google
+    by Rob Pike, Ken Thompson, and Robert Griesemer with an explicit
+    focus on large-scale software engineering. Its design
+    priorities—fast compilation, minimal language surface, built-in
+    concurrency, static binaries, and canonical formatting—were driven
+    by the pain of working with C++ at Google scale.</p>
+    <p>Pike’s influential talk “Simplicity is Complicated” <span
+    class="citation" data-cites="pike2015simplicity"></span> articulated
+    a core insight: simplicity in a programming language is itself a
+    feature that requires significant design effort. Go’s designers made
+    controversial choices—no generics (until Go 1.18), no algebraic data
+    types, no pattern matching, no exceptions—because each feature would
+    add complexity to compilation, tooling, and comprehension.</p>
+    <p>The key lessons from Go’s success that inform <span
+    class="smallcaps">Japl</span>’s design:</p>
+    <ol>
+    <li><p><strong>Compilation speed is a feature.</strong> Go’s
+    compiler was designed from the start to be fast, with dependency
+    analysis that avoids recompiling unchanged packages.</p></li>
+    <li><p><strong>Canonical tooling eliminates social
+    friction.</strong> <code>gofmt</code> ended formatting wars;
+    <code>go test</code> standardized testing; <code>go vet</code>
+    codified best practices.</p></li>
+    <li><p><strong>Single-binary deployment is transformative.</strong>
+    Eliminating shared library dependencies removes an entire failure
+    mode category from production systems.</p></li>
+    <li><p><strong>Cross-compilation should be trivial.</strong> Go’s
+    <code>GOOS</code> and <code>GOARCH</code> environment variables make
+    cross-compilation a non-event.</p></li>
+    </ol>
+    <h2 data-number="2.2" id="rusts-compile-time-debate"><span
+    class="header-section-number">2.2</span> Rust’s Compile Time
+    Debate</h2>
+    <p>Rust <span class="citation"
+    data-cites="matsakis2014rust klabnik2019rust"></span> provides
+    powerful type-level guarantees—ownership, borrowing, lifetimes,
+    trait-based generics—at the cost of compilation speed. The Rust
+    community has engaged in extensive discussion about compile times,
+    with the <code>cargo build</code> experience being a persistent pain
+    point <span class="citation"
+    data-cites="rust-compile-survey-2023"></span>.</p>
+    <p>Several factors contribute to Rust’s compilation cost:</p>
+    <ul>
+    <li><p><strong>Monomorphization:</strong> Generic functions are
+    compiled separately for each concrete type, producing better code at
+    the cost of more compilation work.</p></li>
+    <li><p><strong>Borrow checking:</strong> The ownership and lifetime
+    analysis is a whole-function analysis that does not parallelize
+    trivially.</p></li>
+    <li><p><strong>LLVM backend:</strong> Rust’s use of LLVM provides
+    excellent code generation but LLVM itself is not fast.</p></li>
+    <li><p><strong>Procedural macros:</strong> Rust’s macro system
+    requires compiling and executing Rust code during
+    compilation.</p></li>
+    </ul>
+    <p>Matsakis and others have investigated incremental
+    compilation <span class="citation"
+    data-cites="matsakis2016incremental"></span> and parallel codegen as
+    mitigations, but the fundamental trade-off remains: Rust’s type
+    system <em>requires</em> analysis that is inherently more expensive
+    than Go’s simpler type checking.</p>
+    <p><span class="smallcaps">Japl</span> learns from Rust that
+    ownership and linear types are valuable for resource management, but
+    avoids making ownership the <em>universal</em> memory management
+    strategy, thereby reducing the scope of expensive lifetime
+    analysis.</p>
+    <h2 data-number="2.3" id="haskells-deployment-challenges"><span
+    class="header-section-number">2.3</span> Haskell’s Deployment
+    Challenges</h2>
+    <p>Haskell <span class="citation"
+    data-cites="marlow2010haskell jones2003haskell"></span> represents
+    the state of the art in type system expressiveness for a
+    general-purpose language, with type classes, higher-kinded types,
+    GADTs, type families, and dependent types (via extensions). However,
+    deploying Haskell applications in production remains difficult:</p>
+    <ul>
+    <li><p><strong>Dynamic linking by default:</strong> GHC-compiled
+    binaries depend on shared libraries that must be present on the
+    target system.</p></li>
+    <li><p><strong>Build system fragmentation:</strong> The Haskell
+    ecosystem has cycled through Cabal, Stack, and Nix-based builds
+    without convergence.</p></li>
+    <li><p><strong>Runtime unpredictability:</strong> Lazy evaluation
+    can cause space leaks that are difficult to diagnose <span
+    class="citation" data-cites="mitchell2013leaking"></span>.</p></li>
+    <li><p><strong>Cross-compilation:</strong> Cross-compiling Haskell
+    is possible but requires significant setup compared to Go or
+    Rust.</p></li>
+    </ul>
+    <p>Snoyman <span class="citation"
+    data-cites="snoyman2017haskell-deployment"></span> documented these
+    challenges in detail, noting that Haskell’s deployment story is the
+    primary barrier to adoption in organizations that have already
+    accepted the language’s type system.</p>
+    <h2 data-number="2.4" id="ocamls-pragmatism"><span
+    class="header-section-number">2.4</span> OCaml’s Pragmatism</h2>
+    <p>OCaml <span class="citation" data-cites="leroy2014ocaml"></span>
+    occupies an interesting middle ground: a type system with algebraic
+    data types, parametric polymorphism, and a powerful module system,
+    combined with a simple compilation model that produces fast native
+    code. OCaml compiles quickly, produces reasonable executables, and
+    has a straightforward deployment model.</p>
+    <p>However, OCaml’s ecosystem has historically suffered from tooling
+    gaps: no canonical formatter (until <code>ocamlformat</code>),
+    fragmented build systems (ocamlbuild, jbuilder/dune), and a package
+    ecosystem smaller than Haskell’s or Rust’s. Recent efforts—opam 2.0,
+    dune, the OCaml Language Server Protocol implementation—have
+    improved the situation significantly.</p>
+    <h2 data-number="2.5" id="gleams-simplicity-first-approach"><span
+    class="header-section-number">2.5</span> Gleam’s Simplicity-First
+    Approach</h2>
+    <p>Gleam <span class="citation" data-cites="gleam2023"></span> is a
+    typed language that targets the BEAM virtual machine, bringing
+    algebraic data types and exhaustive pattern matching to the Erlang
+    ecosystem. Gleam’s design philosophy explicitly prioritizes
+    simplicity: no macros, no operator overloading, no implicit
+    behavior, a single canonical formatter.</p>
+    <p>Gleam demonstrates that meaningful type safety is achievable
+    without the full weight of Haskell’s type system. Its
+    limitation—targeting only the BEAM—means it inherits BEAM’s
+    deployment model (requiring the Erlang runtime).</p>
+    <h2 data-number="2.6" id="zigs-comptime"><span
+    class="header-section-number">2.6</span> Zig’s Comptime</h2>
+    <p>Zig <span class="citation" data-cites="kelley2020zig"></span>
+    introduces <code>comptime</code>, a mechanism for compile-time code
+    execution that replaces both generics and macros with a single,
+    unified concept. Zig’s approach is notable for its transparency: the
+    same language is used at compile time and run time, making the
+    compilation model easier to understand and debug.</p>
+    <p>Zig also demonstrates that a language can achieve
+    cross-compilation excellence by designing for it from the start,
+    using a self-hosted compiler that bundles its own C library
+    implementations.</p>
+    <h2 data-number="2.7" id="erlangs-runtime-philosophy"><span
+    class="header-section-number">2.7</span> Erlang’s Runtime
+    Philosophy</h2>
+    <p>Erlang <span class="citation"
+    data-cites="armstrong2003erlang armstrong2007erlang"></span> and its
+    runtime (the BEAM <span class="citation"
+    data-cites="happi2023beam"></span>) provide the gold standard for
+    runtime observability:</p>
+    <ul>
+    <li><p>Hot code loading: deploying new code without stopping the
+    system</p></li>
+    <li><p>Process inspection: examining any process’s state, mailbox,
+    and call stack at runtime</p></li>
+    <li><p>Tracing: enabling per-function tracing without
+    recompilation</p></li>
+    <li><p>Distribution: transparent cross-node communication</p></li>
+    </ul>
+    <p>The BEAM’s reduction-based scheduler provides fair, preemptive
+    scheduling of lightweight processes, with each process independently
+    garbage-collected. This model—per-process heaps, no shared mutable
+    state, preemptive scheduling—directly inspires <span
+    class="smallcaps">Japl</span>’s runtime design.</p>
+    <h1 data-number="3" id="sec:formal-framework"><span
+    class="header-section-number">3</span> Formal Framework</h1>
+    <p>We formalize the interaction between type system complexity and
+    operational quality, providing a principled basis for the design
+    trade-offs in <span class="smallcaps">Japl</span>.</p>
+    <h2 data-number="3.1"
+    id="compiler-architecture-for-fast-compilation"><span
+    class="header-section-number">3.1</span> Compiler Architecture for
+    Fast Compilation</h2>
+    <p>Let <span class="math inline">\(P\)</span> denote a program
+    consisting of modules <span class="math inline">\(M_1, \ldots,
+    M_n\)</span> with dependency graph <span class="math inline">\(G =
+    (V, E)\)</span> where <span class="math inline">\(V =
+    \{M_i\}\)</span> and <span class="math inline">\((M_i, M_j) \in
+    E\)</span> iff <span class="math inline">\(M_i\)</span> depends on
+    <span class="math inline">\(M_j\)</span>.</p>
+    <div class="definition">
+    <p><strong>Definition 1</strong> (Compilation Cost Model). <em>The
+    total compilation time <span class="math inline">\(T(P)\)</span> for
+    a program <span class="math inline">\(P\)</span> with parallelism
+    <span class="math inline">\(k\)</span> is: <span
+    class="math display">\[T(P) = T_{\text{parse}} + T_{\text{type}} +
+    T_{\text{opt}} + T_{\text{codegen}} + T_{\text{link}}\]</span> where
+    each phase has cost determined by the critical path through <span
+    class="math inline">\(G\)</span> given <span
+    class="math inline">\(k\)</span> workers: <span
+    class="math display">\[T_{\text{phase}}(P, k) =
+    \frac{W_{\text{phase}}(P)}{k} + D_{\text{phase}}(G)\]</span> Here
+    <span class="math inline">\(W_{\text{phase}}\)</span> is the total
+    work and <span class="math inline">\(D_{\text{phase}}\)</span> is
+    the span (longest dependent chain) for that phase.</em></p>
+    </div>
+    <div class="proposition">
+    <p><strong>Proposition 2</strong> (Type Checking Dominates). <em>For
+    languages with <em>unrestricted type-level features</em> (HKTs,
+    GADTs, type families, dependent types), type checking dominates
+    compilation: <span class="math display">\[\lim_{|P| \to \infty}
+    \frac{T_{\text{type}}(P)}{T(P)} \to 1\]</span> This limit applies
+    specifically to languages that permit open-ended type-level
+    computation; languages like <span class="smallcaps">Japl</span> that
+    bound their type systems to decidable fragments avoid this
+    asymptotic behavior. In particular, Hindley-Milner inference is
+    <span class="math inline">\(\mathcal{O}(n)\)</span> for practical
+    inputs <span class="citation"
+    data-cites="mcadam1998complexity"></span> but extensions like type
+    families introduce decision procedures that are NP-complete or
+    undecidable in the general case <span class="citation"
+    data-cites="sulzmann2007type-families"></span>.</em></p>
+    </div>
+    <h2 data-number="3.2" id="incremental-compilation"><span
+    class="header-section-number">3.2</span> Incremental
+    Compilation</h2>
+    <div class="definition">
+    <p><strong>Definition 3</strong> (Incremental Compilation
+    Efficiency). <em>Given a change <span
+    class="math inline">\(\delta\)</span> to module <span
+    class="math inline">\(M_i\)</span>, the incremental recompilation
+    set is: <span class="math display">\[\text{Recomp}(\delta) = \{M_i\}
+    \cup \{M_j : M_j \text{ transitively depends on } M_i \text{ and }
+    \text{iface}(M_i) \text{ changed}\}\]</span> The incremental
+    efficiency ratio is: <span class="math display">\[\eta(\delta) = 1 -
+    \frac{|\text{Recomp}(\delta)|}{|V|}\]</span></em></p>
+    </div>
+    <p>A language design that stabilizes module interfaces—for example,
+    by separating interface declarations from implementations, as
+    pioneered by Modula-2 <span class="citation"
+    data-cites="wirth1982modula2"></span> and Ada <span class="citation"
+    data-cites="ichbiah1979ada"></span>—maximizes <span
+    class="math inline">\(\eta\)</span> because most changes are
+    implementation-only and do not propagate.</p>
+    <p><span class="smallcaps">Japl</span>’s module system requires
+    explicit signatures at module boundaries. When a module’s
+    implementation changes but its signature does not, downstream
+    modules need not be recompiled. Effect annotations in signatures
+    provide additional stability: if a function’s effects do not change,
+    downstream code that depends on those effects remains valid.</p>
+    <h2 data-number="3.3" id="decidability-vs.-expressiveness"><span
+    class="header-section-number">3.3</span> Decidability vs.
+    Expressiveness</h2>
+    <div id="thm:expressiveness" class="theorem">
+    <p><strong>Theorem 4</strong> (Expressiveness–Decidability
+    Trade-off). <em>Let <span class="math inline">\(\mathcal{L}\)</span>
+    be a type system with decision procedure <span
+    class="math inline">\(D_\mathcal{L}\)</span> for type checking. The
+    following hierarchy of type system features has increasing
+    worst-case complexity for <span
+    class="math inline">\(D_\mathcal{L}\)</span>:</em></p>
+    <ol>
+    <li><p><em>Simple types (Hindley-Milner): decidable, <span
+    class="math inline">\(\mathcal{O}(n)\)</span>
+    practical</em></p></li>
+    <li><p><em>Bounded quantification (System <span
+    class="math inline">\(F_{&lt;:}\)</span>): decidable, potentially
+    exponential <span class="citation"
+    data-cites="pierce2002types"></span></em></p></li>
+    <li><p><em>Type classes with functional dependencies: decidable with
+    restrictions, undecidable in general <span class="citation"
+    data-cites="sulzmann2007type-families"></span></em></p></li>
+    <li><p><em>GADTs: type checking decidable, type inference
+    undecidable <span class="citation"
+    data-cites="jones2006gadts"></span></em></p></li>
+    <li><p><em>Dependent types: type checking is undecidable in general
+    (reduces to the halting problem)</em></p></li>
+    </ol>
+    </div>
+    <p><span class="smallcaps">Japl</span> draws the line between items
+    2 and 3: it includes algebraic data types, parametric polymorphism,
+    traits (type classes without functional dependencies), row
+    polymorphism, and effect types, while excluding GADTs, type
+    families, and dependent types. This boundary ensures that type
+    checking remains decidable and practically fast.</p>
+    <h2 data-number="3.4" id="effect-types-and-optimization"><span
+    class="header-section-number">3.4</span> Effect Types and
+    Optimization</h2>
+    <p>Effect annotations create optimization opportunities unavailable
+    to languages with unrestricted side effects.</p>
+    <div class="proposition">
+    <p><strong>Proposition 5</strong> (Effect-Based Dead Code
+    Elimination). <em>Let <span class="math inline">\(f\)</span> be a
+    function with effect signature <span
+    class="math inline">\(\epsilon_f\)</span> and let <span
+    class="math inline">\(e\)</span> be an expression that calls <span
+    class="math inline">\(f\)</span>. If <span
+    class="math inline">\(\epsilon_f = \text{Pure}\)</span> and the
+    result of <span class="math inline">\(e\)</span> is unused, then
+    <span class="math inline">\(e\)</span> can be eliminated. More
+    generally, if <span class="math inline">\(\epsilon_f\)</span> does
+    not include <span class="math inline">\(\text{Io}\)</span> or <span
+    class="math inline">\(\text{Process}\)</span>, and the result is
+    unused, elimination is safe if the remaining effects (<span
+    class="math inline">\(\text{State}\)</span>, <span
+    class="math inline">\(\text{Fail}\)</span>) are handled
+    locally.</em></p>
+    </div>
+    <p>This is strictly stronger than the optimizations available to Go
+    or OCaml, where any function call might perform I/O, and the
+    compiler must conservatively retain all calls.</p>
+    <h1 data-number="4" id="sec:runtime-philosophy"><span
+    class="header-section-number">4</span> <span
+    class="smallcaps">Japl</span>’s Runtime Philosophy</h1>
+    <p><span class="smallcaps">Japl</span>’s seventh
+    principle—<em>Runtime Simplicity Matters as Much as Type
+    Power</em>—is not merely a preference but a design constraint that
+    shapes every aspect of the language and its implementation. We
+    enumerate the concrete commitments this principle entails.</p>
+    <h2 data-number="4.1" id="single-fast-compiler"><span
+    class="header-section-number">4.1</span> Single Fast Compiler</h2>
+    <p><span class="smallcaps">Japl</span> ships a single compiler,
+    <code>japlc</code>, that is the canonical and only implementation.
+    There is no alternative compiler, no compiler plugin ecosystem that
+    fragments the language, and no compiler flags that change the
+    semantics of valid programs.</p>
+    <p>The compiler targets two backends:</p>
+    <ul>
+    <li><p><strong>Cranelift</strong> <span class="citation"
+    data-cites="cranelift2020"></span>: For fast debug builds. Cranelift
+    is designed for fast code generation with reasonable code quality,
+    making it ideal for the edit-compile-test loop.</p></li>
+    <li><p><strong>LLVM</strong> <span class="citation"
+    data-cites="lattner2004llvm"></span>: For optimized release builds.
+    LLVM provides state-of-the-art code generation at the cost of slower
+    compilation.</p></li>
+    </ul>
+    <p>The default (<code>japl build</code>) uses Cranelift;
+    <code>japl build --release</code> uses LLVM. This dual-backend
+    strategy provides Go-like compilation speed for development and
+    Rust-like code quality for production.</p>
+    <h2 data-number="4.2" id="single-standard-formatter"><span
+    class="header-section-number">4.2</span> Single Standard
+    Formatter</h2>
+    <pre class="shell" data-language="shell"><code>$ japl fmt              # format current project
+$ japl fmt --check      # check without modifying
+$ japl fmt src/main.japl # format single file</code></pre>
+    <p><code>japl fmt</code> is an opinionated formatter with no
+    configuration options, following Go’s <code>gofmt</code> philosophy.
+    There is one canonical style. Formatting debates are impossible
+    because the tool’s output is the definition of correct
+    formatting.</p>
+    <p>This decision is informed by Go’s experience: <code>gofmt</code>
+    is widely regarded as one of Go’s most impactful features, not
+    because of any particular formatting choice, but because it
+    eliminated an entire category of unproductive discussion <span
+    class="citation" data-cites="pike2012go"></span>.</p>
+    <h2 data-number="4.3" id="dead-simple-build-tool"><span
+    class="header-section-number">4.3</span> Dead-Simple Build Tool</h2>
+    <p><span class="smallcaps">Japl</span>’s build tool is integrated
+    into the compiler. There is no separate build system, no Makefile,
+    no configuration file for basic projects:</p>
+    <pre class="shell" data-language="shell"><code>$ japl build            # compile the project
+$ japl build --release  # optimized build via LLVM
+$ japl run              # compile and execute
+$ japl run --profile    # compile and execute with profiling</code></pre>
+    <p>Project configuration, when needed, lives in a single
+    <code>japl.toml</code> file:</p>
+    <pre class="japl" data-language="japl"
+    data-basicstyle="\ttfamily\scriptsize"><code>-- japl.toml
+name = &quot;my-service&quot;
+version = &quot;1.2.0&quot;
+
+[deps]
+http = &quot;0.5&quot;
+json = &quot;1.0&quot;
+postgres = &quot;0.3&quot;</code></pre>
+    <h2 data-number="4.4" id="small-high-quality-standard-library"><span
+    class="header-section-number">4.4</span> Small, High-Quality
+    Standard Library</h2>
+    <p><span class="smallcaps">Japl</span>’s standard library follows
+    Go’s approach of including enough to be productive without external
+    dependencies for common tasks:</p>
+    <ul>
+    <li><p><code>Std.Http</code> – HTTP client and server</p></li>
+    <li><p><code>Std.Json</code> – JSON encoding/decoding</p></li>
+    <li><p><code>Std.Crypto</code> – Cryptographic primitives</p></li>
+    <li><p><code>Std.Fs</code> – File system operations</p></li>
+    <li><p><code>Std.Net</code> – TCP/UDP networking</p></li>
+    <li><p><code>Std.Test</code> – Testing framework</p></li>
+    <li><p><code>Std.Time</code> – Time and duration</p></li>
+    <li><p><code>Std.Log</code> – Structured logging</p></li>
+    <li><p><code>Std.Trace</code> – Distributed tracing</p></li>
+    </ul>
+    <p>The standard library is intentionally <em>small</em>: it includes
+    only functionality that most server-side applications need, is
+    difficult to get right independently, or benefits from tight
+    integration with the runtime (e.g., process-aware logging).</p>
+    <h2 data-number="4.5" id="built-in-test-runner"><span
+    class="header-section-number">4.5</span> Built-in Test Runner</h2>
+    <p>Tests are a language construct, not a library convention:</p>
+    <pre><code>test &quot;user creation validates email&quot; {
+  let result = create_user(&quot;bad-email&quot;)
+  assert result == Err(InvalidEmail(&quot;bad-email&quot;))
+}
+
+test &quot;order total includes tax&quot; {
+  let order = make_order([item(10.0), item(20.0)])
+  let total = calculate_total(order, tax_rate = 0.1)
+  assert total == 33.0
+}
+
+property &quot;reversing twice is identity&quot; {
+  forall (xs: List[Int]) -&gt;
+    List.reverse(List.reverse(xs)) == xs
+}</code></pre>
+    <pre class="shell" data-language="shell"><code>$ japl test             # run all tests
+$ japl test --filter user  # run matching tests
+$ japl test --parallel 8   # parallel test execution
+$ japl test --coverage     # with coverage report</code></pre>
+    <p>Tests are discovered by the compiler, not by file naming
+    conventions or annotation processing. The compiler knows about
+    tests, which enables test-aware optimizations (e.g., skipping code
+    generation for non-test code when running tests).</p>
+    <h2 data-number="4.6" id="cross-compilation"><span
+    class="header-section-number">4.6</span> Cross-Compilation</h2>
+    <pre class="shell" data-language="shell"><code>$ japl build --target linux-amd64
+$ japl build --target linux-arm64
+$ japl build --target darwin-arm64
+$ japl build --target darwin-amd64
+$ japl build --target windows-amd64
+$ japl build --target wasm32</code></pre>
+    <p>Cross-compilation works out of the box because the compiler
+    bundles everything needed to generate code for all supported
+    targets. There are no external dependencies, no target-specific SDK
+    installations, and no platform-specific configuration.</p>
+    <h2 data-number="4.7" id="static-binaries"><span
+    class="header-section-number">4.7</span> Static Binaries</h2>
+    <pre class="shell" data-language="shell"><code>$ japl build --static myapp.japl
+$ file ./myapp
+./myapp: ELF 64-bit LSB executable, statically linked
+$ ldd ./myapp
+  not a dynamic executable</code></pre>
+    <p>Every <span class="smallcaps">Japl</span> build produces a single
+    static binary with no external dependencies. The binary includes the
+    <span class="smallcaps">Japl</span> runtime (scheduler, GC, network
+    stack) and all application code. This is the <em>only</em>
+    deployment artifact.</p>
+    <h2 data-number="4.8" id="readable-stack-traces"><span
+    class="header-section-number">4.8</span> Readable Stack Traces</h2>
+    <p>When a <span class="smallcaps">Japl</span> process crashes, the
+    stack trace maps directly to source code:</p>
+    <pre class="shell" data-language="shell"
+    data-basicstyle="\ttfamily\tiny"><code>Process &lt;0.47.0&gt; crashed: DivisionByZero
+  at Math.divide        (src/math.japl:42:15)
+  at Order.calculate    (src/order.japl:87:10)
+  at Handler.process    (src/handler.japl:23:5)
+  at Server.handle_req  (src/server.japl:156:3)
+
+Process mailbox (3 messages pending):
+  ProcessOrder({id: &quot;ord-123&quot;, ...})
+  ProcessOrder({id: &quot;ord-456&quot;, ...})
+  Shutdown
+
+Supervisor &lt;0.12.0&gt; restarting child &quot;order-handler&quot;
+  (restart count: 1/5, strategy: OneForOne)</code></pre>
+    <p>Strict evaluation ensures that stack traces reflect the actual
+    execution order. There are no thunks, no lazy chains, and no
+    deferred evaluation that would make the stack trace misleading.</p>
+    <h2 data-number="4.9" id="built-in-profiling-and-tracing"><span
+    class="header-section-number">4.9</span> Built-in Profiling and
+    Tracing</h2>
+    <pre class="shell" data-language="shell"><code>$ japl run --profile myapp.japl
+# Produces: myapp.prof (native profiling data)
+
+$ japl trace --format chrome myapp.japl
+# Produces: myapp.trace (Chrome trace format)
+
+$ japl run --gc-stats myapp.japl
+# Prints per-process GC statistics</code></pre>
+    <p>Profiling and tracing are built into the runtime, not bolted on
+    via sampling profilers or LD_PRELOAD tricks. The runtime knows about
+    processes, mailboxes, supervision trees, and effect handlers, and
+    can provide domain-specific profiling information that generic tools
+    cannot.</p>
+    <h1 data-number="5" id="sec:memory-model"><span
+    class="header-section-number">5</span> The GC + Ownership Hybrid
+    Memory Model</h1>
+    <p><span class="smallcaps">Japl</span>’s memory model is the key
+    architectural decision that enables both runtime simplicity and
+    resource safety. Rather than choosing between garbage collection
+    (Go, Haskell, Erlang) and ownership (Rust), <span
+    class="smallcaps">Japl</span> uses both, each in its natural
+    domain.</p>
+    <h2 data-number="5.1" id="design-rationale"><span
+    class="header-section-number">5.1</span> Design Rationale</h2>
+    <p>The fundamental observation is that most values in a functional
+    program are <em>immutable data</em>—algebraic data types, records,
+    strings, closures, collections—while a smaller but critical set of
+    values are <em>external resources</em>—file handles, network
+    sockets, database connections, GPU buffers.</p>
+    <p>These two categories have radically different management
+    requirements:</p>
+    <div id="tab:data-vs-resources">
+    <table>
+    <caption>Distinct management requirements for data vs.
+    resources.</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Property</strong></th>
+    <th style="text-align: left;"><strong>Immutable Data</strong></th>
+    <th style="text-align: left;"><strong>Resources</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Mutability</td>
+    <td style="text-align: left;">Never</td>
+    <td style="text-align: left;">Often</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Sharing</td>
+    <td style="text-align: left;">Free (no races)</td>
+    <td style="text-align: left;">Dangerous</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Lifetime</td>
+    <td style="text-align: left;">Until unreachable</td>
+    <td style="text-align: left;">Until explicitly released</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Cleanup</td>
+    <td style="text-align: left;">Whenever (GC)</td>
+    <td style="text-align: left;">Immediately (deterministic)</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Copying</td>
+    <td style="text-align: left;">Cheap (structural sharing)</td>
+    <td style="text-align: left;">Often impossible</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>Applying GC to resources is wrong: GC provides no deterministic
+    cleanup guarantees, so file handles may remain open and connections
+    may leak. Applying ownership to immutable data is wasteful: lifetime
+    annotations add cognitive overhead for values that can be safely
+    shared without restriction.</p>
+    <h2 data-number="5.2" id="the-immutable-heap"><span
+    class="header-section-number">5.2</span> The Immutable Heap</h2>
+    <p>The immutable heap is managed by a generational, per-process
+    garbage collector inspired by the BEAM <span class="citation"
+    data-cites="happi2023beam"></span>:</p>
+    <ol>
+    <li><p><strong>Per-process heaps.</strong> Each <span
+    class="smallcaps">Japl</span> process has its own heap partition. GC
+    in one process does not pause other processes. This is critical for
+    latency-sensitive applications: a process handling an HTTP request
+    is not affected by GC in a process doing batch processing.</p></li>
+    <li><p><strong>No write barriers.</strong> Because all heap data is
+    immutable, there are no pointer updates to track. This eliminates
+    write barriers, simplifying the GC implementation and improving
+    mutator throughput.</p></li>
+    <li><p><strong>Generational collection.</strong> Most functional
+    programs exhibit generational behavior: most values are short-lived
+    (intermediate results in a pipeline). A nursery/old-generation split
+    captures this efficiently.</p></li>
+    <li><p><strong>Instant reclamation on process death.</strong> When a
+    process exits, its entire heap is freed in <span
+    class="math inline">\(\mathcal{O}(1)\)</span> time, without tracing.
+    This is especially valuable for request-handling processes with
+    short lifetimes.</p></li>
+    </ol>
+    <pre><code>-- All these values live on the immutable heap
+-- and are managed by GC. No annotations needed.
+let config = { host = &quot;localhost&quot;, port = 8080 }
+let items = [1, 2, 3, 4, 5]
+let doubled = List.map(items, fn x -&gt; x * 2)
+let name = &quot;JAPL&quot;
+
+-- Values can be freely shared across processes
+-- because they cannot be mutated
+Process.send(worker, ProcessData(config, items))</code></pre>
+    <h2 data-number="5.3" id="the-resource-arena"><span
+    class="header-section-number">5.3</span> The Resource Arena</h2>
+    <p>External resources live in a separate arena managed by linear
+    types and ownership tracking:</p>
+    <pre><code>-- Resource layer: ownership-tracked, must be consumed
+fn process_file(path: String)
+    -&gt; Result[String, IoError] with Io =
+  use file = File.open(path, Read)?
+  let contents = File.read_all(file)?
+  File.close(file)  -- consumed: forgetting = error
+  Ok(contents)
+
+-- Transfer ownership between processes
+fn send_to_worker(buf: own Buffer,
+                  pid: Pid[WorkerMsg]) -&gt; Unit =
+  Process.send(pid, ProcessBuffer(buf))
+  -- buf is moved; using it here is a compile error</code></pre>
+    <p>The ownership rules for the resource arena are:</p>
+    <ol>
+    <li><p>Every resource has exactly one owner at any time.</p></li>
+    <li><p>Ownership can be transferred (<code>own</code> qualifier) but
+    not duplicated.</p></li>
+    <li><p>Read-only borrows (<code>ref</code> qualifier) allow
+    temporary shared access.</p></li>
+    <li><p>When the owner goes out of scope without consuming the
+    resource, the compiler reports an error.</p></li>
+    <li><p>The compiler rejects programs that use a resource after
+    transfer.</p></li>
+    </ol>
+    <h2 data-number="5.4"
+    id="interface-between-the-gc-heap-and-the-resource-arena"><span
+    class="header-section-number">5.4</span> Interface Between the GC
+    Heap and the Resource Arena</h2>
+    <p>A critical design question is how the two memory regions
+    interact. The rule is strict: <em>immutable values on the GC heap
+    cannot directly contain owned resources.</em> Because the GC heap
+    provides no deterministic finalization guarantee, allowing a
+    GC-managed record to hold an <code>own File</code> would make
+    resource cleanup non-deterministic—precisely the failure mode the
+    ownership layer is designed to prevent.</p>
+    <p>Instead, resources that must be referenced from immutable data
+    structures are wrapped in <em>process-local handles</em>: opaque,
+    copyable identifiers that index into the process’s resource arena. A
+    handle has type <code>Handle[R]</code> for resource type
+    <code>R</code>, and is an ordinary immutable value that can be
+    freely placed in records, lists, or any GC-managed collection. The
+    actual resource remains in the arena, subject to ownership
+    tracking.</p>
+    <pre><code>-- A Handle[File] is a copyable, GC-managed token.
+-- The File itself stays in the resource arena.
+let h: Handle[File] = Resource.register(file)
+let config = { name = &quot;log&quot;, target = h }
+
+-- To use the resource, borrow it via the handle:
+Resource.with(config.target, fn (f: ref File) -&gt;
+  File.write(f, &quot;entry&quot;))
+
+-- Explicit release through the handle:
+Resource.release(config.target)
+-- Further borrows via this handle are compile errors.</code></pre>
+    <p>The compiler enforces this separation through a <em>kind
+    distinction</em>: types of kind <code>Resource</code> (those
+    carrying ownership obligations) are excluded from appearing as
+    fields of types of kind <code>Data</code> (the default kind for
+    GC-managed values). Any attempt to embed an <code>own File</code>
+    directly inside a record or list is a kind error. When a programmer
+    needs a collection of resources, <span class="smallcaps">Japl</span>
+    provides <em>linear collections</em> (e.g.,
+    <code>LinearList[own File]</code>) that themselves carry ownership
+    obligations and must be consumed explicitly. These linear
+    collections live in the resource arena, not the GC heap, preserving
+    deterministic cleanup.</p>
+    <p>This design means that resources are <em>second-class</em> with
+    respect to standard collections: an <code>own File</code> cannot be
+    placed in a regular <code>List</code> or <code>Map</code>. Linear
+    collections exist for the cases where resource aggregation is
+    needed, but the common case—packaging immutable data into standard
+    collections—remains free of ownership annotations.</p>
+    <h2 data-number="5.5" id="why-this-is-the-sweet-spot"><span
+    class="header-section-number">5.5</span> Why This Is the Sweet
+    Spot</h2>
+    <div id="thm:hybrid-correct" class="theorem">
+    <p><strong>Theorem 6</strong> (Hybrid Memory Model Correctness).
+    <em>The <span class="smallcaps">Japl</span> hybrid memory model
+    satisfies the following properties:</em></p>
+    <ol>
+    <li><p><em><strong>Data race freedom:</strong> No data races are
+    possible on immutable heap data (trivially, since data is immutable)
+    or resource arena data (since resources have a single
+    owner).</em></p></li>
+    <li><p><em><strong>Resource safety:</strong> Every allocated
+    resource is eventually freed, and no resource is used after
+    freeing.</em></p></li>
+    <li><p><em><strong>No annotation overhead for common case:</strong>
+    Immutable data (the vast majority of values in a functional program)
+    requires no ownership annotations.</em></p></li>
+    </ol>
+    </div>
+    <div class="proof">
+    <p><em>Proof sketch.</em> (1) follows from immutability of heap data
+    and single-ownership of arena data. (2) follows from the linearity
+    constraint: the compiler’s type system ensures that every resource
+    is consumed exactly once, either by explicit deallocation or by
+    transfer to another owner. (3) follows from the fact that GC-managed
+    data requires no programmer-visible lifetime management.</p>
+    <p>We strengthen claim (2) with a small-step operational semantics
+    sketch. Define a program state <span class="math inline">\(\sigma =
+    (H, A, e)\)</span> where <span class="math inline">\(H\)</span> is
+    the immutable GC heap, <span class="math inline">\(A\)</span> is the
+    resource arena (a finite map from resource identifiers to resource
+    states <span class="math inline">\(\{\textsc{Live},
+    \textsc{Freed}\}\)</span>), and <span
+    class="math inline">\(e\)</span> is the expression under evaluation.
+    The key reduction rules for resources are: <span
+    class="math display">\[\begin{align*}
+    \textsc{Alloc}:&amp; \quad (H, A, \texttt{open}(v)) \longrightarrow
+    (H, A[r \mapsto \textsc{Live}], r) \quad r \text{ fresh} \\
+    \textsc{Use}:&amp; \quad (H, A, \texttt{use}(r)) \longrightarrow (H,
+    A, v) \quad \text{if } A(r) = \textsc{Live} \\
+    \textsc{Free}:&amp; \quad (H, A, \texttt{close}(r)) \longrightarrow
+    (H, A[r \mapsto \textsc{Freed}], ()) \\
+    \textsc{Move}:&amp; \quad (H, A, \texttt{send}(\textit{pid}, r))
+    \longrightarrow (H, A, ()) \quad \text{ownership transferred}
+    \end{align*}\]</span></p>
+    <p>A state is <em>invalid</em> if any reduction attempts <span
+    class="math inline">\(\textsc{Use}\)</span> or <span
+    class="math inline">\(\textsc{Free}\)</span> on <span
+    class="math inline">\(r\)</span> where <span
+    class="math inline">\(A(r) = \textsc{Freed}\)</span>, or if <span
+    class="math inline">\(r\)</span> has been moved and is subsequently
+    referenced in the source context. The type system’s linearity
+    discipline guarantees that for any well-typed program <span
+    class="math inline">\(e\)</span>, the reduction sequence from <span
+    class="math inline">\((H_0, A_0, e)\)</span> never reaches an
+    invalid state: every resource identifier <span
+    class="math inline">\(r\)</span> is used at most once after
+    allocation, consumed exactly once by <span
+    class="math inline">\(\textsc{Free}\)</span> or <span
+    class="math inline">\(\textsc{Move}\)</span>, and never accessed
+    after consumption. A full mechanized proof would proceed by
+    induction on the typing derivation and case analysis on the
+    reduction rules, following the structure of linear type soundness
+    proofs in the literature <span class="citation"
+    data-cites="pierce2002types"></span>. ◻</p>
+    </div>
+    <p>The practical implication is that <span
+    class="smallcaps">Japl</span> programmers write most code in a style
+    identical to Erlang or Haskell—pure functions transforming immutable
+    values—but gain Rust-level resource safety for the 10–15% of code
+    that interacts with external resources.</p>
+    <h2 data-number="5.6"
+    id="comparison-with-alternative-approaches"><span
+    class="header-section-number">5.6</span> Comparison with Alternative
+    Approaches</h2>
+    <div id="tab:memory-comparison">
+    <table>
+    <caption>Memory management strategies compared.</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"></th>
+    <th style="text-align: left;"><strong>Data</strong></th>
+    <th style="text-align: left;"><strong>Resources</strong></th>
+    <th style="text-align: left;"><strong>Burden</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Go</td>
+    <td style="text-align: left;">GC</td>
+    <td style="text-align: left;">GC + finalizers</td>
+    <td style="text-align: left;">Low, but leaks</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Rust</td>
+    <td style="text-align: left;">Ownership</td>
+    <td style="text-align: left;">Ownership</td>
+    <td style="text-align: left;">High everywhere</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Haskell</td>
+    <td style="text-align: left;">GC</td>
+    <td style="text-align: left;">GC + brackets</td>
+    <td style="text-align: left;">Low, but leaks</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Erlang</td>
+    <td style="text-align: left;">GC</td>
+    <td style="text-align: left;">Ports/NIFs</td>
+    <td style="text-align: left;">Low, but unsafe</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong><span
+    class="smallcaps">Japl</span></strong></td>
+    <td style="text-align: left;"><strong>GC</strong></td>
+    <td style="text-align: left;"><strong>Ownership</strong></td>
+    <td style="text-align: left;"><strong>Low + safe</strong></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h1 data-number="6" id="sec:compilation"><span
+    class="header-section-number">6</span> Compilation Model</h1>
+    <p><span class="smallcaps">Japl</span>’s compilation model is
+    designed for the edit-compile-test loop, where the latency between
+    saving a file and seeing test results is the critical metric.</p>
+    <h2 data-number="6.1" id="architecture-overview"><span
+    class="header-section-number">6.1</span> Architecture Overview</h2>
+    <p>The compilation pipeline proceeds through the following
+    phases:</p>
+    <ol>
+    <li><p><strong>Parsing</strong> (<span
+    class="math inline">\(\mathcal{O}(n)\)</span>): Source text to AST.
+    Each file is parsed independently and in parallel.</p></li>
+    <li><p><strong>Name resolution</strong> (<span
+    class="math inline">\(\mathcal{O}(n \log n)\)</span>): Resolving
+    imports, building the module dependency graph.</p></li>
+    <li><p><strong>Type checking and inference</strong> (<span
+    class="math inline">\(\mathcal{O}(n)\)</span> practical):
+    Bidirectional type checking with local inference. Effect inference
+    within function bodies; effect checking at module
+    boundaries.</p></li>
+    <li><p><strong>Effect-aware optimization</strong>: Dead code
+    elimination, function inlining, and constant folding, guided by
+    effect annotations.</p></li>
+    <li><p><strong>Code generation</strong>: Cranelift (debug) or LLVM
+    (release).</p></li>
+    <li><p><strong>Linking</strong>: Static linking of all modules and
+    the runtime into a single binary.</p></li>
+    </ol>
+    <h2 data-number="6.2"
+    id="whole-program-vs.-separate-compilation"><span
+    class="header-section-number">6.2</span> Whole-Program vs. Separate
+    Compilation</h2>
+    <p><span class="smallcaps">Japl</span> uses a hybrid approach:</p>
+    <ul>
+    <li><p><strong>Separate compilation for type checking:</strong> Each
+    module is type-checked against the <em>signatures</em> of its
+    dependencies, not their implementations. This enables parallel type
+    checking and incremental recompilation.</p></li>
+    <li><p><strong>Whole-program optimization for code
+    generation:</strong> In release mode, the optimizer sees the entire
+    program, enabling cross-module inlining, specialization, and dead
+    code elimination.</p></li>
+    </ul>
+    <p>This hybrid approach gets the best of both worlds: fast
+    incremental builds during development (separate compilation) and
+    aggressive optimization for production (whole-program).</p>
+    <h2 data-number="6.3" id="incremental-strategies"><span
+    class="header-section-number">6.3</span> Incremental Strategies</h2>
+    <p><span class="smallcaps">Japl</span>’s incremental compilation
+    uses a fine-grained dependency tracking system:</p>
+    <div class="definition">
+    <p><strong>Definition 7</strong> (Interface Stability). <em>A module
+    interface <span class="math inline">\(I(M)\)</span> consists
+    of:</em></p>
+    <ul>
+    <li><p><em>Type definitions exported by <span
+    class="math inline">\(M\)</span></em></p></li>
+    <li><p><em>Function signatures (including effect annotations)
+    exported by <span class="math inline">\(M\)</span></em></p></li>
+    <li><p><em>Trait implementations provided by <span
+    class="math inline">\(M\)</span></em></p></li>
+    </ul>
+    <p><em>A change <span class="math inline">\(\delta\)</span> to
+    module <span class="math inline">\(M\)</span> is
+    <em>interface-stable</em> if <span
+    class="math inline">\(I(M)\)</span> is unchanged after applying
+    <span class="math inline">\(\delta\)</span>.</em></p>
+    </div>
+    <div class="proposition">
+    <p><strong>Proposition 8</strong> (Incremental Recompilation Bound).
+    <em>If a change <span class="math inline">\(\delta\)</span> to
+    module <span class="math inline">\(M\)</span> is interface-stable,
+    only <span class="math inline">\(M\)</span> itself needs
+    recompilation. The downstream modules that depend on <span
+    class="math inline">\(M\)</span> need not be recompiled or even
+    re-checked.</em></p>
+    </div>
+    <p>Effect annotations contribute to interface stability in an
+    important way: if a function’s implementation changes but its effect
+    signature does not, downstream modules remain valid. This is
+    strictly better than languages without effect tracking, where any
+    implementation change might introduce new side effects that callers
+    should know about.</p>
+    <h2 data-number="6.4"
+    id="how-effect-types-enable-optimization"><span
+    class="header-section-number">6.4</span> How Effect Types Enable
+    Optimization</h2>
+    <div class="proposition">
+    <p><strong>Proposition 9</strong> (Pure Function Optimization).
+    <em>Functions annotated as <span
+    class="math inline">\(\text{Pure}\)</span> (the default in <span
+    class="smallcaps">Japl</span>) admit the following optimizations
+    that are unsound for effectful functions:</em></p>
+    <ol>
+    <li><p><em><strong>Common subexpression elimination:</strong> If
+    <span class="math inline">\(f\)</span> is pure and <span
+    class="math inline">\(f(x)\)</span> appears twice, the second
+    occurrence can be replaced with the result of the
+    first.</em></p></li>
+    <li><p><em><strong>Dead code elimination:</strong> If the result of
+    <span class="math inline">\(f(x)\)</span> is unused, the call can be
+    eliminated.</em></p></li>
+    <li><p><em><strong>Reordering:</strong> Calls to pure functions can
+    be reordered freely.</em></p></li>
+    <li><p><em><strong>Memoization:</strong> Results of pure functions
+    can be cached.</em></p></li>
+    <li><p><em><strong>Parallelization:</strong> Independent calls to
+    pure functions can be evaluated in parallel.</em></p></li>
+    </ol>
+    </div>
+    <p>For effectful functions, the effect annotation provides partial
+    optimization information:</p>
+    <ul>
+    <li><p><span class="math inline">\(\text{State}[s]\)</span>
+    functions can be reordered with respect to <span
+    class="math inline">\(\text{Io}\)</span> functions (state is
+    local).</p></li>
+    <li><p><span class="math inline">\(\text{Fail}[e]\)</span> functions
+    can be eliminated if wrapped in a handler that discards the
+    result.</p></li>
+    <li><p><span class="math inline">\(\text{Net}\)</span> functions
+    cannot be reordered or eliminated (observable side
+    effects).</p></li>
+    </ul>
+    <h2 data-number="6.5" id="aot-vs.-jit-trade-offs"><span
+    class="header-section-number">6.5</span> AOT vs. JIT Trade-offs</h2>
+    <p><span class="smallcaps">Japl</span> uses ahead-of-time (AOT)
+    compilation exclusively, forgoing JIT compilation. This decision is
+    motivated by several factors:</p>
+    <ol>
+    <li><p><strong>Predictable performance.</strong> AOT-compiled code
+    has consistent performance characteristics from the first
+    invocation. There is no warm-up period, no sudden deoptimizations,
+    and no performance cliffs.</p></li>
+    <li><p><strong>Simpler deployment.</strong> A statically compiled
+    binary requires no JIT compiler, no runtime code cache management,
+    and no W^X memory permission considerations (relevant for
+    security-hardened environments).</p></li>
+    <li><p><strong>Cross-compilation compatibility.</strong> AOT
+    compilation is inherently cross-compilation-friendly: the compiler
+    generates code for the target architecture, period. JIT compilers
+    typically require target-architecture JIT implementations.</p></li>
+    <li><p><strong>Container friendliness.</strong> Static binaries
+    produce minimal container images (potentially
+    <code>FROM scratch</code> Docker images), reducing attack surface
+    and image pull times.</p></li>
+    </ol>
+    <p>The trade-off is that <span class="smallcaps">Japl</span> cannot
+    perform profile-guided optimizations at runtime or specialize
+    generic code based on observed type distributions. We argue that
+    this trade-off is acceptable because: (a) AOT link-time optimization
+    with profile-guided optimization (PGO) data from previous runs
+    provides similar benefits; (b) effect-type-guided optimization
+    recovers many opportunities that JIT systems use runtime profiling
+    to discover; and (c) predictable performance is more valuable than
+    peak performance for the server-side workloads <span
+    class="smallcaps">Japl</span> targets.</p>
+    <h1 data-number="7" id="sec:tooling"><span
+    class="header-section-number">7</span> Tooling as Language
+    Feature</h1>
+    <p><span class="smallcaps">Japl</span> treats tooling not as an
+    ecosystem concern but as a language design concern. Every tool ships
+    with the compiler and is maintained by the core team.</p>
+    <h2 data-number="7.1" id="the-case-for-integrated-tooling"><span
+    class="header-section-number">7.1</span> The Case for Integrated
+    Tooling</h2>
+    <p>The fragmentation of tooling in languages like Haskell, Scala,
+    and even Rust (where <code>rustfmt</code> was not part of the
+    initial release) creates several problems:</p>
+    <ol>
+    <li><p><strong>Configuration proliferation.</strong> When multiple
+    tools exist, each has its own configuration format, and projects
+    accumulate dotfiles: <code>.prettierrc</code>,
+    <code>.eslintrc</code>, <code>.editorconfig</code>,
+    <code>rustfmt.toml</code>, <code>clippy.toml</code>.</p></li>
+    <li><p><strong>Version skew.</strong> Third-party tools may not
+    support the latest language features, creating windows where newly
+    added syntax cannot be formatted or linted.</p></li>
+    <li><p><strong>Onboarding friction.</strong> New contributors must
+    install and configure multiple tools beyond the compiler
+    itself.</p></li>
+    <li><p><strong>CI complexity.</strong> Each tool adds a CI step,
+    potentially with its own failure modes and update cadence.</p></li>
+    </ol>
+    <h2 data-number="7.2" id="built-in-formatter"><span
+    class="header-section-number">7.2</span> Built-in Formatter</h2>
+    <p><code>japl fmt</code> is a deterministic formatter: given the
+    same AST, it always produces the same output. It has zero
+    configuration options. Every <span class="smallcaps">Japl</span>
+    project in the world looks the same.</p>
+    <p>The formatter is implemented as a library that the compiler also
+    uses for error message formatting, ensuring consistency between the
+    code the programmer writes and the code the compiler displays in
+    diagnostics.</p>
+    <h2 data-number="7.3" id="built-in-test-runner-1"><span
+    class="header-section-number">7.3</span> Built-in Test Runner</h2>
+    <p>Tests are first-class syntactic constructs:</p>
+    <pre><code>module UserTest
+
+import User.{create_user, validate_email}
+
+test &quot;valid email passes validation&quot; {
+  assert validate_email(&quot;alice@example.com&quot;)
+    == Ok(&quot;alice@example.com&quot;)
+}
+
+test &quot;missing @ is rejected&quot; {
+  assert validate_email(&quot;bad-email&quot;)
+    == Err(InvalidEmail(&quot;bad-email&quot;))
+}
+
+property &quot;email roundtrip&quot; {
+  forall (local: AlphaString, domain: DomainString) -&gt;
+    let email = local ++ &quot;@&quot; ++ domain
+    validate_email(email) == Ok(email)
+}</code></pre>
+    <p>Because tests are known to the compiler, it can:</p>
+    <ul>
+    <li><p>Skip codegen for non-test code in test-only builds</p></li>
+    <li><p>Provide test-specific error messages that reference the
+    assertion expression</p></li>
+    <li><p>Track test coverage at the expression level, not the line
+    level</p></li>
+    <li><p>Run property-based tests with integrated shrinking</p></li>
+    </ul>
+    <h2 data-number="7.4" id="built-in-package-manager"><span
+    class="header-section-number">7.4</span> Built-in Package
+    Manager</h2>
+    <p><code>japl deps</code> manages dependencies through a centralized
+    registry with reproducible builds:</p>
+    <pre class="shell" data-language="shell"><code>$ japl deps add http 0.5
+$ japl deps update
+$ japl deps audit    # security audit
+$ japl deps tree     # dependency tree</code></pre>
+    <p>The lockfile format is deterministic and human-readable.
+    Dependency resolution uses a SAT solver to find compatible version
+    sets, with clear error messages when resolution fails.</p>
+    <h2 data-number="7.5" id="language-server-protocol"><span
+    class="header-section-number">7.5</span> Language Server
+    Protocol</h2>
+    <p><span class="smallcaps">Japl</span> ships a Language Server
+    Protocol (LSP) implementation that provides:</p>
+    <ul>
+    <li><p>Hover information with types, effects, and
+    documentation</p></li>
+    <li><p>Go-to-definition (including into standard library and
+    dependencies)</p></li>
+    <li><p>Find-all-references</p></li>
+    <li><p>Rename refactoring</p></li>
+    <li><p>Inline diagnostics with fix suggestions</p></li>
+    <li><p>Effect signature display for any expression</p></li>
+    </ul>
+    <p>The LSP server reuses the compiler’s type-checking
+    infrastructure, ensuring that IDE feedback is always consistent with
+    compilation results.</p>
+    <h2 data-number="7.6" id="repl"><span
+    class="header-section-number">7.6</span> REPL</h2>
+    <pre class="shell" data-language="shell"><code>$ japl repl
+japl&gt; let xs = [1, 2, 3, 4, 5]
+xs : List[Int] = [1, 2, 3, 4, 5]
+
+japl&gt; List.map(xs, fn x -&gt; x * x)
+[1, 4, 9, 16, 25] : List[Int]
+
+japl&gt; :type List.fold
+List.fold : fn(List[a], b, fn(b, a) -&gt; b) -&gt; b
+
+japl&gt; :effects File.read_to_string
+File.read_to_string : Io, Fail[IoError]</code></pre>
+    <p>The REPL supports incremental compilation: each expression is
+    compiled and executed in the context of previous definitions, with
+    the same type checking and effect tracking as regular code.</p>
+    <h2 data-number="7.7" id="built-in-profiler"><span
+    class="header-section-number">7.7</span> Built-in Profiler</h2>
+    <pre class="shell" data-language="shell"><code>$ japl run --profile myapp.japl
+# After execution:
+Top functions by time:
+  1. Json.parse         312ms  (42.1%)
+  2. Http.handle_req    198ms  (26.7%)
+  3. Db.query           156ms  (21.0%)
+  4. List.map            42ms   (5.7%)
+
+Per-process GC statistics:
+  Process &lt;0.12.0&gt;: 3 minor GCs, 0 major
+  Process &lt;0.47.0&gt;: 12 minor GCs, 1 major
+  Process &lt;0.48.0&gt;: 8 minor GCs, 0 major
+
+Message passing:
+  Total messages: 14,235
+  Avg queue depth: 2.3
+  Max queue depth: 47 (Process &lt;0.47.0&gt;)</code></pre>
+    <p>Because the profiler is integrated with the runtime, it can
+    provide process-aware, effect-aware profiling data that external
+    profilers cannot: per-process allocation rates, message throughput
+    between process pairs, supervision tree overhead, and effect handler
+    costs.</p>
+    <h1 data-number="8" id="sec:deployment"><span
+    class="header-section-number">8</span> Deployment</h1>
+    <p>Deployment is where operational simplicity pays its largest
+    dividends. A language can have the most beautiful type system in the
+    world, but if deploying it requires a Ph.D. in systems
+    administration, it will not be adopted for production use.</p>
+    <h2 data-number="8.1" id="static-binaries-1"><span
+    class="header-section-number">8.1</span> Static Binaries</h2>
+    <p>Every <span class="smallcaps">Japl</span> build produces a single
+    statically linked binary. The binary includes:</p>
+    <ul>
+    <li><p>The application code (compiled to native machine
+    code)</p></li>
+    <li><p>The <span class="smallcaps">Japl</span> runtime (process
+    scheduler, GC, network event loop)</p></li>
+    <li><p>The standard library (only functions actually used, thanks to
+    dead code elimination)</p></li>
+    <li><p>A minimal C runtime (for system calls)</p></li>
+    </ul>
+    <p>No shared libraries, no virtual machine, no interpreter, no
+    runtime downloads.</p>
+    <h2 data-number="8.2" id="cross-compilation-matrix"><span
+    class="header-section-number">8.2</span> Cross-Compilation
+    Matrix</h2>
+    <p><span class="smallcaps">Japl</span> supports cross-compilation
+    for all major targets from any development platform:</p>
+    <div id="tab:cross-compilation">
+    <table>
+    <caption>Cross-compilation support matrix.</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Target</strong></th>
+    <th style="text-align: center;"><strong>From Linux</strong></th>
+    <th style="text-align: center;"><strong>From macOS</strong></th>
+    <th style="text-align: center;"><strong>From Windows</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">linux-amd64</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">linux-arm64</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">darwin-amd64</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">darwin-arm64</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">windows-amd64</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">wasm32</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h2 data-number="8.3" id="container-friendly-builds"><span
+    class="header-section-number">8.3</span> Container-Friendly
+    Builds</h2>
+    <p><span class="smallcaps">Japl</span>’s static binaries enable
+    minimal container images:</p>
+    <pre class="shell" data-language="shell"
+    data-basicstyle="\ttfamily\tiny"><code># Multi-stage build
+FROM japl:latest AS builder
+COPY . /app
+RUN japl build --release --static /app/main.japl
+
+# Final image: just the binary
+FROM scratch
+COPY --from=builder /app/main /main
+ENTRYPOINT [&quot;/main&quot;]</code></pre>
+    <p>The resulting image contains only the application binary—no OS,
+    no package manager, no shell. This produces images in the 5–20 MB
+    range (depending on application size), compared to 100+ MB for
+    typical Go images, 200+ MB for Rust images with a Debian base, and
+    500+ MB for Haskell images.</p>
+    <h2 data-number="8.4" id="minimal-runtime-dependencies"><span
+    class="header-section-number">8.4</span> Minimal Runtime
+    Dependencies</h2>
+    <p><span class="smallcaps">Japl</span> binaries have zero runtime
+    dependencies beyond the operating system kernel. Specifically, they
+    do not require:</p>
+    <ul>
+    <li><p>A C standard library (system calls are made
+    directly)</p></li>
+    <li><p>DNS resolver libraries (a pure-<span
+    class="smallcaps">Japl</span> DNS client is included in the
+    runtime)</p></li>
+    <li><p>TLS libraries (a pure-<span class="smallcaps">Japl</span> TLS
+    implementation is included)</p></li>
+    <li><p>Any <code>.so</code>/<code>.dylib</code>/<code>.dll</code>
+    files</p></li>
+    </ul>
+    <p>This eliminates the “works on my machine” class of deployment
+    failures that arise from shared library version mismatches.</p>
+    <h2 data-number="8.5" id="deployment-comparison"><span
+    class="header-section-number">8.5</span> Deployment Comparison</h2>
+    <div id="tab:deployment">
+    <table>
+    <caption>Deployment characteristics. (*Rust can statically link musl
+    libc.)</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"></th>
+    <th style="text-align: left;"><strong><span
+    class="smallcaps">Japl</span></strong></th>
+    <th style="text-align: left;"><strong>Go</strong></th>
+    <th style="text-align: left;"><strong>Rust</strong></th>
+    <th style="text-align: left;"><strong>Haskell</strong></th>
+    <th style="text-align: left;"><strong>Erlang</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Artifact</td>
+    <td style="text-align: left;">Binary</td>
+    <td style="text-align: left;">Binary</td>
+    <td style="text-align: left;">Binary</td>
+    <td style="text-align: left;">Binary</td>
+    <td style="text-align: left;">Release</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Deps</td>
+    <td style="text-align: left;">None</td>
+    <td style="text-align: left;">libc</td>
+    <td style="text-align: left;">libc*</td>
+    <td style="text-align: left;">Many</td>
+    <td style="text-align: left;">BEAM</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Image</td>
+    <td style="text-align: left;">5–20MB</td>
+    <td style="text-align: left;">10–30MB</td>
+    <td style="text-align: left;">5–30MB</td>
+    <td style="text-align: left;">200+MB</td>
+    <td style="text-align: left;">100+MB</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Cross</td>
+    <td style="text-align: left;">Trivial</td>
+    <td style="text-align: left;">Trivial</td>
+    <td style="text-align: left;">Moderate</td>
+    <td style="text-align: left;">Hard</td>
+    <td style="text-align: left;">N/A</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h1 data-number="9" id="sec:comparison"><span
+    class="header-section-number">9</span> Comparison with Existing
+    Languages</h1>
+    <p>We now provide a detailed comparison of <span
+    class="smallcaps">Japl</span> against five languages that each
+    represent a different point in the design space.</p>
+    <h2 data-number="9.1"
+    id="go-gold-standard-for-tooling-weak-types"><span
+    class="header-section-number">9.1</span> Go: Gold Standard for
+    Tooling, Weak Types</h2>
+    <p>Go <span class="citation"
+    data-cites="pike2012go donovan2015go"></span> is the language <span
+    class="smallcaps">Japl</span> most admires operationally and most
+    disagrees with type-theoretically.</p>
+    <p><strong>What Go gets right:</strong></p>
+    <ul>
+    <li><p>Compilation speed (seconds for large projects)</p></li>
+    <li><p>Single static binary deployment</p></li>
+    <li><p>Canonical formatter (<code>gofmt</code>)</p></li>
+    <li><p>Unified toolchain
+    (<code>go build/test/vet/doc</code>)</p></li>
+    <li><p>Cross-compilation via
+    <code>GOOS</code>/<code>GOARCH</code></p></li>
+    <li><p>Excellent standard library for networking</p></li>
+    </ul>
+    <p><strong>What Go gives up:</strong></p>
+    <ul>
+    <li><p>No algebraic data types (sum types). Error handling is
+    <code>if err != nil</code> repeated <em>ad nauseam</em>.</p></li>
+    <li><p>No exhaustive pattern matching. Missing cases are silent
+    bugs.</p></li>
+    <li><p>No generics until Go 1.18, and the resulting generics are
+    limited.</p></li>
+    <li><p>No effect tracking. Any function might perform I/O.</p></li>
+    <li><p>Shared mutable memory with goroutines creates data race
+    possibilities.</p></li>
+    <li><p>No supervision trees. Goroutine failures are unobserved by
+    default.</p></li>
+    </ul>
+    <p><span class="smallcaps">Japl</span> aims to match Go’s
+    operational excellence while providing the type safety that Go
+    lacks. The key insight is that ADTs, traits, effect types, and
+    pattern matching do not inherently require slow compilation—their
+    type-checking algorithms are well within the decidable,
+    practically-fast region of the complexity hierarchy.</p>
+    <h2 data-number="9.2" id="rust-powerful-but-slow-compilation"><span
+    class="header-section-number">9.2</span> Rust: Powerful but Slow
+    Compilation</h2>
+    <p>Rust <span class="citation"
+    data-cites="matsakis2014rust klabnik2019rust"></span> provides the
+    strongest compile-time guarantees of any mainstream language, at
+    significant cost.</p>
+    <p><strong>What Rust gets right:</strong></p>
+    <ul>
+    <li><p>Ownership and borrowing eliminate memory safety bugs</p></li>
+    <li><p>Zero-cost abstractions</p></li>
+    <li><p>Excellent pattern matching and enums</p></li>
+    <li><p>Trait-based generics</p></li>
+    <li><p>Growing ecosystem (crates.io)</p></li>
+    </ul>
+    <p><strong>What Rust gives up:</strong></p>
+    <ul>
+    <li><p>Compilation speed: 10+ minutes for medium projects is
+    common</p></li>
+    <li><p>Cognitive overhead: lifetime annotations pervade the
+    codebase</p></li>
+    <li><p>No lightweight processes (async/await is complex)</p></li>
+    <li><p>No supervision or fault tolerance primitives</p></li>
+    <li><p>No effect tracking (beyond <code>unsafe</code>)</p></li>
+    <li><p>Steep learning curve, particularly for the borrow
+    checker</p></li>
+    </ul>
+    <p><span class="smallcaps">Japl</span> borrows Rust’s ownership
+    model for resources but applies it only where needed (external
+    resources), keeping the common case (pure functional code) free of
+    lifetime annotations.</p>
+    <h2 data-number="9.3"
+    id="haskell-powerful-types-deployment-nightmare"><span
+    class="header-section-number">9.3</span> Haskell: Powerful Types,
+    Deployment Nightmare</h2>
+    <p>Haskell <span class="citation"
+    data-cites="marlow2010haskell jones2003haskell"></span> is the
+    purest realization of the “types first” philosophy, and its
+    deployment story illustrates the cost of neglecting operational
+    concerns.</p>
+    <p><strong>What Haskell gets right:</strong></p>
+    <ul>
+    <li><p>The most expressive type system in mainstream use</p></li>
+    <li><p>Purity enforced by the type system</p></li>
+    <li><p>Algebraic data types and pattern matching</p></li>
+    <li><p>Type classes and higher-kinded types</p></li>
+    <li><p>Lazy evaluation enables elegant abstractions</p></li>
+    </ul>
+    <p><strong>What Haskell gives up:</strong></p>
+    <ul>
+    <li><p>Compilation speed: GHC is slow, especially with
+    extensions</p></li>
+    <li><p>Deployment: dynamic linking, platform-specific builds, large
+    executables</p></li>
+    <li><p>Space leaks from lazy evaluation <span class="citation"
+    data-cites="mitchell2013leaking"></span></p></li>
+    <li><p>Unpredictable stack traces</p></li>
+    <li><p>Multiple build systems (Cabal, Stack, Nix)</p></li>
+    <li><p>IO monad creates a “monad transformer stack” complexity
+    cliff</p></li>
+    </ul>
+    <p><span class="smallcaps">Japl</span>’s effect system achieves
+    Haskell-like purity tracking without monadic syntax overhead, and
+    strict evaluation eliminates the space leak problem entirely.</p>
+    <h2 data-number="9.4" id="erlang-great-runtime-weak-tooling"><span
+    class="header-section-number">9.4</span> Erlang: Great Runtime, Weak
+    Tooling</h2>
+    <p>Erlang <span class="citation"
+    data-cites="armstrong2003erlang armstrong2007erlang"></span>
+    provides the runtime model that <span class="smallcaps">Japl</span>
+    most closely follows, while addressing its shortcomings.</p>
+    <p><strong>What Erlang gets right:</strong></p>
+    <ul>
+    <li><p>Lightweight processes (millions per node)</p></li>
+    <li><p>Supervision trees and fault tolerance</p></li>
+    <li><p>Hot code loading</p></li>
+    <li><p>Runtime observability (<code>:observer</code>,
+    tracing)</p></li>
+    <li><p>Distribution built in</p></li>
+    <li><p>Per-process GC</p></li>
+    </ul>
+    <p><strong>What Erlang gives up:</strong></p>
+    <ul>
+    <li><p>Dynamic typing: runtime type errors in production</p></li>
+    <li><p>No algebraic data types or exhaustive pattern
+    matching</p></li>
+    <li><p>No resource safety (no ownership model)</p></li>
+    <li><p>Requires BEAM VM installation on target systems</p></li>
+    <li><p>Limited tooling (no canonical formatter until
+    recently)</p></li>
+    <li><p>Unusual syntax discourages adoption</p></li>
+    </ul>
+    <p><span class="smallcaps">Japl</span> combines Erlang’s runtime
+    model with static typing, static binaries, and modern tooling.</p>
+    <h2 data-number="9.5" id="ocaml-good-balance-ecosystem-gaps"><span
+    class="header-section-number">9.5</span> OCaml: Good Balance,
+    Ecosystem Gaps</h2>
+    <p>OCaml <span class="citation" data-cites="leroy2014ocaml"></span>
+    is perhaps the closest existing language to <span
+    class="smallcaps">Japl</span>’s design philosophy, but with
+    significant differences.</p>
+    <p><strong>What OCaml gets right:</strong></p>
+    <ul>
+    <li><p>Fast compilation</p></li>
+    <li><p>Algebraic data types and pattern matching</p></li>
+    <li><p>Powerful module system (functors)</p></li>
+    <li><p>Good native code generation</p></li>
+    <li><p>Hindley-Milner type inference</p></li>
+    </ul>
+    <p><strong>What OCaml gives up:</strong></p>
+    <ul>
+    <li><p>No lightweight processes (until OCaml 5.0 with
+    effects)</p></li>
+    <li><p>No supervision or distribution</p></li>
+    <li><p>No effect tracking (unrestricted mutation)</p></li>
+    <li><p>Smaller ecosystem than Go, Rust, or Haskell</p></li>
+    <li><p>Historically fragmented tooling (improved with dune and
+    opam)</p></li>
+    <li><p>No cross-compilation story comparable to Go</p></li>
+    </ul>
+    <h2 data-number="9.6" id="summary"><span
+    class="header-section-number">9.6</span> Summary</h2>
+    <div class="table*">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Property</strong></th>
+    <th style="text-align: center;"><strong><span
+    class="smallcaps">Japl</span></strong></th>
+    <th style="text-align: center;"><strong>Go</strong></th>
+    <th style="text-align: center;"><strong>Rust</strong></th>
+    <th style="text-align: center;"><strong>Haskell</strong></th>
+    <th style="text-align: center;"><strong>Erlang</strong></th>
+    <th style="text-align: center;"><strong>OCaml</strong></th>
+    <th style="text-align: center;"><strong>Gleam</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">ADTs + pattern matching</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">Partial</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Effect tracking</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">Partial</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Ownership for resources</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Lightweight processes</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">Partial</td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Supervision trees</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Fast compilation</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Static binaries</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;">Partial</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Canonical formatter</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Built-in test runner</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Cross-compilation</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Distribution</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h1 data-number="10" id="sec:type-power-budget"><span
+    class="header-section-number">10</span> The Type Power Budget</h1>
+    <p>Not all type system features are created equal. Some provide
+    enormous safety benefits at low complexity cost; others provide
+    marginal benefits at high cost. We formalize this observation as a
+    <em>type power budget</em>: a framework for evaluating whether a
+    type system feature’s safety contribution justifies its
+    complexity.</p>
+    <h2 data-number="10.1" id="formalization"><span
+    class="header-section-number">10.1</span> Formalization</h2>
+    <div class="definition">
+    <p><strong>Definition 10</strong> (Type Feature). <em>A type feature
+    <span class="math inline">\(\phi\)</span> is characterized by a
+    tuple <span class="math inline">\((S_\phi, C_\phi, I_\phi)\)</span>
+    where:</em></p>
+    <ul>
+    <li><p><em><span class="math inline">\(S_\phi \in [0, 1]\)</span> is
+    the <em>safety contribution</em>: the fraction of a representative
+    bug taxonomy that <span class="math inline">\(\phi\)</span>
+    prevents.</em></p></li>
+    <li><p><em><span class="math inline">\(C_\phi \in [0, 1]\)</span> is
+    the <em>complexity cost</em>: a normalized measure of the cognitive
+    overhead, compilation cost, and tooling difficulty that <span
+    class="math inline">\(\phi\)</span> introduces.</em></p></li>
+    <li><p><em><span class="math inline">\(I_\phi \subseteq
+    \Phi\)</span> is the <em>interaction set</em>: the set of other
+    features whose complexity is affected by <span
+    class="math inline">\(\phi\)</span>’s presence.</em></p></li>
+    </ul>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 11</strong> (Safety-per-Complexity Ratio).
+    <em>The safety-per-complexity ratio of a feature <span
+    class="math inline">\(\phi\)</span> in the context of a feature set
+    <span class="math inline">\(F\)</span> is: <span
+    class="math display">\[\rho(\phi, F) = \frac{S_\phi}{\displaystyle
+    C_\phi + \sum_{\psi \in I_\phi \cap F} \Delta
+    C_{\phi,\psi}}\]</span> where <span class="math inline">\(\Delta
+    C_{\phi,\psi}\)</span> is the additional complexity from the
+    interaction between <span class="math inline">\(\phi\)</span> and
+    <span class="math inline">\(\psi\)</span>.</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 12</strong> (Type Power Budget). <em>A type
+    power budget <span class="math inline">\(B\)</span> is a threshold
+    on the minimum acceptable ratio: <span class="math display">\[F^* =
+    \{\phi \in \Phi : \rho(\phi, F^*) \geq B\}\]</span> The budget <span
+    class="math inline">\(B\)</span> partitions the space of type
+    features into those that earn their keep and those that do
+    not.</em></p>
+    </div>
+    <h2 data-number="10.2" id="feature-evaluation"><span
+    class="header-section-number">10.2</span> Feature Evaluation</h2>
+    <p>We evaluate concrete type system features against <span
+    class="smallcaps">Japl</span>’s budget:</p>
+    <div id="tab:type-budget">
+    <table>
+    <caption>Type feature evaluation. <span
+    class="smallcaps">Japl</span> includes features with <span
+    class="math inline">\(\rho \geq 2.0\)</span>.</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Feature</strong></th>
+    <th style="text-align: center;"><span
+    class="math inline">\(S_\phi\)</span></th>
+    <th style="text-align: center;"><span
+    class="math inline">\(C_\phi\)</span></th>
+    <th style="text-align: center;"><span
+    class="math inline">\(\rho\)</span></th>
+    <th style="text-align: center;"><strong>Include?</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">ADTs (sum types)</td>
+    <td style="text-align: center;">0.85</td>
+    <td style="text-align: center;">0.15</td>
+    <td style="text-align: center;">5.67</td>
+    <td style="text-align: center;">Yes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Pattern matching</td>
+    <td style="text-align: center;">0.80</td>
+    <td style="text-align: center;">0.10</td>
+    <td style="text-align: center;">8.00</td>
+    <td style="text-align: center;">Yes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Parametric poly.</td>
+    <td style="text-align: center;">0.70</td>
+    <td style="text-align: center;">0.15</td>
+    <td style="text-align: center;">4.67</td>
+    <td style="text-align: center;">Yes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Traits/type classes</td>
+    <td style="text-align: center;">0.65</td>
+    <td style="text-align: center;">0.20</td>
+    <td style="text-align: center;">3.25</td>
+    <td style="text-align: center;">Yes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Row polymorphism</td>
+    <td style="text-align: center;">0.45</td>
+    <td style="text-align: center;">0.20</td>
+    <td style="text-align: center;">2.25</td>
+    <td style="text-align: center;">Yes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Effect types</td>
+    <td style="text-align: center;">0.60</td>
+    <td style="text-align: center;">0.25</td>
+    <td style="text-align: center;">2.40</td>
+    <td style="text-align: center;">Yes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Linear types (res.)</td>
+    <td style="text-align: center;">0.55</td>
+    <td style="text-align: center;">0.20</td>
+    <td style="text-align: center;">2.75</td>
+    <td style="text-align: center;">Yes</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">GADTs</td>
+    <td style="text-align: center;">0.25</td>
+    <td style="text-align: center;">0.40</td>
+    <td style="text-align: center;">0.63</td>
+    <td style="text-align: center;">No</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Type families</td>
+    <td style="text-align: center;">0.20</td>
+    <td style="text-align: center;">0.45</td>
+    <td style="text-align: center;">0.44</td>
+    <td style="text-align: center;">No</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Dependent types</td>
+    <td style="text-align: center;">0.30</td>
+    <td style="text-align: center;">0.70</td>
+    <td style="text-align: center;">0.43</td>
+    <td style="text-align: center;">No</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">HKTs (full)</td>
+    <td style="text-align: center;">0.20</td>
+    <td style="text-align: center;">0.35</td>
+    <td style="text-align: center;">0.57</td>
+    <td style="text-align: center;">No</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h2 data-number="10.3" id="what-japl-includes"><span
+    class="header-section-number">10.3</span> What <span
+    class="smallcaps">Japl</span> Includes</h2>
+    <ol>
+    <li><p><strong>Algebraic data types.</strong> Sum types and product
+    types prevent null pointer errors, represent domain models
+    precisely, and enable exhaustive pattern matching. The safety
+    benefit is enormous; the complexity cost is low.</p></li>
+    <li><p><strong>Exhaustive pattern matching.</strong> Catches missing
+    cases at compile time. Negligible complexity cost for massive safety
+    benefit.</p></li>
+    <li><p><strong>Parametric polymorphism.</strong> Enables generic
+    data structures and functions without sacrificing type safety.
+    Well-understood, efficiently implementable.</p></li>
+    <li><p><strong>Traits (type classes).</strong> Enable ad-hoc
+    polymorphism (overloading) in a principled way. <span
+    class="smallcaps">Japl</span> restricts to single-parameter type
+    classes without functional dependencies, keeping resolution
+    decidable and predictable.</p></li>
+    <li><p><strong>Row polymorphism.</strong> Enables structural
+    subtyping for records without full subtype polymorphism. Allows
+    writing functions that work on “any record with a <code>name</code>
+    field” without inheritance.</p></li>
+    <li><p><strong>Effect types.</strong> Track side effects in function
+    signatures. Enable optimization (pure function elimination),
+    documentation (what can this function do?), and safety (pure
+    functions cannot perform I/O).</p></li>
+    <li><p><strong>Linear types for resources.</strong> Ensure
+    deterministic cleanup of external resources. Applied only to the
+    resource layer, not to all values.</p></li>
+    </ol>
+    <h2 data-number="10.4" id="what-japl-excludes"><span
+    class="header-section-number">10.4</span> What <span
+    class="smallcaps">Japl</span> Excludes</h2>
+    <ol>
+    <li><p><strong>GADTs.</strong> Generalized algebraic data types
+    enable type-level programming but make type inference
+    undecidable <span class="citation"
+    data-cites="jones2006gadts"></span>. The practical use cases
+    (length-indexed vectors, well-typed interpreters) do not justify the
+    complexity for a general-purpose language.</p></li>
+    <li><p><strong>Type families.</strong> Type-level functions add
+    significant complexity to the type checker and are a common source
+    of confusing error messages in Haskell. Most practical uses can be
+    achieved with traits and associated types.</p></li>
+    <li><p><strong>Dependent types.</strong> Full dependent types make
+    type checking undecidable. While dependently typed languages like
+    Agda <span class="citation" data-cites="norell2007agda"></span> and
+    Idris <span class="citation" data-cites="brady2013idris"></span> are
+    fascinating research vehicles, the complexity cost is prohibitive
+    for a language targeting production use.</p></li>
+    <li><p><strong>Higher-kinded types (full).</strong> <span
+    class="smallcaps">Japl</span> supports first-order type constructors
+    (e.g., <code>List[a]</code>, <code>Option[a]</code>) but not
+    higher-kinded types (e.g., a function parameterized over
+    <code>f</code> where <code>f</code> is itself a type constructor).
+    This limits some abstraction patterns (no generic “Monad” trait) but
+    dramatically simplifies type inference and error messages. The
+    <code>Functor</code> trait is provided as a special case known to
+    the compiler, rather than as a consequence of full HKT
+    support.</p></li>
+    </ol>
+    <h2 data-number="10.5" id="the-budget-as-design-discipline"><span
+    class="header-section-number">10.5</span> The Budget as Design
+    Discipline</h2>
+    <p>The type power budget is not a mathematical formula applied
+    mechanically; the <span class="math inline">\(S_\phi\)</span> and
+    <span class="math inline">\(C_\phi\)</span> values in <a
+    href="#tab:type-budget" data-reference-type="ref+Label"
+    data-reference="tab:type-budget">5</a> are design-team estimates
+    informed by experience, not objective constants derived from
+    empirical measurement. Reasonable practitioners may assign different
+    values—for instance, proponents of strongly-typed DSLs would likely
+    rate GADTs’ safety contribution higher than 0.25. The budget’s value
+    is as a <em>design discipline</em>: it forces the question “what
+    safety problem does this feature solve, and at what cost?” for every
+    proposed addition to the type system.</p>
+    <p>This discipline prevents feature creep—the gradual accumulation
+    of type system features that individually seem justified but
+    collectively produce an incomprehensible language. Haskell’s GHC has
+    over 100 language extensions, many of which interact in surprising
+    ways. <span class="smallcaps">Japl</span>’s type power budget is
+    explicitly designed to avoid this outcome.</p>
+    <h1 data-number="11" id="sec:observability"><span
+    class="header-section-number">11</span> Observability</h1>
+    <p>Runtime observability is a first-class design concern in <span
+    class="smallcaps">Japl</span>, not a third-party concern delegated
+    to APM vendors.</p>
+    <h2 data-number="11.1" id="built-in-tracing"><span
+    class="header-section-number">11.1</span> Built-in Tracing</h2>
+    <p><span class="smallcaps">Japl</span>’s runtime includes a
+    distributed tracing system compatible with the OpenTelemetry
+    standard <span class="citation"
+    data-cites="opentelemetry2023"></span>:</p>
+    <pre><code>fn handle_request(req: Request)
+    -&gt; Response with Io, Net, Trace =
+  Trace.span(&quot;handle_request&quot;, fn -&gt;
+    let user = Trace.span(&quot;auth&quot;, fn -&gt;
+      authenticate(req)?
+    )
+    let data = Trace.span(&quot;fetch_data&quot;, fn -&gt;
+      fetch_user_data(user.id)?
+    )
+    Response.json(200, data)
+  )</code></pre>
+    <p>Traces propagate across process boundaries and across nodes in a
+    distributed cluster. The tracing system is built into the runtime,
+    so it can capture process-level events (spawn, crash, restart) in
+    addition to application-level spans.</p>
+    <h2 data-number="11.2" id="structured-logging"><span
+    class="header-section-number">11.2</span> Structured Logging</h2>
+    <pre><code>fn process_order(order: Order)
+    -&gt; Result[Receipt, OrderError] with Io, Log =
+  Log.info(&quot;Processing order&quot;,
+    [(&quot;order_id&quot;, order.id),
+     (&quot;items&quot;, show(List.length(order.items))),
+     (&quot;total&quot;, show(order.total))])
+  let result = validate_and_charge(order)?
+  Log.info(&quot;Order completed&quot;,
+    [(&quot;order_id&quot;, order.id),
+     (&quot;receipt_id&quot;, result.id)])
+  Ok(result)</code></pre>
+    <p>Logging is an effect (<code>Log</code>), which means:</p>
+    <ul>
+    <li><p>Pure functions cannot log (they have no effect annotation for
+    it)</p></li>
+    <li><p>Log output can be captured and tested</p></li>
+    <li><p>Log handlers can be swapped (e.g., JSON output for
+    production, human-readable for development)</p></li>
+    </ul>
+    <h2 data-number="11.3" id="process-inspection"><span
+    class="header-section-number">11.3</span> Process Inspection</h2>
+    <pre><code>fn debug_system() -&gt; Unit with Io =
+  let procs = Process.list()
+  procs |&gt; List.each(fn p -&gt;
+    let info = Process.info(p)
+    print(&quot;PID: &quot; &lt;&gt; show(p.id)
+      &lt;&gt; &quot; status: &quot; &lt;&gt; show(info.status)
+      &lt;&gt; &quot; msgs: &quot; &lt;&gt; show(info.message_queue_len)
+      &lt;&gt; &quot; mem: &quot; &lt;&gt; show(info.memory))
+  )</code></pre>
+    <p>At runtime, any process can inspect:</p>
+    <ul>
+    <li><p>The list of all running processes</p></li>
+    <li><p>Each process’s status, message queue length, memory usage,
+    and current function</p></li>
+    <li><p>The supervision tree structure</p></li>
+    <li><p>Link and monitor relationships</p></li>
+    </ul>
+    <p>This is directly inspired by Erlang’s <code>:observer</code> and
+    <code>:sys</code> modules, adapted for a statically typed
+    context.</p>
+    <h2 data-number="11.4" id="runtime-metrics"><span
+    class="header-section-number">11.4</span> Runtime Metrics</h2>
+    <p>The runtime exports metrics in a standard format
+    (Prometheus-compatible):</p>
+    <ul>
+    <li><p><code>japl_process_count</code>: number of active
+    processes</p></li>
+    <li><p><code>japl_message_total</code>: total messages sent</p></li>
+    <li><p><code>japl_gc_pause_seconds</code>: GC pause durations (per
+    process)</p></li>
+    <li><p><code>japl_scheduler_utilization</code>: CPU utilization per
+    scheduler thread</p></li>
+    <li><p><code>japl_memory_heap_bytes</code>: total immutable heap
+    size</p></li>
+    <li><p><code>japl_memory_arena_bytes</code>: total resource arena
+    size</p></li>
+    </ul>
+    <p>These metrics are available without any application code, because
+    they are generated by the runtime itself.</p>
+    <h1 data-number="12" id="sec:case-study"><span
+    class="header-section-number">12</span> Case Study: Building,
+    Testing, and Deploying a Service</h1>
+    <p>We compare the experience of building, testing, and deploying a
+    representative microservice—an HTTP API with database access,
+    background job processing, and health monitoring—across five
+    languages.</p>
+    <h2 data-number="12.1" id="service-description"><span
+    class="header-section-number">12.1</span> Service Description</h2>
+    <p>The service implements:</p>
+    <ol>
+    <li><p>An HTTP API with CRUD endpoints for a “users”
+    resource</p></li>
+    <li><p>Database access (PostgreSQL) with connection pooling</p></li>
+    <li><p>A background job processor for sending welcome
+    emails</p></li>
+    <li><p>Health checking and readiness probes</p></li>
+    <li><p>Structured logging and distributed tracing</p></li>
+    <li><p>Graceful shutdown</p></li>
+    </ol>
+    <h2 data-number="12.2" id="implementation-japl"><span
+    class="header-section-number">12.2</span> Implementation: JAPL</h2>
+    <pre><code>module Main
+
+import Http.{Server, Router, Request, Response}
+import Db.{Pool, query}
+import Job.{Runner, enqueue}
+import Log
+import Trace
+
+fn main() -&gt; Unit with Io, Net, Process =
+  let config = load_config()?
+  let app = Supervisor.start(
+    strategy = OneForOne,
+    children = [
+      child(&quot;db_pool&quot;,
+        fn -&gt; Pool.start(config.database)),
+      child(&quot;job_runner&quot;,
+        fn -&gt; Runner.start(config.jobs)),
+      child(&quot;http&quot;,
+        fn -&gt; Server.start(config.http, routes())),
+    ]
+  )
+  Process.monitor(app)
+  Process.receive()  -- block until shutdown
+
+fn routes() -&gt; Router =
+  Router.new()
+  |&gt; Router.get(&quot;/health&quot;, health_handler)
+  |&gt; Router.get(&quot;/users/:id&quot;, get_user)
+  |&gt; Router.post(&quot;/users&quot;, create_user)
+
+fn create_user(req: Request)
+    -&gt; Response with Io, Net, Trace =
+  Trace.span(&quot;create_user&quot;, fn -&gt;
+    let params = Request.json_body(req)?
+    let user = query(&quot;INSERT INTO users ...&quot;,
+                     [params.name, params.email])?
+    enqueue(SendWelcomeEmail(user))?
+    Response.json(201, User.to_json(user))
+  )
+
+test &quot;create user validates email&quot; {
+  let req = Request.mock(Post, &quot;/users&quot;,
+    Json.object([(&quot;name&quot;, &quot;Alice&quot;),
+                 (&quot;email&quot;, &quot;bad&quot;)]))
+  let resp = create_user(req)
+  assert resp.status == 400
+}</code></pre>
+    <h2 data-number="12.3" id="quantitative-comparison"><span
+    class="header-section-number">12.3</span> Quantitative
+    Comparison</h2>
+    <div id="tab:case-study">
+    <table>
+    <caption>Quantitative comparison for the case study service. <span
+    class="smallcaps">Japl</span> figures are projected targets based on
+    Cranelift code generation benchmarks and comparable OCaml/Gleam
+    compilation speeds, not measurements from a mature production
+    compiler. Figures for Go, Rust, Haskell, and Erlang are based on
+    comparable real-world projects.</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Metric</strong></th>
+    <th style="text-align: left;"><strong><span
+    class="smallcaps">Japl</span></strong></th>
+    <th style="text-align: left;"><strong>Go</strong></th>
+    <th style="text-align: left;"><strong>Rust</strong></th>
+    <th style="text-align: left;"><strong>Haskell</strong></th>
+    <th style="text-align: left;"><strong>Erlang</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Lines of code</td>
+    <td style="text-align: left;">420</td>
+    <td style="text-align: left;">580</td>
+    <td style="text-align: left;">750</td>
+    <td style="text-align: left;">510</td>
+    <td style="text-align: left;">480</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Build time (clean)</td>
+    <td style="text-align: left;">3s</td>
+    <td style="text-align: left;">2s</td>
+    <td style="text-align: left;">180s</td>
+    <td style="text-align: left;">120s</td>
+    <td style="text-align: left;">4s</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Build time (incr.)</td>
+    <td style="text-align: left;">0.4s</td>
+    <td style="text-align: left;">0.3s</td>
+    <td style="text-align: left;">12s</td>
+    <td style="text-align: left;">15s</td>
+    <td style="text-align: left;">0.5s</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Binary size</td>
+    <td style="text-align: left;">12MB</td>
+    <td style="text-align: left;">14MB</td>
+    <td style="text-align: left;">8MB</td>
+    <td style="text-align: left;">45MB</td>
+    <td style="text-align: left;">N/A</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Docker image</td>
+    <td style="text-align: left;">12MB</td>
+    <td style="text-align: left;">22MB</td>
+    <td style="text-align: left;">15MB</td>
+    <td style="text-align: left;">280MB</td>
+    <td style="text-align: left;">120MB</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Dependencies</td>
+    <td style="text-align: left;">3</td>
+    <td style="text-align: left;">8</td>
+    <td style="text-align: left;">15</td>
+    <td style="text-align: left;">22</td>
+    <td style="text-align: left;">5</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Config files</td>
+    <td style="text-align: left;">1</td>
+    <td style="text-align: left;">3</td>
+    <td style="text-align: left;">4</td>
+    <td style="text-align: left;">5</td>
+    <td style="text-align: left;">3</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Test setup</td>
+    <td style="text-align: left;">0</td>
+    <td style="text-align: left;">1 file</td>
+    <td style="text-align: left;">1 file</td>
+    <td style="text-align: left;">2 files</td>
+    <td style="text-align: left;">1 file</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Null safety</td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Exhaustive match</td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Effect tracking</td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Supervision</td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Resource safety</td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h2 data-number="12.4" id="qualitative-observations"><span
+    class="header-section-number">12.4</span> Qualitative
+    Observations</h2>
+    <p><strong>Go</strong> requires the most boilerplate: explicit
+    <code>if err != nil</code> error handling, manual struct-to-JSON
+    mapping without sum types, and manual goroutine lifecycle
+    management. However, the development cycle is extremely fast and
+    deployment is trivial.</p>
+    <p><strong>Rust</strong> produces the smallest, fastest binary but
+    has the longest build times by an order of magnitude. The borrow
+    checker adds friction to database connection pool management,
+    requiring <code>Arc&lt;Mutex&lt;T&gt;&gt;</code> patterns that <span
+    class="smallcaps">Japl</span>’s process model avoids entirely.
+    Setting up async requires choosing between Tokio, async-std, and
+    smol runtimes.</p>
+    <p><strong>Haskell</strong> has the most concise business logic
+    (thanks to monadic composition) but the most complex setup. Building
+    a deployable binary requires navigating Stack/Cabal configuration,
+    and the resulting binary is large due to GHC’s runtime. Space leaks
+    in the background job processor required profiling with GHC’s heap
+    profiler.</p>
+    <p><strong>Erlang</strong> provides the best fault tolerance out of
+    the box (supervision trees, hot code loading) but dynamic typing
+    means type errors surface at runtime. The background job processor
+    can be updated without downtime. However, deploying to containers
+    requires including the entire BEAM runtime.</p>
+    <p><strong><span class="smallcaps">Japl</span></strong> combines
+    Go’s build speed and deployment simplicity with Erlang’s fault
+    tolerance and Haskell’s type safety. The supervision tree handles
+    process failures automatically, the type system catches missing
+    error cases at compile time, and the single static binary deploys
+    trivially.</p>
+    <h2 data-number="12.5" id="deployment-workflow"><span
+    class="header-section-number">12.5</span> Deployment Workflow</h2>
+    <p>The complete deployment workflow for the <span
+    class="smallcaps">Japl</span> service:</p>
+    <pre class="shell" data-language="shell"><code>$ japl test
+  23 tests passed (0.8s)
+  3 properties checked (1.2s, 100 cases each)
+
+$ japl build --release --static \
+    --target linux-amd64
+
+$ docker build -t myservice:v1.2.0 .
+  Step 1/3: FROM scratch
+  Step 2/3: COPY main /main
+  Step 3/3: ENTRYPOINT [&quot;/main&quot;]
+  Built: 12.3MB
+
+$ docker push myservice:v1.2.0
+$ kubectl set image deploy/myservice \
+    myservice=myservice:v1.2.0</code></pre>
+    <p>Total time from code change to production: under 30 seconds for
+    the build-test-package cycle, with no configuration files modified,
+    no shared library concerns, and no runtime version compatibility
+    issues.</p>
+    <h1 data-number="13" id="sec:discussion"><span
+    class="header-section-number">13</span> Discussion</h1>
+    <h2 data-number="13.1" id="is-this-just-go-with-better-types"><span
+    class="header-section-number">13.1</span> Is This Just Go with
+    Better Types?</h2>
+    <p>A natural reaction to <span class="smallcaps">Japl</span>’s
+    design is to dismiss it as “Go with algebraic data types.” This
+    characterization, while superficially plausible, misses several
+    fundamental differences:</p>
+    <ol>
+    <li><p><strong>Process model.</strong> <span
+    class="smallcaps">Japl</span>’s concurrency model is Erlang-style
+    processes, not Go-style goroutines. The difference is not cosmetic:
+    <span class="smallcaps">Japl</span> processes have isolated heaps,
+    typed mailboxes, and supervision trees. Goroutines share memory by
+    default and have no recovery mechanism beyond
+    <code>defer</code>/<code>recover</code>.</p></li>
+    <li><p><strong>Effect tracking.</strong> <span
+    class="smallcaps">Japl</span>’s effect system provides information
+    that Go’s type system cannot express. Knowing that a function is
+    pure enables optimizations, testing strategies, and compositional
+    reasoning that are impossible when any function might perform
+    I/O.</p></li>
+    <li><p><strong>Hybrid memory model.</strong> Go uses a single GC for
+    everything, including resources that would benefit from
+    deterministic cleanup. <span class="smallcaps">Japl</span>’s
+    dual-layer model provides GC convenience for data and ownership
+    precision for resources.</p></li>
+    <li><p><strong>Distribution.</strong> <span
+    class="smallcaps">Japl</span>’s process model extends naturally to
+    distributed systems with location-transparent PIDs and type-derived
+    serialization. Go has no built-in distribution model.</p></li>
+    </ol>
+    <h2 data-number="13.2" id="can-this-scale"><span
+    class="header-section-number">13.2</span> Can This Scale?</h2>
+    <p>A reasonable concern is whether <span
+    class="smallcaps">Japl</span>’s compilation speed targets are
+    achievable given a type system substantially more complex than
+    Go’s.</p>
+    <p>We argue yes, based on the following observations:</p>
+    <ol>
+    <li><p>OCaml already demonstrates that algebraic data types,
+    parametric polymorphism, and Hindley-Milner inference compile
+    fast.</p></li>
+    <li><p>Gleam compiles quickly to BEAM bytecode despite having ADTs
+    and pattern matching.</p></li>
+    <li><p><span class="smallcaps">Japl</span>’s type system is
+    deliberately bounded: by excluding GADTs, type families, and
+    dependent types, we avoid the features that make GHC slow.</p></li>
+    <li><p>Effect inference is a local analysis within function bodies,
+    not a global analysis.</p></li>
+    <li><p>The dual-backend strategy (Cranelift for dev, LLVM for
+    release) ensures that development builds are always fast.</p></li>
+    </ol>
+    <h2 data-number="13.3" id="what-about-hot-code-loading"><span
+    class="header-section-number">13.3</span> What About Hot Code
+    Loading?</h2>
+    <p>Erlang’s hot code loading—deploying new code without stopping the
+    system—is one of its most celebrated features. <span
+    class="smallcaps">Japl</span> does not support hot code loading in
+    its initial design, for several reasons:</p>
+    <ol>
+    <li><p>Hot code loading conflicts with static typing: changing a
+    function’s type signature requires recompiling all callers, which is
+    difficult to do atomically at runtime.</p></li>
+    <li><p>Modern deployment practices (rolling updates, blue-green
+    deployments, canary releases) provide similar zero-downtime
+    guarantees without the complexity of runtime code
+    replacement.</p></li>
+    <li><p>Static binaries and fast builds enable rapid redeployment
+    that achieves the same practical goal.</p></li>
+    </ol>
+    <p>Hot code loading remains a potential future extension for
+    specific use cases (e.g., long-running telecom systems where even
+    millisecond interruptions are unacceptable).</p>
+    <h2 data-number="13.4" id="limitations"><span
+    class="header-section-number">13.4</span> Limitations</h2>
+    <p><span class="smallcaps">Japl</span>’s design involves genuine
+    trade-offs:</p>
+    <ol>
+    <li><p><strong>No dependent types.</strong> Some correctness
+    properties (e.g., “this list has exactly <span
+    class="math inline">\(n\)</span> elements”) cannot be expressed in
+    <span class="smallcaps">Japl</span>’s type system. Programs
+    requiring such guarantees must use runtime checks.</p></li>
+    <li><p><strong>GC pauses.</strong> The immutable heap is
+    garbage-collected, and GC introduces pause times. Per-process heaps
+    limit the impact, but latency-critical applications may need to
+    carefully manage process heap sizes.</p></li>
+    <li><p><strong>No shared mutable memory.</strong> For workloads that
+    genuinely benefit from shared-memory parallelism (e.g., large-scale
+    numerical computation), <span class="smallcaps">Japl</span>’s
+    process model incurs message-passing overhead. An FFI to Rust or C
+    is the escape hatch for such cases. For high-performance networking
+    scenarios requiring zero-copy shared buffers (e.g., kernel-mapped
+    ring buffers shared between processes), <span
+    class="smallcaps">Japl</span> provides an
+    <code>unsafe foreign</code> block that permits the creation of
+    shared memory regions outside the ownership system. Code within
+    <code>unsafe foreign</code> blocks is explicitly excluded from the
+    compiler’s safety guarantees and must be audited manually, analogous
+    to Rust’s <code>unsafe</code> blocks. This escape hatch is
+    intentionally inconvenient to discourage casual use while remaining
+    available for performance-critical FFI interoperation.</p></li>
+    <li><p><strong>Young ecosystem.</strong> A new language cannot match
+    the library ecosystems of established languages. <span
+    class="smallcaps">Japl</span> mitigates this with a comprehensive
+    standard library and FFI, but third-party libraries will take time
+    to develop.</p></li>
+    </ol>
+    <h1 data-number="14" id="sec:related-theory"><span
+    class="header-section-number">14</span> Related Theoretical
+    Work</h1>
+    <h2 data-number="14.1"
+    id="abstract-machines-and-cost-semantics"><span
+    class="header-section-number">14.1</span> Abstract Machines and Cost
+    Semantics</h2>
+    <p><span class="smallcaps">Japl</span>’s predictable execution model
+    is informed by work on cost semantics for functional languages.
+    Blelloch and Greiner <span class="citation"
+    data-cites="blelloch1996cost"></span> developed cost semantics for
+    parallel functional programs, providing a framework for reasoning
+    about work and span. <span class="smallcaps">Japl</span>’s strict
+    evaluation ensures that cost semantics are straightforward: the cost
+    of evaluating an expression is the sum of the costs of evaluating
+    its subexpressions, with no hidden costs from lazy thunk
+    evaluation.</p>
+    <p>The CESK machine <span class="citation"
+    data-cites="felleisen1986cesk"></span> provides a foundational
+    abstract machine model. <span class="smallcaps">Japl</span>’s
+    runtime can be understood as a collection of CESK machines (one per
+    process) communicating via message passing, with a work-stealing
+    scheduler <span class="citation"
+    data-cites="blumofe1999cilk"></span> distributing machines across OS
+    threads.</p>
+    <h2 data-number="14.2" id="real-time-garbage-collection"><span
+    class="header-section-number">14.2</span> Real-Time Garbage
+    Collection</h2>
+    <p>Baker’s work on real-time garbage collection <span
+    class="citation" data-cites="baker1978gc"></span> and subsequent
+    developments in concurrent GC <span class="citation"
+    data-cites="jones2016gc"></span> inform <span
+    class="smallcaps">Japl</span>’s per-process GC design. The key
+    insight is that per-process heaps bound GC pause times by bounding
+    heap sizes: a process’s heap is proportional to its live data, not
+    to the total system’s live data.</p>
+    <h2 data-number="14.3" id="work-stealing-schedulers"><span
+    class="header-section-number">14.3</span> Work-Stealing
+    Schedulers</h2>
+    <p><span class="smallcaps">Japl</span>’s process scheduler is based
+    on the work-stealing paradigm <span class="citation"
+    data-cites="blumofe1999cilk"></span>, adapted for the Erlang-style
+    process model. Each OS thread maintains a local run queue of <span
+    class="smallcaps">Japl</span> processes; when a thread’s queue is
+    empty, it steals from another thread’s queue. This provides load
+    balancing without a centralized scheduler, enabling scalability to
+    many cores.</p>
+    <h2 data-number="14.4" id="process-algebra"><span
+    class="header-section-number">14.4</span> Process Algebra</h2>
+    <p><span class="smallcaps">Japl</span>’s process model can be
+    formalized in the <span
+    class="math inline">\(\pi\)</span>-calculus <span class="citation"
+    data-cites="milner1999pi"></span>, with typed mailboxes
+    corresponding to typed channels. The restriction to single-mailbox
+    processes (rather than multi-channel communication) simplifies the
+    model while retaining sufficient expressiveness for practical
+    concurrent programming. Kobayashi’s work on type systems for the
+    <span class="math inline">\(\pi\)</span>-calculus <span
+    class="citation" data-cites="kobayashi2005type"></span> provides
+    theoretical foundations for <span class="smallcaps">Japl</span>’s
+    typed process communication.</p>
+    <h4 data-number="14.4.0.1"
+    id="typed-mailbox-variance-and-protocol-evolution."><span
+    class="header-section-number">14.4.0.1</span> Typed Mailbox Variance
+    and Protocol Evolution.</h4>
+    <p><span class="smallcaps">Japl</span>’s typed mailboxes use
+    <em>contravariant</em> input types: a process that can handle
+    messages of type <code>A | B</code> can be safely referenced as
+    <code>Pid[A]</code>, since it accepts at least <code>A</code>. This
+    follows standard subtyping for input channels in the <span
+    class="math inline">\(\pi\)</span>-calculus. For protocol
+    evolution—the common need to extend a running system’s message
+    vocabulary—<span class="smallcaps">Japl</span> uses <em>open union
+    types</em> via row polymorphism: a mailbox type
+    <code>Pid[{Ping, Pong | r}]</code> accepts at least
+    <code>Ping</code> and <code>Pong</code> but is polymorphic in the
+    remaining messages <code>r</code>. A process can be upgraded to
+    handle additional message variants without breaking existing
+    senders, because the old type is a subtype of the new type under row
+    extension. This avoids the difficulties encountered by Akka Typed’s
+    “behavior narrowing” approach, where protocol changes required
+    rewriting the entire actor hierarchy’s types.</p>
+    <h1 data-number="15" id="sec:conclusion"><span
+    class="header-section-number">15</span> Conclusion</h1>
+    <p>We have presented the design philosophy behind <span
+    class="smallcaps">Japl</span>’s seventh core principle: <em>Runtime
+    Simplicity Matters as Much as Type Power</em>. This principle is not
+    a compromise or a concession to practicality; it is a recognition
+    that the purpose of a programming language is to build and deploy
+    reliable software, and that type system expressiveness is one tool
+    among many for achieving that goal.</p>
+    <p>The key insights of this paper are:</p>
+    <ol>
+    <li><p><strong>The type power budget.</strong> Type system features
+    should be evaluated by their safety-per-complexity ratio. ADTs,
+    pattern matching, traits, effect types, and targeted linear types
+    pass this test; GADTs, type families, and dependent types do not,
+    for a production-oriented language.</p></li>
+    <li><p><strong>The hybrid memory model.</strong> GC for immutable
+    data and ownership for resources is the sweet spot: it provides
+    Erlang-like ease for the common case and Rust-like precision where
+    it matters.</p></li>
+    <li><p><strong>Tooling is a language feature.</strong> A single
+    canonical formatter, test runner, package manager, and profiler, all
+    shipping with the compiler, eliminates an entire category of
+    friction that plagues languages with fragmented ecosystems.</p></li>
+    <li><p><strong>Deployment is a design concern.</strong> Static
+    binaries, cross-compilation, and minimal runtime dependencies should
+    be designed in from the start, not retrofitted.</p></li>
+    <li><p><strong>Effect types enable optimization and simplicity
+    simultaneously.</strong> Tracking effects in the type system
+    provides both safety (knowing what a function can do) and
+    optimization opportunities (eliminating pure computations whose
+    results are unused), creating a virtuous cycle where type system
+    features improve rather than degrade operational quality.</p></li>
+    </ol>
+    <p>The programming language community has a tendency to evaluate
+    languages on a single axis: type system expressiveness. This paper
+    argues for a multi-dimensional evaluation that includes compilation
+    speed, deployment simplicity, tooling quality, runtime
+    predictability, and observability. <span
+    class="smallcaps">Japl</span> is designed to score well on all
+    dimensions simultaneously, demonstrating that the Pareto frontier of
+    type safety and operational simplicity is not only reachable but
+    worth reaching.</p>
+    <p>We believe that the next generation of successful programming
+    languages will be defined not by how much they can express in their
+    type systems, but by how effectively they bridge the gap between
+    “this program type-checks” and “this program is running reliably in
+    production.”</p>
+    <div class="thebibliography">
+    <p><span>40</span></p>
+    <p>Allwood, T. O., Sheridan, K., and Jones, S. P. Finding the
+    needle: Stack traces for GHC. In <em>Proceedings of the Haskell
+    Symposium</em>, pp. 129–140, 2009.</p>
+    <p>Armstrong, J. Making reliable distributed systems in the presence
+    of software errors. PhD thesis, Royal Institute of Technology,
+    Stockholm, 2003.</p>
+    <p>Armstrong, J. <em>Programming Erlang: Software for a Concurrent
+    World</em>. Pragmatic Bookshelf, 2007.</p>
+    <p>Baker, H. G. List processing in real time on a serial computer.
+    <em>Communications of the ACM</em>, 21(4):280–294, 1978.</p>
+    <p>Blelloch, G. E. and Greiner, J. Parallelism in sequential
+    functional languages. In <em>Proceedings of FPCA ’95</em>,
+    pp. 226–237, 1996.</p>
+    <p>Blumofe, R. D. and Leiserson, C. E. Scheduling multithreaded
+    computations by work stealing. <em>Journal of the ACM</em>,
+    46(5):720–748, 1999.</p>
+    <p>Brady, E. Idris, a general-purpose dependently typed programming
+    language: Design and implementation. <em>Journal of Functional
+    Programming</em>, 23(5):552–593, 2013.</p>
+    <p>Bytecode Alliance. Cranelift code generator. <a
+    href="https://cranelift.dev/"
+    class="uri">https://cranelift.dev/</a>, 2020.</p>
+    <p>Donovan, A. A. A. and Kernighan, B. W. <em>The Go Programming
+    Language</em>. Addison-Wesley, 2015.</p>
+    <p>Felleisen, M. and Friedman, D. P. Control operators, the
+    SECD-machine, and the <span
+    class="math inline">\(\lambda\)</span>-calculus. In <em>Formal
+    Description of Programming Concepts III</em>, pp. 193–219, 1986.</p>
+    <p>Gleam Team. The Gleam programming language. <a
+    href="https://gleam.run/" class="uri">https://gleam.run/</a>,
+    2023.</p>
+    <p>Griesemer, R., Hu, R., Kokke, W., Lange, J., Taylor, I. L.,
+    Toninho, B., Wadler, P., and Yoshida, N. Featherweight Go. In
+    <em>Proceedings of OOPSLA</em>, 2020.</p>
+    <p>Happi, E. <em>The BEAM Book: Understanding the Erlang Runtime
+    System</em>. O’Reilly Media, 2023.</p>
+    <p>Ierusalimschy, R., de Figueiredo, L. H., and Celes, W. Lua 5.1
+    reference manual. Technical report, Lua.org, 2006.</p>
+    <p>Jones, S. P. Haskell 98 language and libraries: The revised
+    report. <em>Journal of Functional Programming</em>, 13(1):0–255,
+    2003.</p>
+    <p>Jones, S. P., Vytiniotis, D., Weirich, S., and Washburn, G.
+    Simple unification-based type inference for GADTs. In
+    <em>Proceedings of ICFP</em>, pp. 50–61, 2006.</p>
+    <p>Jones, R., Hosking, A., and Moss, E. <em>The Garbage Collection
+    Handbook: The Art of Automatic Memory Management</em>. Chapman and
+    Hall/CRC, 2nd edition, 2016.</p>
+    <p>Kelley, A. Zig: A language for system programming. <a
+    href="https://ziglang.org/" class="uri">https://ziglang.org/</a>,
+    2020.</p>
+    <p>Klabnik, S. and Nichols, C. <em>The Rust Programming
+    Language</em>. No Starch Press, 2019.</p>
+    <p>Kobayashi, N. Type-based information flow analysis for the
+    pi-calculus. <em>Acta Informatica</em>, 42(4):291–347, 2005.</p>
+    <p>Lattner, C. and Adve, V. LLVM: A compilation framework for
+    lifelong program analysis &amp; transformation. In <em>Proceedings
+    of CGO</em>, pp. 75–86, 2004.</p>
+    <p>Leroy, X. The OCaml system: Documentation and user’s manual.
+    Technical report, INRIA, 2014.</p>
+    <p>Marlow, S. Haskell 2010 language report. Technical report,
+    haskell.org, 2010.</p>
+    <p>Matsakis, N. D. and Klock, F. S. The Rust language. In
+    <em>Proceedings of the ACM SIGAda Annual Conference on High
+    Integrity Language Technology (HILT)</em>, pp. 103–104, 2014.</p>
+    <p>Matsakis, N. D. Incremental compilation. Rust Blog, <a
+    href="https://blog.rust-lang.org/2016/09/08/incremental.html"
+    class="uri">https://blog.rust-lang.org/2016/09/08/incremental.html</a>,
+    2016.</p>
+    <p>McAdam, B. J. On the unification of substitutions in type
+    inference. In <em>Proceedings of the Implementation of Functional
+    Languages Workshop</em>, 1998.</p>
+    <p>Milner, R. <em>Communicating and Mobile Systems: The <span
+    class="math inline">\(\pi\)</span>-Calculus</em>. Cambridge
+    University Press, 1999.</p>
+    <p>Mitchell, N. Leaking space: Detecting space leaks in Haskell
+    programs. In <em>Proceedings of the Haskell Symposium</em>,
+    2013.</p>
+    <p>Norell, U. Towards a practical programming language based on
+    dependent type theory. PhD thesis, Chalmers University of
+    Technology, 2007.</p>
+    <p>Odersky, M., Altherr, P., Cremet, V., Emir, B., Maneth, S.,
+    Micheloud, S., Mihaylov, N., Schinz, M., Stenman, E., and Zenger, M.
+    An overview of the Scala programming language. Technical Report
+    IC/2004/64, EPFL, 2004.</p>
+    <p>OpenTelemetry Authors. OpenTelemetry specification. <a
+    href="https://opentelemetry.io/docs/specs/otel/"
+    class="uri">https://opentelemetry.io/docs/specs/otel/</a>, 2023.</p>
+    <p>Pierce, B. C. <em>Types and Programming Languages</em>. MIT
+    Press, 2002.</p>
+    <p>Pike, R. Go at Google: Language design in the service of software
+    engineering. In <em>Proceedings of SPLASH</em>, 2012.</p>
+    <p>Pike, R. Simplicity is complicated. dotGo 2015, <a
+    href="https://www.youtube.com/watch?v=rFejpH_tAHM"
+    class="uri">https://www.youtube.com/watch?v=rFejpH_tAHM</a>,
+    2015.</p>
+    <p>Rust Survey Team. Annual Rust survey 2023 results. <a
+    href="https://blog.rust-lang.org/2024/02/19/2023-Rust-Annual-Survey-2023-results.html"
+    class="uri">https://blog.rust-lang.org/2024/02/19/2023-Rust-Annual-Survey-2023-results.html</a>,
+    2023.</p>
+    <p>Snoyman, M. Haskell’s deployment problem. FP Complete Blog,
+    2017.</p>
+    <p>Sulzmann, M., Chakravarty, M. M. T., Jones, S. P., and Donnelly,
+    K. System F with type equality coercions. In <em>Proceedings of
+    TLDI</em>, pp. 53–66, 2007.</p>
+    <p>Thompson, K. Reflections on trusting trust. <em>Communications of
+    the ACM</em>, 27(8):761–763, 1984.</p>
+    <p>Waldo, J., Wyant, G., Wollrath, A., and Kendall, S. A note on
+    distributed computing. Technical Report TR-94-29, Sun Microsystems
+    Laboratories, 1996.</p>
+    <p>Wadler, P. and Blott, S. How to make ad-hoc polymorphism less ad
+    hoc. In <em>Proceedings of POPL</em>, pp. 60–76, 1989.</p>
+    <p>Wirth, N. <em>Programming in Modula-2</em>. Springer-Verlag,
+    1982.</p>
+    <p>Ichbiah, J. D., Barnes, J. G. P., Heliard, J. C.,
+    Krieg-Brueckner, B., Roubine, O., and Wichmann, B. A. Rationale for
+    the design of the Ada programming language. <em>SIGPLAN
+    Notices</em>, 14(6b):1–261, 1979.</p>
+    </div>
+
+    <div class="paper-footer">
+      <p>JAPL Research Series — YonedaAI Research Collective</p>
+      <p><a href="../index.html">japl-nine.vercel.app</a></p>
+    </div>
+  </main>
+</div>
+
+<script>
+// Auto-generate sidebar TOC from h2/h3 headings
+const toc = document.getElementById('toc');
+const headings = document.querySelectorAll('.content h2, .content h3');
+headings.forEach((h, i) => {
+  if (!h.id) h.id = 'section-' + i;
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.href = '#' + h.id;
+  a.textContent = h.textContent;
+  if (h.tagName === 'H3') a.className = 'toc-h3';
+  li.appendChild(a);
+  toc.appendChild(li);
+});
+</script>
+
+</body>
+</html>

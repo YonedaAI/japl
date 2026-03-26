@@ -1,0 +1,75 @@
+<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0e17"/>
+      <stop offset="100%" style="stop-color:#141922"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#7c5cfc"/>
+      <stop offset="100%" style="stop-color:#4f8ff7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Accent line top -->
+  <rect x="80" y="60" width="120" height="4" rx="2" fill="url(#accent)"/>
+
+  <!-- JAPL wordmark -->
+  <text x="80" y="180" font-family="system-ui, -apple-system, sans-serif" font-size="96" font-weight="800" fill="#e2e8f0">JAPL</text>
+
+  <!-- Subtitle -->
+  <text x="80" y="240" font-family="system-ui, -apple-system, sans-serif" font-size="32" font-weight="400" fill="#7c5cfc">Just Another Programming Language</text>
+
+  <!-- Tagline -->
+  <text x="80" y="310" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="#94a3b8">Pure by default, concurrent by design,</text>
+  <text x="80" y="345" font-family="system-ui, -apple-system, sans-serif" font-size="22" fill="#94a3b8">resource-safe by construction, distributed without apology.</text>
+
+  <!-- DNA pills -->
+  <rect x="80" y="400" width="110" height="36" rx="18" fill="#7c5cfc" opacity="0.15"/>
+  <text x="135" y="424" font-family="system-ui, sans-serif" font-size="15" fill="#7c5cfc" text-anchor="middle">ML / OCaml</text>
+
+  <rect x="210" y="400" width="80" height="36" rx="18" fill="#f97316" opacity="0.15"/>
+  <text x="250" y="424" font-family="system-ui, sans-serif" font-size="15" fill="#f97316" text-anchor="middle">Rust</text>
+
+  <rect x="310" y="400" width="90" height="36" rx="18" fill="#22c55e" opacity="0.15"/>
+  <text x="355" y="424" font-family="system-ui, sans-serif" font-size="15" fill="#22c55e" text-anchor="middle">Erlang</text>
+
+  <rect x="420" y="400" width="65" height="36" rx="18" fill="#4f8ff7" opacity="0.15"/>
+  <text x="452" y="424" font-family="system-ui, sans-serif" font-size="15" fill="#4f8ff7" text-anchor="middle">Go</text>
+
+  <!-- Code snippet -->
+  <rect x="620" y="100" width="500" height="380" rx="12" fill="#1a1f2e" opacity="0.8"/>
+  <rect x="620" y="100" width="500" height="36" rx="12" fill="#1e2433"/>
+  <circle cx="648" cy="118" r="6" fill="#ff5f57"/>
+  <circle cx="668" cy="118" r="6" fill="#febc2e"/>
+  <circle cx="688" cy="118" r="6" fill="#28c840"/>
+  <text x="780" y="123" font-family="monospace" font-size="12" fill="#64748b">server.japl</text>
+
+  <text x="644" y="168" font-family="monospace" font-size="14" fill="#c084fc">type</text>
+  <text x="688" y="168" font-family="monospace" font-size="14" fill="#e2e8f0"> Msg =</text>
+  <text x="660" y="192" font-family="monospace" font-size="14" fill="#4f8ff7">| StartJob</text>
+  <text x="775" y="192" font-family="monospace" font-size="14" fill="#e2e8f0">(JobId)</text>
+  <text x="660" y="216" font-family="monospace" font-size="14" fill="#4f8ff7">| CancelJob</text>
+  <text x="783" y="216" font-family="monospace" font-size="14" fill="#e2e8f0">(JobId)</text>
+
+  <text x="644" y="256" font-family="monospace" font-size="14" fill="#c084fc">fn</text>
+  <text x="668" y="256" font-family="monospace" font-size="14" fill="#7dd3fc"> worker</text>
+  <text x="738" y="256" font-family="monospace" font-size="14" fill="#e2e8f0">(state) =</text>
+
+  <text x="660" y="280" font-family="monospace" font-size="14" fill="#c084fc">  receive</text>
+  <text x="668" y="304" font-family="monospace" font-size="14" fill="#4f8ff7">    StartJob</text>
+  <text x="783" y="304" font-family="monospace" font-size="14" fill="#e2e8f0">(id) =></text>
+  <text x="676" y="328" font-family="monospace" font-size="14" fill="#e2e8f0">      worker(begin(state, id))</text>
+  <text x="668" y="352" font-family="monospace" font-size="14" fill="#4f8ff7">    CancelJob</text>
+  <text x="790" y="352" font-family="monospace" font-size="14" fill="#e2e8f0">(id) =></text>
+  <text x="676" y="376" font-family="monospace" font-size="14" fill="#e2e8f0">      worker(cancel(state, id))</text>
+
+  <!-- Footer -->
+  <text x="80" y="540" font-family="system-ui, sans-serif" font-size="16" fill="#64748b">YonedaAI Research Collective</text>
+  <text x="80" y="565" font-family="system-ui, sans-serif" font-size="14" fill="#475569">github.com/YonedaAI/japl</text>
+
+  <!-- Accent line bottom -->
+  <rect x="80" y="590" width="1040" height="2" rx="1" fill="url(#accent)" opacity="0.3"/>
+</svg>

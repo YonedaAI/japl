@@ -1,0 +1,1615 @@
+\documentclass[11pt,a4paper]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{stmaryrd}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{geometry}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{tikz-cd}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{microtype}
+\usepackage{natbib}
+\usepackage{doi}
+
+\geometry{margin=1in}
+
+% --- Theorem environments ---
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{remark}[theorem]{Remark}
+
+% --- Listings for JAPL ---
+\definecolor{japlkw}{RGB}{0,100,170}
+\definecolor{japlstr}{RGB}{163,21,21}
+\definecolor{japlcmt}{RGB}{0,128,0}
+\definecolor{japltype}{RGB}{128,0,128}
+\definecolor{japlbg}{RGB}{248,248,248}
+
+\lstdefinelanguage{japl}{
+  keywords={fn, let, match, with, if, then, else, type, module, trait, impl, import, use, opaque, signature, test, property, forall, where, deriving, own, ref, loop, while, do, continue, foreign, unsafe, packed},
+  keywordstyle=\color{japlkw}\bfseries,
+  keywords=[2]{Int, Float, Float32, Bool, Char, String, Bytes, Unit, Never, List, Option, Result, Map, Set, Ok, Err, Some, None, True, False, Pid, Reply, Pure, Io, Async, Net, State, Process, Fail},
+  keywordstyle=[2]\color{japltype},
+  morestring=[b]",
+  stringstyle=\color{japlstr},
+  morecomment=[l]{--},
+  morecomment=[l]{//},
+  commentstyle=\color{japlcmt}\itshape,
+  sensitive=true,
+  showstringspaces=false,
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{japlbg},
+  frame=single,
+  framerule=0.4pt,
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=2,
+  xleftmargin=1em,
+  framexleftmargin=0.5em,
+  numbers=none,
+  literate={|>}{{\textcolor{japlkw}{|>}}}2
+           {>>}{{\textcolor{japlkw}{>>}}}2
+           {->}{{\textcolor{japlkw}{->}}}2
+           {=>}{{\textcolor{japlkw}{=>}}}2
+           {<-}{{\textcolor{japlkw}{<-}}}2
+           {++}{{\textcolor{japlkw}{++}}}2
+}
+
+\lstset{language=japl}
+
+% --- Macros ---
+\newcommand{\japl}{\textsc{Japl}}
+\newcommand{\cat}[1]{\mathbf{#1}}
+\newcommand{\Set}{\cat{Set}}
+\newcommand{\Type}{\cat{Type}}
+\newcommand{\Hom}{\mathrm{Hom}}
+\newcommand{\id}{\mathrm{id}}
+\newcommand{\op}{\mathrm{op}}
+\newcommand{\Nat}{\mathrm{Nat}}
+\newcommand{\Sig}{\mathrm{Sig}}
+\newcommand{\Mod}{\mathrm{Mod}}
+\newcommand{\ob}{\mathrm{ob}}
+\newcommand{\mor}{\mathrm{mor}}
+\newcommand{\pipe}{\;|\!>\;}
+
+% --- Title ---
+\title{Functions as the Unit of Composition: \\
+Categorical Semantics of Modular Design in \japl{}}
+
+\author{
+  JAPL Language Research Group \\
+  \texttt{matthew@yonedaai.com}
+}
+
+\date{March 2026}
+
+\begin{document}
+
+\maketitle
+
+% =============================================================================
+% ABSTRACT
+% =============================================================================
+\begin{abstract}
+Object-oriented programming conflates identity, state, behavior, and time into a single abstraction---the object---producing systems that are difficult to reason about, test, and compose. We present \japl{}, a strict, effect-aware functional programming language in which the \emph{function} is the default unit of composition. Functions take values, return values, and compose. Modules group related functions. Traits provide ad-hoc polymorphism without inheritance hierarchies. We ground this design in the theory of Cartesian closed categories, the Curry--Howard--Lambek correspondence, and the semantics of ML-style module systems. We show that \japl{}'s composition model---first-class functions, pattern matching, pipe operators, modules with signatures, and traits---provides a principled, formally tractable alternative to object-oriented composition. We prove compositionality theorems for \japl{}'s module system and demonstrate that function-centric composition yields smaller interfaces, more predictable behavior, and stronger formal guarantees than class-centric alternatives. A detailed comparison with Haskell, OCaml, Rust, Go, Erlang, and Scala illustrates the design trade-offs. Our implementation strategy, covering closure representation, trait resolution via monomorphization and dictionary passing, and module compilation, shows that this model imposes no runtime overhead relative to object-oriented dispatch.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:introduction}
+
+The central challenge of software engineering is \emph{composition}: building large systems from small, understandable parts. For the past three decades, object-oriented programming (OOP) has been the dominant paradigm for structuring compositions, with the \emph{class} or \emph{object} as the primary compositional unit. We argue that this choice is fundamentally misguided.
+
+An object conflates at least four distinct concerns into a single abstraction:
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Identity}---an object has a unique reference that distinguishes it from all other objects, even those with identical state.
+  \item \textbf{State}---an object encapsulates mutable fields that change over time.
+  \item \textbf{Behavior}---an object exposes methods that operate on its encapsulated state.
+  \item \textbf{Time}---the ordering of method calls matters because each call may mutate state.
+\end{enumerate}
+
+This conflation produces what Rich Hickey has termed ``complecting''~\citep{hickey2012simple}: interleaving concepts that should be separate. The consequences are severe. Testing requires mock objects because behavior is entangled with state. Refactoring is brittle because inheritance hierarchies create implicit coupling across the codebase. Concurrency is hazardous because shared mutable state requires synchronization. Reasoning is non-local because an object's behavior depends on its entire mutation history.
+
+The functional programming tradition offers a different answer: the \emph{function} as the primary unit of composition. A function maps inputs to outputs. It does not hide mutable state. Its behavior is determined entirely by its arguments. Two functions compose when the output type of one matches the input type of the other. This is not merely a stylistic preference; it is a claim about the mathematical structure of composition itself.
+
+\japl{} is a strict, typed, effect-aware functional programming language that takes this claim seriously. Its sixth core design principle states: \emph{The default unit of composition is the function.} This paper develops the theoretical foundations, practical design, and formal semantics of this principle.
+
+\subsection{Contributions}
+
+We make the following contributions:
+\begin{itemize}
+  \item A formal framework for function-centric composition grounded in Cartesian closed categories and the Curry--Howard--Lambek correspondence (\Cref{sec:formal-framework}).
+  \item The design of \japl{}'s composition model: first-class functions, modules with signatures, traits, pattern matching, and pipe operators (\Cref{sec:japl-composition,sec:module-system,sec:traits,sec:pattern-matching,sec:pipes}).
+  \item A separation of concerns that disentangles identity, state, behavior, time, and failure into distinct language mechanisms (\Cref{sec:japl-composition}).
+  \item Compositionality theorems and module soundness proofs (\Cref{sec:formal-properties}).
+  \item A detailed comparison with six languages spanning the design space (\Cref{sec:comparison}).
+  \item Implementation strategies that achieve zero-overhead abstraction for function-centric composition (\Cref{sec:implementation}).
+\end{itemize}
+
+\subsection{Outline}
+
+\Cref{sec:background} surveys the theoretical and practical background. \Cref{sec:formal-framework} develops the formal framework. \Cref{sec:japl-composition} through \Cref{sec:pipes} present \japl{}'s composition model in detail. \Cref{sec:comparison} compares with related languages. \Cref{sec:anti-pattern} analyzes why OOP composition fails. \Cref{sec:implementation} describes implementation. \Cref{sec:formal-properties} establishes formal properties. \Cref{sec:conclusion} concludes.
+
+
+% =============================================================================
+% BACKGROUND
+% =============================================================================
+\section{Background and Related Work}
+\label{sec:background}
+
+\subsection{Lambda Calculus and Combinatory Logic}
+
+The $\lambda$-calculus, introduced by Church~\citep{church1936unsolvable}, provides the foundational theory of functions as computational objects. In the simply typed $\lambda$-calculus~\citep{church1940formulated}, every well-typed term denotes a function or a value, and the only operation is application. The key insight for language design is that function application and $\lambda$-abstraction suffice to express all computable functions.
+
+Combinatory logic, developed independently by Sch\"{o}nfinkel~\citep{schonfinkel1924bausteine} and Curry~\citep{curry1958combinatory}, demonstrates that even named variables can be eliminated: the combinators $S$, $K$, and $I$ generate all computable functions through composition alone. This is the purest expression of the principle that functions compose.
+
+\subsection{ML Module Systems}
+
+The ML module system, pioneered by MacQueen~\citep{macqueen1984modules} and further developed by Harper, Mitchell, and Moggi~\citep{harper1990type}, Leroy~\citep{leroy1994manifest,leroy1995applicative}, and Dreyer, Crary, and Harper~\citep{dreyer2003type}, provides the most sophisticated treatment of modular composition in programming languages. The key abstractions are:
+
+\begin{description}
+  \item[Structures] Named collections of types and values (functions).
+  \item[Signatures] Interfaces that describe the types and values a structure must provide.
+  \item[Functors] Functions from structures to structures---parameterized modules.
+\end{description}
+
+The ML module system demonstrates that functions can serve as the unit of composition at every level: values are functions, modules are collections of functions, and functors are functions on modules. Harper and Stone~\citep{harper2000interpretation} showed that the entire ML module system can be interpreted within a typed $\lambda$-calculus with singleton kinds.
+
+\subsection{Haskell Type Classes}
+
+Wadler and Blott~\citep{wadler1989make} introduced type classes as a mechanism for \emph{ad-hoc polymorphism}---the ability to define functions that behave differently on different types. Type classes separate the declaration of an interface from its implementation:
+
+A type class declaration specifies a set of function signatures. An instance declaration provides implementations of those functions for a specific type. The compiler resolves which implementation to use at each call site based on the types involved.
+
+Type classes solve the ``expression problem''~\citep{wadler1998expression}: new types and new operations can be added independently, without modifying existing code. This is precisely the kind of open extension that inheritance-based OOP promises but delivers only through fragile mechanisms like abstract classes and the visitor pattern.
+
+\subsection{Rust Traits}
+
+Rust~\citep{matsakis2014rust} adapted the type class concept as \emph{traits}, integrating them with ownership and borrowing. Rust traits serve multiple roles: interface definition, ad-hoc polymorphism, and static dispatch through monomorphization. Rust demonstrates that trait-based composition can achieve zero-cost abstraction: generic code using traits compiles to specialized machine code with no dispatch overhead.
+
+\subsection{OCaml Modules and Functors}
+
+OCaml~\citep{leroy2020ocaml} inherits the full power of ML modules, including first-class modules (since OCaml 3.12). OCaml's module system provides the richest practical module system in production use. Functors enable parameterized libraries (e.g., \texttt{Map.Make} takes a module satisfying the \texttt{OrderedType} signature and produces a map implementation). However, the interaction between OCaml's module system and its object system creates complexity that \japl{} avoids by omitting objects entirely.
+
+\subsection{Other Related Work}
+
+The Elm architecture~\citep{czaplicki2012elm} demonstrates that a purely functional composition model---model-update-view, all functions---suffices for interactive applications. Gleam~\citep{gleam2024} targets the Erlang VM with a statically typed, functional-first design similar in spirit to \japl{}'s composition model. Standard ML~\citep{milner1997definition} provides the reference semantics for module systems. F\# computation expressions~\citep{petricek2014fsharp,syme2011fsharp} show how monadic composition can be made syntactically palatable without sacrificing the function-centric model.
+
+The Yoneda lemma~\citep{yoneda1954note,maclane1971categories} provides the deep theoretical justification for function-centric design: an object (type) is completely characterized by the morphisms (functions) from it. This is the categorical incarnation of the principle that the interface \emph{is} the abstraction.
+
+
+% =============================================================================
+% FORMAL FRAMEWORK
+% =============================================================================
+\section{Formal Framework}
+\label{sec:formal-framework}
+
+We develop the categorical semantics that ground \japl{}'s design decision to make functions the default unit of composition.
+
+\subsection{Cartesian Closed Categories}
+
+\begin{definition}[Cartesian Closed Category]
+A category $\mathcal{C}$ is \emph{Cartesian closed} if it has:
+\begin{enumerate}
+  \item A terminal object $1$.
+  \item Binary products: for all objects $A, B$, a product $A \times B$ with projections $\pi_1 : A \times B \to A$ and $\pi_2 : A \times B \to B$.
+  \item Exponentials: for all objects $A, B$, an exponential object $B^A$ (the ``function space'' from $A$ to $B$) with an evaluation morphism $\mathrm{eval} : B^A \times A \to B$ such that for every morphism $f : C \times A \to B$, there exists a unique morphism $\bar{f} : C \to B^A$ satisfying $\mathrm{eval} \circ (\bar{f} \times \id_A) = f$.
+\end{enumerate}
+\end{definition}
+
+The category $\Type$ of \japl{} types and functions forms a Cartesian closed category. Product types correspond to records and tuples, and exponential objects correspond to function types. The universality of currying---the bijection $\Hom(C \times A, B) \cong \Hom(C, B^A)$---is the categorical expression of the fact that multi-argument functions are equivalent to curried single-argument functions.
+
+\begin{proposition}[Function Spaces in \japl{}]
+\label{prop:function-spaces}
+For any \japl{} types $A$ and $B$, the function type $A \to B$ is an exponential object in $\Type$, satisfying the universal property of currying.
+\end{proposition}
+
+This means that functions in \japl{} are \emph{first-class citizens} in the precise categorical sense: they are objects of the category, on equal footing with all other types.
+
+\subsection{The Curry--Howard--Lambek Correspondence}
+
+The Curry--Howard--Lambek correspondence~\citep{curry1958combinatory,howard1980formulae,lambek1980cartesian,lambek1986introduction} establishes a three-way equivalence:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Type Theory} & \textbf{Logic} & \textbf{Category Theory} \\
+\midrule
+Type $A$ & Proposition $A$ & Object $A$ \\
+Function $f : A \to B$ & Proof of $A \Rightarrow B$ & Morphism $f : A \to B$ \\
+Product $A \times B$ & Conjunction $A \land B$ & Product $A \times B$ \\
+Sum $A + B$ & Disjunction $A \lor B$ & Coproduct $A + B$ \\
+Function type $A \to B$ & Implication $A \Rightarrow B$ & Exponential $B^A$ \\
+Unit type $()$ & Truth $\top$ & Terminal object $1$ \\
+Empty type $\bot$ & Falsity $\bot$ & Initial object $0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Under this correspondence, composing functions corresponds to chaining logical implications, and the type checker verifies that compositions are logically valid. Every well-typed \japl{} program is simultaneously a proof in constructive logic and a diagram in a Cartesian closed category.
+
+This three-way correspondence directly informs \japl{}'s design decisions. The function type $A \to B$ is both the type of programs that transform $A$-values into $B$-values (type theory), a constructive proof that $A$ implies $B$ (logic), and a morphism in the category of types (category theory). \japl{}'s type checker exploits all three perspectives: it verifies well-typedness (type theory), ensures totality of pattern matches via exhaustiveness checking (constructive logic requires that proofs handle all cases), and guarantees that composition is associative and respects identity (category theory). The effect system extends the correspondence: an effectful function $f : A \to B \;\texttt{with}\; E$ corresponds to a morphism in a Kleisli-like category indexed by the effect set $E$, ensuring that effect composition is tracked through the logical structure of the program.
+
+\begin{theorem}[Composition as Logical Deduction]
+\label{thm:composition-deduction}
+If $f : A \to B$ and $g : B \to C$ are well-typed \japl{} functions, then $g \circ f : A \to C$ is well-typed, corresponding to the logical deduction: from $A \Rightarrow B$ and $B \Rightarrow C$, conclude $A \Rightarrow C$ (hypothetical syllogism).
+\end{theorem}
+
+\begin{proof}
+By the functoriality of the Hom-functor and the composition structure of $\Type$. In the internal language, if $\Gamma \vdash f : A \to B$ and $\Gamma \vdash g : B \to C$, then $\Gamma \vdash \lambda x.\, g(f(x)) : A \to C$ by the typing rules for abstraction and application.
+\end{proof}
+
+\subsection{The Yoneda Lemma and Type Characterization}
+
+The Yoneda lemma is the deepest result connecting functions to types.
+
+\begin{theorem}[Yoneda Lemma]
+\label{thm:yoneda}
+For any locally small category $\mathcal{C}$, any object $A \in \mathcal{C}$, and any functor $F : \mathcal{C} \to \Set$:
+\[
+\Nat(\Hom(A, -), F) \cong F(A)
+\]
+naturally in $A$ and $F$.
+\end{theorem}
+
+\begin{corollary}[Yoneda Embedding]
+The functor $\mathsf{y} : \mathcal{C} \to [\mathcal{C}^{\op}, \Set]$ defined by $\mathsf{y}(A) = \Hom(-, A)$ is fully faithful.
+\end{corollary}
+
+In the context of \japl{}'s type system, the Yoneda lemma states that a type $A$ is completely determined (up to isomorphism) by the collection of all functions \emph{into} $A$ from every other type. Dually, $A$ is determined by all functions \emph{from} $A$. This provides the theoretical justification for \japl{}'s design principle: if a type is fully characterized by its functions, then functions---not objects with hidden state---are the natural unit of abstraction.
+
+\begin{remark}[The Yoneda Perspective on Interfaces]
+A module signature in \japl{} specifies a set of functions involving an abstract type. By the Yoneda lemma, this set of functions \emph{is} the type---any two implementations that satisfy the same signature are interchangeable. This is the formal basis for abstract data types and modular reasoning.
+\end{remark}
+
+\subsection{Module Systems as Functors}
+
+We model \japl{}'s module system categorically.
+
+\begin{definition}[Category of Signatures]
+Let $\Sig$ be the category whose objects are module signatures and whose morphisms are signature refinements (a refinement adds type equalities or strengthens constraints).
+\end{definition}
+
+\begin{definition}[Category of Modules]
+Let $\Mod$ be the category whose objects are modules (concrete implementations) and whose morphisms are module homomorphisms (structure-preserving maps between modules).
+\end{definition}
+
+\begin{definition}[Realization Functor]
+The \emph{realization functor} $\mathsf{R} : \Sig \to \cat{Cat}$ maps each signature $S$ to the category of all modules that satisfy $S$.
+\end{definition}
+
+A \japl{} functor (in the module system sense) is then a morphism in the functor category $[\Sig, \Mod]$: it takes a module satisfying one signature and produces a module satisfying another. This precisely captures the ML tradition of parameterized modules.
+
+\begin{proposition}[Functor Composition]
+\label{prop:functor-composition}
+If $F : \Sig_A \to \Mod_B$ and $G : \Sig_B \to \Mod_C$ are module functors, then $G \circ F$ is a module functor from $\Sig_A$ to $\Mod_C$.
+\end{proposition}
+
+This means that module-level composition has the same algebraic structure as function-level composition: it is associative and has an identity (the identity functor). Composition works the same way at every level of abstraction.
+
+
+% =============================================================================
+% JAPL'S COMPOSITION MODEL
+% =============================================================================
+\section{JAPL's Composition Model}
+\label{sec:japl-composition}
+
+\japl{}'s composition model rests on a deliberate \emph{separation of concerns} that disentangles the concepts OOP conflates.
+
+\subsection{The Separation}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Concern} & \textbf{OOP Mechanism} & \textbf{JAPL Mechanism} \\
+\midrule
+Identity & Object reference & Process identifier (PID) \\
+Behavior & Methods & Functions \\
+Structure & Class definition & Algebraic data types \\
+Time & Method call ordering & Recursion / message passing \\
+Failure & Exceptions & Result types / supervision \\
+Polymorphism & Inheritance / interfaces & Traits (type classes) \\
+Encapsulation & Private fields & Opaque types in modules \\
+Composition & Inheritance / delegation & Function composition / pipes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each concern is addressed by a distinct, orthogonal mechanism. No single construct attempts to do everything. This separation is not arbitrary; it reflects the categorical structure of the type system. Functions are morphisms. Types are objects. Traits are natural transformations between hom-functors. Modules are categories. The separation follows from the mathematical decomposition.
+
+\subsection{First-Class Functions}
+
+Functions in \japl{} are values. They can be bound to names, passed as arguments, returned from other functions, and stored in data structures.
+
+\begin{lstlisting}
+-- Functions as values
+fn transform_orders(orders: List[Order]) -> List[Summary] =
+  orders
+    |> List.filter(fn o -> o.status == Active)
+    |> List.map(summarize)
+    |> List.sort_by(fn s -> s.total)
+
+-- Higher-order functions
+fn apply_twice(f: fn(a) -> a, x: a) -> a =
+  f(f(x))
+
+-- Functions compose
+let process_order =
+  validate_order
+  >> calculate_totals
+  >> apply_discounts
+  >> generate_invoice
+\end{lstlisting}
+
+The key property is that function composition is \emph{associative}: $(f \gg g) \gg h = f \gg (g \gg h)$. This associativity, combined with the identity function $\id : a \to a$, makes functions form a \emph{category}---the category of \japl{} types and functions.
+
+\subsection{No Method Dispatch}
+
+\japl{} has no method-first dispatch. Where an OOP language writes \texttt{user\-Repository.save(user)}, \japl{} writes:
+
+\begin{lstlisting}
+-- No this:  userRepository.save(user)
+-- Yes this: save_user(repo, user)
+-- Or sugar: repo |> save_user(user)
+\end{lstlisting}
+
+This is not merely a syntactic preference. Method dispatch entangles the function with the receiver object, creating an asymmetry between the first argument and the rest. In \japl{}, all arguments are symmetric. The function \texttt{save\_user} is a standalone entity that can be composed, partially applied, and reasoned about independently of any particular repository instance.
+
+\subsection{Module-Level Organization}
+
+Related functions are grouped into modules. A module is a namespace, not an object. It has no state, no identity, no constructor.
+
+\begin{lstlisting}
+module UserService =
+  fn create(repo: Repo, data: UserData)
+    -> Result[User, CreateError] with Io =
+    let user = User.from_data(data)
+    Repo.insert(repo, user)
+
+  fn find(repo: Repo, id: UserId)
+    -> Result[User, NotFound] with Io =
+    Repo.get(repo, id)
+
+  fn update(repo: Repo, id: UserId, data: UserData)
+    -> Result[User, UpdateError] with Io =
+    let user = find(repo, id)?
+    let updated = User.apply_update(user, data)
+    Repo.save(repo, updated)
+\end{lstlisting}
+
+The explicit \texttt{repo} parameter replaces the hidden \texttt{this} pointer of OOP. This makes the dependency visible, testable (pass a mock repository as a value), and composable (any function that accepts a \texttt{Repo} can use it).
+
+\subsection{The Actor-Function Fusion}
+
+\japl{} cleanly separates two complementary paradigms:
+
+\begin{itemize}
+  \item \textbf{Functions} transform values (the logic layer). They are pure, deterministic, and composable.
+  \item \textbf{Processes} own state over time (the concurrency layer). They are identified by PIDs, communicate through typed mailboxes, and are supervised.
+\end{itemize}
+
+This separation means that identity---the OOP concept that causes the most trouble for composition---is confined to the process layer. Functions are anonymous transformations; they do not ``belong'' to any entity. A process delegates its logic to functions but owns the state and manages the flow of time through recursive message handling.
+
+\begin{lstlisting}
+-- Pure function: transforms data, no identity
+fn calculate_price(item: Item, qty: Int, discount: Discount) -> Money =
+  let base = Money.multiply(item.price, qty)
+  Discount.apply(discount, base)
+
+-- Process: owns identity and state over time
+fn order_processor(state: OrderState) -> Never with Process[OrderMsg] =
+  match Process.receive() with
+  | NewOrder(order) ->
+      let priced = List.map(order.items, fn item ->
+        { item | total = calculate_price(item, item.qty, order.discount) }
+      )
+      let new_state = { state | pending = Map.insert(state.pending, order.id, priced) }
+      order_processor(new_state)
+  | ConfirmOrder(id, reply) ->
+      match Map.lookup(state.pending, id) with
+      | Some(order) ->
+          Reply.send(reply, Ok(order))
+          order_processor({ state | pending = Map.delete(state.pending, id) })
+      | None ->
+          Reply.send(reply, Err(OrderNotFound(id)))
+          order_processor(state)
+\end{lstlisting}
+
+The process loop is itself a function---a recursive function that takes state and returns \texttt{Never} (it loops forever). Even the unit of concurrency is expressed through function composition.
+
+
+% =============================================================================
+% MODULE SYSTEM
+% =============================================================================
+\section{Module System}
+\label{sec:module-system}
+
+\subsection{Modules as Namespaces}
+
+A \japl{} module is a named collection of type definitions, function definitions, and sub-modules. Modules serve as the unit of compilation, the unit of namespacing, and the unit of encapsulation.
+
+\begin{lstlisting}
+module Map =
+  opaque type Map[k, v]
+
+  fn empty() -> Map[k, v]
+  fn insert(map: Map[k, v], key: k, value: v)
+    -> Map[k, v] where Ord[k]
+  fn lookup(map: Map[k, v], key: k)
+    -> Option[v] where Ord[k]
+  fn delete(map: Map[k, v], key: k)
+    -> Map[k, v] where Ord[k]
+  fn fold(map: Map[k, v], init: acc, f: fn(acc, k, v) -> acc)
+    -> acc
+\end{lstlisting}
+
+The \texttt{opaque} keyword hides the representation type. External code can only interact with \texttt{Map[k, v]} through the functions the module exposes. This achieves the same encapsulation as a class with private fields, but without the baggage of object identity, mutable state, and inheritance.
+
+Categorically, an opaque type declaration creates an abstract object in the category of types. The Yoneda lemma guarantees that the abstract type is fully characterized by the functions available on it. Two modules that expose the same functions on an opaque type are observationally equivalent, regardless of their internal representation. This is the formal basis for representation independence.
+
+\subsection{Signatures (Module Types)}
+
+A signature is a specification of the types and functions a module must provide. Signatures are to modules what types are to values: they classify modules and enable modular reasoning.
+
+\begin{lstlisting}
+signature KeyValueStore[k, v] =
+  type Store
+  fn create() -> Store with Io
+  fn get(store: Store, key: k) -> Option[v] with Io
+  fn set(store: Store, key: k, value: v) -> Unit with Io
+  fn delete(store: Store, key: k) -> Unit with Io
+\end{lstlisting}
+
+A module \emph{satisfies} a signature if it provides all the types and functions the signature requires, with compatible types and effects. This is the module-level analogue of a value inhabiting a type.
+
+\begin{lstlisting}
+module RedisStore : KeyValueStore[String, String] =
+  type Store = RedisConnection
+  fn create() -> Store with Io = Redis.connect(default_config)
+  fn get(store, key) with Io = Redis.get(store, key)
+  fn set(store, key, value) with Io = Redis.set(store, key, value)
+  fn delete(store, key) with Io = Redis.del(store, key)
+
+module InMemoryStore : KeyValueStore[String, String] =
+  type Store = Ref[Map[String, String]]
+  fn create() -> Store with Io = Ref.new(Map.empty())
+  fn get(store, key) with Io = Map.lookup(Ref.read(store), key)
+  fn set(store, key, value) with Io =
+    Ref.modify(store, fn m -> Map.insert(m, key, value))
+  fn delete(store, key) with Io =
+    Ref.modify(store, fn m -> Map.delete(m, key))
+\end{lstlisting}
+
+Both \texttt{RedisStore} and \texttt{InMemoryStore} satisfy \texttt{KeyValueStore[String, String]}. Code written against the signature works with either implementation. This is the expression problem solved at the module level: new implementations can be added without modifying existing code.
+
+\subsection{Simplified Functors}
+
+\japl{} provides simplified functors---module-level functions that take modules as arguments and produce modules as results.
+
+\begin{lstlisting}
+-- A functor that adds caching to any KeyValueStore
+module CachedStore(Base: KeyValueStore[k, v])
+  : KeyValueStore[k, v] =
+  type Store = { base: Base.Store, cache: Map[k, v] }
+
+  fn create() -> Store with Io =
+    let base = Base.create()
+    { base = base, cache = Map.empty() }
+
+  fn get(store, key) with Io =
+    match Map.lookup(store.cache, key) with
+    | Some(v) -> Some(v)
+    | None -> Base.get(store.base, key)
+
+  fn set(store, key, value) with Io =
+    Base.set(store.base, key, value)
+
+  fn delete(store, key) with Io =
+    Base.delete(store.base, key)
+\end{lstlisting}
+
+This is a function from modules to modules. The composition \texttt{CachedStore(RedisStore)} produces a new module that satisfies the same signature as its argument. In categorical terms, \texttt{CachedStore} is an endofunctor on the category of modules satisfying \texttt{KeyValueStore}.
+
+\japl{}'s functors are more restricted than OCaml's full first-class modules. There are no generative functors (each application of a functor to the same argument produces observationally equivalent results) and functors cannot be passed as first-class values in arbitrary contexts. This restriction simplifies the type theory and enables more aggressive compilation, while retaining the most important use case: parameterized libraries.
+
+\subsection{Package-Level Capability Boundaries}
+
+\japl{} packages define capability boundaries. A package declares which effects its public functions may perform, and the compiler verifies that internal functions do not exceed these bounds.
+
+This ensures that the public interface of a package has a bounded effect signature, enabling modular reasoning about what a dependency can do. A package that declares only \texttt{Io} and \texttt{Fail} in its public effects cannot perform network access, even if its internal implementation uses \texttt{Net} (the effect must be handled before crossing the package boundary).
+
+\subsection{Namespaced Function Dispatch}
+
+Instead of method dispatch on objects, \japl{} uses namespaced function dispatch. A function call \texttt{Map.insert(m, k, v)} is resolved statically to the \texttt{insert} function in the \texttt{Map} module. There is no virtual dispatch table, no dynamic lookup, and no ambiguity about which function is called.
+
+\begin{lstlisting}
+-- Unambiguous: the module name qualifies the function
+let m1 = Map.insert(Map.empty(), "key", 42)
+let s1 = Set.insert(Set.empty(), "element")
+
+-- With use-declaration for convenience
+import Map.{empty, insert, lookup}
+let m2 = insert(empty(), "key", 42)
+\end{lstlisting}
+
+When a trait is involved, the compiler resolves the implementation based on the types at the call site (see \Cref{sec:traits}). This is static dispatch: resolved at compile time, with zero runtime overhead.
+
+
+% =============================================================================
+% TRAITS AND TYPECLASSES
+% =============================================================================
+\section{Traits and Type Classes}
+\label{sec:traits}
+
+\subsection{Trait Declarations}
+
+A trait in \japl{} declares a set of function signatures parameterized by one or more type variables. Traits provide \emph{ad-hoc polymorphism}: the ability to define functions that behave differently on different types, without inheritance.
+
+\begin{lstlisting}
+trait Eq[a] =
+  fn eq(x: a, y: a) -> Bool
+
+trait Ord[a] where Eq[a] =
+  fn compare(x: a, y: a) -> Ordering
+
+trait Show[a] =
+  fn show(value: a) -> String
+
+trait Serialize[a] =
+  fn serialize(value: a) -> Bytes
+  fn deserialize(data: Bytes) -> Result[a, DecodeError]
+
+trait Functor[f] =
+  fn map(fa: f[a], func: fn(a) -> b) -> f[b]
+\end{lstlisting}
+
+The \texttt{where} clause in \texttt{Ord} establishes a superclass constraint: any type that is \texttt{Ord} must also be \texttt{Eq}. This forms a hierarchy of capabilities, not a hierarchy of implementations.
+
+\subsection{Trait Implementations}
+
+Implementations are provided separately from both the trait declaration and the type definition:
+
+\begin{lstlisting}
+type Point = { x: Float, y: Float }
+
+impl Eq[Point] =
+  fn eq(p1, p2) = p1.x == p2.x && p1.y == p2.y
+
+impl Show[Point] =
+  fn show(p) =
+    "(" ++ Float.show(p.x) ++ ", " ++ Float.show(p.y) ++ ")"
+
+impl Serialize[Point] =
+  fn serialize(p) =
+    Bytes.concat([Float.to_bytes(p.x), Float.to_bytes(p.y)])
+  fn deserialize(data) =
+    let x = Float.from_bytes(Bytes.slice(data, 0, 8))?
+    let y = Float.from_bytes(Bytes.slice(data, 8, 16))?
+    Ok({ x = x, y = y })
+\end{lstlisting}
+
+This three-way separation---type definition, trait declaration, and trait implementation as independent declarations---is the key advantage over OOP interfaces. In Java, implementing an interface requires modifying the class definition. In \japl{}, implementations can be added to existing types without modifying either the type or the trait. This is the open-world assumption of type classes, which directly solves the expression problem.
+
+\subsection{Coherence and Orphan Rules}
+
+\japl{} enforces \emph{coherence}: for any type $T$ and trait $C$, there is at most one implementation of $C[T]$ in the entire program. This is enforced by the \emph{orphan rule}: an implementation of $C[T]$ must be defined either in the module that defines $C$ or in the module that defines $T$.
+
+\begin{definition}[Coherence]
+A trait system is \emph{coherent} if for every type $\tau$ and trait $C$, at most one instance $C[\tau]$ is in scope at any program point.
+\end{definition}
+
+Coherence ensures that trait resolution is deterministic: the compiler always selects the same implementation for the same type, regardless of which module the call appears in. This is essential for separate compilation and for the correctness of monomorphization.
+
+The orphan rule is a pragmatic constraint that trades some flexibility (you cannot define an implementation for a foreign type with a foreign trait) for global coherence. In practice, the newtype pattern provides a workaround:
+
+\begin{lstlisting}
+-- Cannot implement ForeignTrait for ForeignType directly.
+-- Wrap in a newtype:
+type MyWrapper = MyWrapper(ForeignType)
+
+impl ForeignTrait[MyWrapper] =
+  fn method(MyWrapper(inner)) = ...
+\end{lstlisting}
+
+\subsection{Default Implementations}
+
+Traits may provide default implementations for some of their functions, expressed in terms of other functions in the trait:
+
+\begin{lstlisting}
+trait Eq[a] =
+  fn eq(x: a, y: a) -> Bool
+  fn neq(x: a, y: a) -> Bool = not(eq(x, y))
+
+trait Ord[a] where Eq[a] =
+  fn compare(x: a, y: a) -> Ordering
+  fn lt(x: a, y: a) -> Bool =
+    compare(x, y) == Less
+  fn gt(x: a, y: a) -> Bool =
+    compare(x, y) == Greater
+  fn lte(x: a, y: a) -> Bool =
+    compare(x, y) != Greater
+  fn gte(x: a, y: a) -> Bool =
+    compare(x, y) != Less
+\end{lstlisting}
+
+An implementation may override any default. Defaults reduce boilerplate while keeping the trait system purely function-based---there is no ``method inheritance'' in the OOP sense. A default implementation is simply a function defined in terms of other functions in the same trait; it carries no implicit state, no hidden dispatch, and no fragile base class problem.
+
+\subsection{Deriving}
+
+For common traits (\texttt{Eq}, \texttt{Ord}, \texttt{Show}, \texttt{Serialize}), the compiler can automatically derive implementations from the structure of algebraic data types:
+
+\begin{lstlisting}
+type Color deriving(Eq, Ord, Show, Serialize) =
+  | Red
+  | Green
+  | Blue
+  | Custom(Int, Int, Int)
+\end{lstlisting}
+
+Deriving is a compile-time mechanism that generates function implementations. It does not introduce any runtime machinery or hidden state. The generated implementations follow structural recursion over the type definition: for sum types, they dispatch on the constructor tag; for product types, they compose the implementations for each field.
+
+\subsection{Categorical Interpretation of Traits}
+
+In categorical terms, a trait $C$ defines a subcategory of $\Type$: the full subcategory of types that have an implementation of $C$. A trait-constrained function $f : a \to b \;\texttt{where}\; C[a]$ is a morphism defined on this subcategory.
+
+\begin{proposition}[Traits as Natural Transformations]
+A polymorphic function $f : \forall a.\, C[a] \Rightarrow F(a) \to G(a)$, where $F$ and $G$ are type constructors, corresponds to a natural transformation $\eta : F \Rightarrow G$ in the subcategory of types satisfying $C$.
+\end{proposition}
+
+This perspective clarifies why traits compose well: natural transformations compose (vertically and horizontally), and the composition of trait-constrained functions preserves the trait constraints. When we compose $f : \forall a.\, C[a] \Rightarrow F(a) \to G(a)$ with $g : \forall a.\, C[a] \Rightarrow G(a) \to H(a)$, we obtain $g \circ f : \forall a.\, C[a] \Rightarrow F(a) \to H(a)$---the constraint $C[a]$ is preserved, and the composition is a natural transformation $F \Rightarrow H$.
+
+
+% =============================================================================
+% PATTERN MATCHING
+% =============================================================================
+\section{Pattern Matching}
+\label{sec:pattern-matching}
+
+\subsection{Patterns as the Primary Control Flow}
+
+\japl{} uses pattern matching as the primary mechanism for control flow, data decomposition, and case analysis. Pattern matching replaces the cascades of \texttt{if-else} chains, type-checking conditionals, and visitor patterns found in OOP languages.
+
+\begin{lstlisting}
+type Expr =
+  | Lit(Int)
+  | Add(Expr, Expr)
+  | Mul(Expr, Expr)
+  | Neg(Expr)
+
+fn eval(expr: Expr) -> Int =
+  match expr with
+  | Lit(n) -> n
+  | Add(a, b) -> eval(a) + eval(b)
+  | Mul(a, b) -> eval(a) * eval(b)
+  | Neg(e) -> -(eval(e))
+\end{lstlisting}
+
+Compare this with the OOP visitor pattern for the same task, which requires an \texttt{ExprVisitor} interface, an \texttt{accept} method on every variant, and concrete visitor implementations. The pattern match is simultaneously more concise, more readable, and more amenable to exhaustiveness checking.
+
+\subsection{Exhaustiveness Checking}
+
+The \japl{} compiler verifies that pattern matches are \emph{exhaustive}: every possible value of the scrutinee type is covered by at least one pattern. This is a static guarantee that no case is missed.
+
+\begin{lstlisting}
+fn describe(shape: Shape) -> String =
+  match shape with
+  | Circle(r) -> "circle with radius " ++ Float.show(r)
+  | Rectangle(w, h) ->
+      "rectangle " ++ Float.show(w) ++ "x" ++ Float.show(h)
+  -- Compile error: non-exhaustive match, missing Triangle
+\end{lstlisting}
+
+Exhaustiveness checking is based on the theory of algebraic data types. A sum type with constructors $C_1, C_2, \ldots, C_n$ is exhaustively matched if and only if every constructor is covered. The algorithm follows Maranget~\citep{maranget2008compiling}.
+
+Formally, let $\mathcal{P} = \{P_1, \ldots, P_m\}$ be the set of patterns in a match expression and $\mathcal{V}$ the set of all possible values of the scrutinee type. The match is exhaustive if and only if $\bigcup_{i=1}^{m} \llbracket P_i \rrbracket = \mathcal{V}$, where $\llbracket P_i \rrbracket$ denotes the set of values matched by pattern $P_i$. The compiler computes this by constructing a \emph{pattern matrix} and checking that its complement is empty.
+
+\subsection{Nested Patterns}
+
+Patterns can be nested arbitrarily, matching deep structure in a single expression:
+
+\begin{lstlisting}
+fn simplify(expr: Expr) -> Expr =
+  match expr with
+  | Add(Lit(0), e) -> simplify(e)
+  | Add(e, Lit(0)) -> simplify(e)
+  | Mul(Lit(0), _) -> Lit(0)
+  | Mul(_, Lit(0)) -> Lit(0)
+  | Mul(Lit(1), e) -> simplify(e)
+  | Mul(e, Lit(1)) -> simplify(e)
+  | Add(a, b) -> Add(simplify(a), simplify(b))
+  | Mul(a, b) -> Mul(simplify(a), simplify(b))
+  | Neg(Neg(e)) -> simplify(e)
+  | Neg(e) -> Neg(simplify(e))
+  | Lit(n) -> Lit(n)
+\end{lstlisting}
+
+Nested patterns compose: if $P_1$ matches structure at depth $d_1$ and $P_2$ matches at depth $d_2$, their nesting matches at depth $d_1 + d_2$. This compositional property is a direct consequence of the recursive structure of algebraic data types.
+
+\subsection{Guard Clauses}
+
+Guards add boolean conditions to patterns:
+
+\begin{lstlisting}
+fn classify_temperature(temp: Float) -> String =
+  match temp with
+  | t if t < 0.0 -> "freezing"
+  | t if t < 15.0 -> "cold"
+  | t if t < 25.0 -> "comfortable"
+  | t if t < 35.0 -> "warm"
+  | _ -> "hot"
+
+fn fibonacci(n: Int) -> Int =
+  match n with
+  | 0 -> 0
+  | 1 -> 1
+  | n if n > 1 -> fibonacci(n - 1) + fibonacci(n - 2)
+  | _ -> 0  -- negative input
+\end{lstlisting}
+
+Guards weaken the exhaustiveness guarantee (the compiler cannot in general decide whether guards cover all cases), so \japl{} requires a catch-all pattern when guards are used on a sum type.
+
+\subsection{Pattern Composition}
+
+Patterns compose with other language features:
+
+\begin{lstlisting}
+-- Pattern matching in let bindings
+let { x, y } = point
+let [first, ..rest] = items
+
+-- Pattern matching in function arguments
+fn fst((a, _): (a, b)) -> a = a
+fn head([x, .._]: List[a]) -> a = x
+
+-- Pattern matching in pipelines
+let adults =
+  users
+  |> List.filter(fn { name, age } -> age >= 18)
+  |> List.map(fn { name, .. } -> name)
+\end{lstlisting}
+
+The compositionality of patterns---their ability to nest, combine with guards, and appear in multiple syntactic positions---is a direct benefit of the function-centric design. Patterns are not a special case grafted onto an object system; they are a core mechanism that integrates seamlessly with functions, types, and modules.
+
+
+% =============================================================================
+% PIPE AND COMPOSITION OPERATORS
+% =============================================================================
+\section{Pipe and Composition Operators}
+\label{sec:pipes}
+
+\subsection{The Pipe Operator}
+
+The pipe operator $|>$ passes the result of the left-hand expression as the first argument to the right-hand function:
+
+\[
+x \pipe f \equiv f(x)
+\]
+
+\begin{lstlisting}
+-- Without pipes
+let result =
+  sort_by(map(filter(orders, is_active), summarize), by_total)
+
+-- With pipes
+let result =
+  orders
+  |> filter(is_active)
+  |> map(summarize)
+  |> sort_by(by_total)
+\end{lstlisting}
+
+The pipe operator linearizes nested function calls into a left-to-right data flow pipeline. This is not merely syntactic sugar; it reflects a fundamental shift in how composition is expressed. In the pipe style, data flows \emph{through} a sequence of transformations, and the transformations are first-class functions that can be named, reused, and tested independently.
+
+The pipe operator originates from the Unix shell tradition of piping the output of one command into the input of the next. In the programming language world, it was popularized by F\#, adopted by Elixir, OCaml (since 4.01), and Elm, and has influenced the design of many modern languages including Gleam and Roc.
+
+\subsection{Function Composition}
+
+The composition operator $\gg$ composes two functions into a new function:
+
+\[
+(f \gg g)(x) \equiv g(f(x))
+\]
+
+\begin{lstlisting}
+-- Point-free style using composition
+let process_order =
+  validate_order
+  >> calculate_totals
+  >> apply_discounts
+  >> generate_invoice
+
+-- Equivalent to:
+fn process_order(order: Order) -> Invoice =
+  generate_invoice(
+    apply_discounts(
+      calculate_totals(
+        validate_order(order))))
+\end{lstlisting}
+
+The composition operator produces a new function without mentioning its argument. This is the \emph{point-free} or \emph{tacit} style, which emphasizes the pipeline structure rather than the data flowing through it.
+
+Note that \japl{} uses $\gg$ (forward composition) rather than Haskell's $.$ (backward composition). This ensures that both the pipe operator and the composition operator read left-to-right, matching the natural reading order and the data flow direction. Consistency of direction reduces cognitive load.
+
+\subsection{Algebraic Properties}
+
+Both operators satisfy the expected algebraic laws:
+
+\begin{theorem}[Pipe-Composition Equivalence]
+For all functions $f : A \to B$, $g : B \to C$, and values $x : A$:
+\[
+x \pipe f \pipe g = (f \gg g)(x) = g(f(x))
+\]
+\end{theorem}
+
+\begin{theorem}[Composition Associativity]
+For all functions $f : A \to B$, $g : B \to C$, $h : C \to D$:
+\[
+(f \gg g) \gg h = f \gg (g \gg h)
+\]
+\end{theorem}
+
+\begin{theorem}[Composition Identity]
+For the identity function $\id : A \to A$ and any $f : A \to B$:
+\[
+\id \gg f = f = f \gg \id
+\]
+\end{theorem}
+
+These three properties---associativity, identity, and the pipe-composition equivalence---establish that \japl{}'s function composition forms a category, and the pipe operator is a convenient notation for morphism application in that category.
+
+\subsection{Pipes and Effects}
+
+A critical design decision is that the pipe operator respects \japl{}'s effect system. The typing rule for the pipe operator is:
+\[
+\frac{\Gamma \vdash e : A \;\texttt{with}\; E_0 \qquad \Gamma \vdash f : A \to B \;\texttt{with}\; E_1}{\Gamma \vdash e \pipe f : B \;\texttt{with}\; E_0 \cup E_1}
+\]
+That is, the pipe evaluates the left-hand expression $e$ (which may itself perform effects $E_0$), then applies the function $f$ (which may perform effects $E_1$), and the combined expression has the union of both effect sets. Chaining pipes accumulates effects: if $f$ has effect $E_1$ and $g$ has effect $E_2$, then $x \pipe f \pipe g$ has effect $E_1 \cup E_2$ (assuming $x$ is pure):
+
+\begin{lstlisting}
+fn process_request(req: Request)
+  -> Response with Io, Net, Fail[AppError] =
+  req
+  |> parse_body              -- with Fail[ParseError]
+  |> validate                -- pure
+  |> fetch_related_data      -- with Io, Net
+  |> format_response         -- pure
+\end{lstlisting}
+
+The effect of the pipeline is the union of the effects of its stages. This compositionality of effects through pipes is a theorem of \japl{}'s effect system.
+
+\begin{proposition}[Effect Compositionality of Pipes]
+If $f : A \to B \;\texttt{with}\; E_1$ and $g : B \to C \;\texttt{with}\; E_2$, then $x \pipe f \pipe g : C \;\texttt{with}\; E_1 \cup E_2$.
+\end{proposition}
+
+\subsection{Partial Application and Pipes}
+
+The pipe operator interacts elegantly with partial application. When a multi-argument function is used in a pipe, the piped value fills the first argument, and the remaining arguments are supplied inline:
+
+\begin{lstlisting}
+-- List.filter has type: fn(List[a], fn(a) -> Bool) -> List[a]
+-- In a pipe, the first argument (the list) comes from the pipe:
+users
+  |> List.filter(fn u -> u.active)
+  |> List.map(fn u -> u.name)
+  |> List.sort_by(String.length)
+\end{lstlisting}
+
+This convention---piping into the first argument---is consistent across all \japl{} standard library functions. Data structures are always the first parameter, enabling uniform pipeline syntax. This is a deliberate design choice that distinguishes \japl{} from Haskell (where the data structure is typically the last argument, optimized for currying) and aligns with Elixir, F\#, and OCaml conventions.
+
+
+% =============================================================================
+% COMPARISON
+% =============================================================================
+\section{Comparison with Related Languages}
+\label{sec:comparison}
+
+We compare \japl{}'s function-centric composition model with six languages spanning the design space.
+
+\subsection{Haskell: Powerful but Complex}
+
+Haskell~\citep{peyton2003haskell} shares \japl{}'s commitment to functions as the primary compositional unit. Haskell's type classes, higher-kinded types, and algebraic data types provide a rich framework for function-centric design.
+
+However, Haskell's composition model is complicated by several factors:
+\begin{itemize}
+  \item \textbf{Monad transformers:} Composing effects requires stacking monad transformers (\texttt{ReaderT r (StateT s (ExceptT e IO))}), which produces opaque type signatures and requires \texttt{lift} operations.
+  \item \textbf{Laziness:} Lazy evaluation makes performance reasoning non-local. A composed pipeline may build up unevaluated thunks, leading to space leaks.
+  \item \textbf{Multiple composition mechanisms:} Type classes, modules, \texttt{newtype} wrappers, existential types, and type families provide overlapping ways to achieve polymorphism and abstraction, creating choice paralysis.
+  \item \textbf{Weak module system:} Haskell modules are essentially namespaces with import/export control. They lack the signature/functor abstraction of ML modules, which limits modular composition at the large scale.
+\end{itemize}
+
+\japl{} addresses these by using algebraic effects instead of monad transformers, strict evaluation for predictable performance, a deliberately smaller set of composition mechanisms, and ML-style modules with signatures.
+
+\subsection{OCaml: ML Modules Are Excellent}
+
+OCaml~\citep{leroy2020ocaml} has the best module system in production use. Its functors enable powerful parameterized abstraction (e.g., \texttt{Map.Make(Ord)}).
+
+\japl{} draws heavily from OCaml's design but makes three simplifications:
+\begin{itemize}
+  \item \textbf{No object system:} OCaml includes a full object-oriented layer (\texttt{class}, \texttt{object}, structural subtyping), which adds complexity. \japl{} omits it entirely.
+  \item \textbf{Effect tracking:} OCaml functions can perform arbitrary side effects. \japl{} tracks effects in the type system, enabling stronger compositional reasoning.
+  \item \textbf{Simplified functors:} \japl{}'s module functors are more restricted than OCaml's (no generative functors, no first-class modules as a general feature), trading some expressiveness for simplicity and predictability.
+\end{itemize}
+
+\subsection{Rust: Traits Plus Closures}
+
+Rust~\citep{matsakis2014rust} demonstrates that trait-based polymorphism can achieve zero-cost abstraction. Rust's closures are first-class, and its trait system supports generic programming without inheritance.
+
+However, Rust's composition model is complicated by ownership and lifetimes. A closure that captures a reference must track the lifetime of that reference, leading to significant signature complexity. The distinction between \texttt{Fn}, \texttt{FnMut}, and \texttt{FnOnce} traits means that Rust has three kinds of function types, each with different composition rules. \japl{} avoids this for most code by using garbage collection for the pure layer, restricting ownership tracking to the resource layer where it is necessary.
+
+Rust also lacks a module system in the ML sense. Rust's modules are namespaces; traits serve as the abstraction mechanism. This means Rust cannot express ``a module parameterized by another module'' directly---the closest approximation uses generic parameters with trait bounds, which is less expressive than ML functors.
+
+\subsection{Go: Interfaces Plus Functions}
+
+Go~\citep{pike2012go} takes a minimalist approach: interfaces for polymorphism, functions for behavior, packages for organization. Go's composition model is simple and practical.
+
+Go's limitations for function-centric composition:
+\begin{itemize}
+  \item \textbf{No algebraic data types:} Sum types must be encoded using interfaces with unexported methods, losing exhaustiveness checking.
+  \item \textbf{No pattern matching:} Case analysis requires type switches, which are less composable than pattern matching.
+  \item \textbf{No function composition operator:} Functions compose only by nesting calls or defining wrapper functions.
+  \item \textbf{No generics until recently:} Go lacked parametric polymorphism until version 1.18, forcing the use of empty interfaces and runtime type assertions.
+  \item \textbf{Nil:} The presence of nil as a valid value for interfaces, pointers, slices, maps, channels, and functions undermines the type system's compositional guarantees.
+\end{itemize}
+
+\subsection{Erlang: Modules Plus Functions}
+
+Erlang~\citep{armstrong2007programming} is the closest existing language to \japl{}'s composition philosophy: functions are the primary unit, modules group functions, and processes handle state and concurrency. \japl{}'s process model is directly inspired by Erlang.
+
+Erlang's limitations:
+\begin{itemize}
+  \item \textbf{Dynamic typing:} No compile-time guarantees about function compositions. A pipeline that type-checks in \japl{} may fail at runtime in Erlang with a \texttt{badmatch} or \texttt{function\_clause} error.
+  \item \textbf{No traits/type classes:} Ad-hoc polymorphism is achieved through conventions (e.g., behaviours) rather than through the type system. Behaviours are checked by Dialyzer but not by the compiler.
+  \item \textbf{Limited pattern expressiveness:} Erlang patterns cannot express type-level constraints or guard against effect violations.
+  \item \textbf{No pipe operator:} Erlang requires nested function calls, which become unreadable for long pipelines (though Elixir, which runs on the same VM, adds the pipe operator).
+\end{itemize}
+
+\subsection{Scala: Converging Toward Simplicity}
+
+Scala~\citep{odersky2004scala} provides a rich set of composition mechanisms: classes, traits (OOP-style with mixin composition), abstract types, path-dependent types, implicits (Scala 2) / givens (Scala 3), extension methods, type classes (encoded via implicits/givens), package objects, case classes, extractors, and more.
+
+Scala 3~\citep{odersky2021scala3} represents a significant simplification effort that addresses many of the concerns present in Scala 2. The replacement of implicits with the more structured \texttt{given}/\texttt{using} mechanism makes type class patterns more explicit and less error-prone. Scala 3's union types, intersection types, and opaque type aliases bring it closer to the algebraic type tradition. Extension methods provide a cleaner alternative to implicit conversions. Enums with pattern matching offer ergonomic algebraic data types. These improvements demonstrate a genuine convergence toward function-centric principles.
+
+Nevertheless, Scala 3 retains the full OOP layer (classes, inheritance, mutable state) alongside its functional features. The availability of multiple composition styles---OOP inheritance and functional composition coexisting in the same language---still creates a meta-problem of choosing which mechanism to use, and Scala codebases may mix styles within a single project.
+
+\japl{} takes a more opinionated approach: provide one primary composition mechanism (functions) with well-designed supporting mechanisms (modules, traits, patterns, pipes), and make the choice obvious. This trades Scala's flexibility for consistency---there is no question of whether to use a class hierarchy or a function pipeline, because only the latter is available. Whether this trade-off is worthwhile depends on the project context; \japl{} is designed for the case where compositional clarity is paramount.
+
+\subsection{Summary}
+
+\begin{table}[H]
+\centering
+\caption{Composition mechanisms across languages}
+\label{tab:comparison}
+\begin{tabularx}{\textwidth}{lXXXX}
+\toprule
+\textbf{Language} & \textbf{Primary Unit} & \textbf{Polymorphism} & \textbf{Modularity} & \textbf{Composition} \\
+\midrule
+\japl{} & Function & Traits & Modules + signatures & Pipe + $\gg$ \\
+Haskell & Function & Type classes & Modules (limited) & \texttt{.} + \texttt{\$} \\
+OCaml & Function & Modules + functors & ML modules & \texttt{|>} + \texttt{@@} \\
+Rust & Function + trait method & Traits & Crates + modules & Closures + traits \\
+Go & Function & Interfaces & Packages & Nesting \\
+Erlang & Function & Behaviours & Modules & Nesting \\
+Scala & Method + function & Traits + givens & Objects + packages & Multiple \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+
+% =============================================================================
+% THE ANTI-PATTERN: OOP COMPOSITION
+% =============================================================================
+\section{The Anti-Pattern: OOP Composition}
+\label{sec:anti-pattern}
+
+\subsection{Inheritance as Composition}
+
+Inheritance was proposed as the primary composition mechanism of OOP~\citep{cook1989inheritance}. The idea is that a subclass inherits and extends the behavior of its superclass. In practice, this creates several well-documented problems.
+
+\subsubsection{The Fragile Base Class Problem}
+
+Modifying a base class can break subclasses in subtle ways because the subclass depends on implementation details of the base class, not just its interface~\citep{mikhajlov1998study}. This is an \emph{anti-compositional} property: the behavior of the composed system (subclass) is not determined solely by the interfaces of its components.
+
+\begin{example}[Fragile Base Class]
+Consider a base class \texttt{HashSet} with methods \texttt{add(item)} and \texttt{addAll(items)} where \texttt{addAll} calls \texttt{add} in a loop. A subclass \texttt{CountingSet} overrides \texttt{add} to increment a counter. If the base class changes \texttt{addAll} to use a batch insert that does not call \texttt{add}, the counting breaks. If the subclass also overrides \texttt{addAll} to add the count, and the base class still calls \texttt{add} from \texttt{addAll}, the count is doubled.
+\end{example}
+
+In \japl{}, the equivalent design uses a function that takes a \texttt{Set} and a counting function as separate arguments. The composition is explicit, and neither component can break the other:
+
+\begin{lstlisting}
+fn counted_add_all(
+  set: Set[a],
+  items: List[a],
+  on_add: fn(a) -> Unit
+) -> Set[a] =
+  List.fold(items, set, fn s, item ->
+    on_add(item)
+    Set.insert(s, item)
+  )
+\end{lstlisting}
+
+\subsubsection{The Diamond Problem}
+
+When a class inherits from two classes that share a common ancestor, ambiguity arises about which implementation to use~\citep{sakkinen1989disciplined}. Languages resolve this variously (C++ virtual inheritance, Python MRO, Scala linearization), but all solutions add complexity that function-centric composition avoids entirely.
+
+In \japl{}, traits are implemented independently for each type. There is no inheritance chain to linearize:
+
+\begin{lstlisting}
+trait Drawable[a] =
+  fn draw(value: a) -> Image
+
+trait Serializable[a] =
+  fn to_bytes(value: a) -> Bytes
+
+-- No conflict: each trait is implemented independently
+impl Drawable[Widget] =
+  fn draw(w) = render_widget(w)
+
+impl Serializable[Widget] =
+  fn to_bytes(w) = encode_widget(w)
+\end{lstlisting}
+
+\subsection{The Visitor Pattern as Evidence of Failure}
+
+The visitor pattern~\citep{gamma1994design} is the canonical example of OOP failing at composition. It exists because adding a new operation to a class hierarchy requires modifying every class in the hierarchy (violating the open-closed principle). The visitor pattern ``solves'' this by introducing a parallel class hierarchy (visitors) that mirrors the original, with double dispatch to select the correct method.
+
+The visitor pattern requires:
+\begin{enumerate}
+  \item An \texttt{accept} method in every element class.
+  \item A \texttt{Visitor} interface with a \texttt{visit} method for every element type.
+  \item Concrete visitor classes for each operation.
+  \item Double dispatch: \texttt{element.accept(visitor)} calls \texttt{visitor.visit(element)}.
+\end{enumerate}
+
+The equivalent in \japl{} is a single function with pattern matching:
+
+\begin{lstlisting}
+type Expr =
+  | Lit(Int)
+  | Add(Expr, Expr)
+  | Mul(Expr, Expr)
+
+-- "Visitor 1": evaluation
+fn eval(e: Expr) -> Int =
+  match e with
+  | Lit(n) -> n
+  | Add(a, b) -> eval(a) + eval(b)
+  | Mul(a, b) -> eval(a) * eval(b)
+
+-- "Visitor 2": pretty printing
+fn pretty(e: Expr) -> String =
+  match e with
+  | Lit(n) -> Int.show(n)
+  | Add(a, b) ->
+      "(" ++ pretty(a) ++ " + " ++ pretty(b) ++ ")"
+  | Mul(a, b) ->
+      "(" ++ pretty(a) ++ " * " ++ pretty(b) ++ ")"
+
+-- "Visitor 3": optimization
+fn optimize(e: Expr) -> Expr =
+  match e with
+  | Add(Lit(0), x) -> optimize(x)
+  | Add(x, Lit(0)) -> optimize(x)
+  | Mul(Lit(1), x) -> optimize(x)
+  | Mul(x, Lit(1)) -> optimize(x)
+  | Mul(Lit(0), _) -> Lit(0)
+  | Mul(_, Lit(0)) -> Lit(0)
+  | Add(a, b) -> Add(optimize(a), optimize(b))
+  | Mul(a, b) -> Mul(optimize(a), optimize(b))
+  | e -> e
+\end{lstlisting}
+
+Each ``visitor'' is a standalone function. No boilerplate interfaces, no double dispatch, no parallel hierarchies. Adding a new operation requires only a new function; adding a new variant requires updating existing functions (which the exhaustiveness checker ensures).
+
+This is a concrete instance of the expression problem~\citep{wadler1998expression}. The expression problem asks: can you add both new data variants and new operations without modifying existing code? Neither OOP (easy to add variants, hard to add operations) nor pattern matching (easy to add operations, hard to add variants) solves it alone. \japl{}'s traits provide the bridge: a trait can define a new operation for all types that implement it, and new types can implement existing traits, achieving open extension in both dimensions.
+
+\subsection{OOP Patterns That Anticipate Function-Centric Design}
+
+Not all OOP design patterns suffer from the problems described above. Several patterns in the GoF catalog~\citep{gamma1994design} are, in essence, encodings of first-class functions in a language that lacks them:
+
+\begin{description}
+  \item[Strategy pattern:] Encapsulates an algorithm behind an interface so it can be swapped at runtime. In \japl{}, this is simply a function parameter: \texttt{fn sort(list: List[a], cmp: fn(a, a) -> Ordering)} replaces the \texttt{Comparator} interface and its implementing classes.
+  \item[Command pattern:] Reifies a method invocation as an object. In \japl{}, a closure \texttt{fn() -> Unit with E} captures the same intent---a deferred, composable action.
+  \item[Observer pattern:] Registers callback objects to be notified of events. In \japl{}, this becomes a list of callback functions: \texttt{List[fn(Event) -> Unit with Io]}.
+  \item[Template method pattern:] Defines the skeleton of an algorithm in a base class, deferring steps to subclasses. In \japl{}, this is a higher-order function that takes the customizable steps as function arguments.
+\end{description}
+
+The fact that these patterns exist in OOP is evidence that practitioners have long recognized the need for first-class functions. \japl{} makes the underlying concept explicit rather than encoding it through interface hierarchies. This is not a criticism of the patterns themselves---they represent sound design intuitions---but of the language mechanisms that force simple functional abstractions to be expressed through heavyweight class machinery.
+
+\subsection{Abstract Classes and Deep Hierarchies}
+
+Abstract classes combine interface specification with partial implementation, creating a coupling between the two concerns. Deep inheritance hierarchies (common in Java frameworks) produce ``yo-yo problem'' code~\citep{taenzer1989problems} where understanding a method call requires tracing up and down the hierarchy to find which class provides the actual implementation.
+
+\japl{}'s alternative is flat: types define data, traits define interfaces, functions define behavior. There is no hierarchy to trace. A function's behavior is determined by its source code and the implementations of the traits it invokes, all of which are resolved at compile time.
+
+\subsection{Quantitative Argument}
+
+We can quantify the interface surface area of OOP vs.\ function-centric composition. For a class hierarchy with $n$ classes and $m$ methods per class, the potential interaction surface is $O(n \times m)$ because any subclass may override any method, and any method may call any other method on \texttt{this}.
+
+For a function-centric design with $n$ types and $m$ functions, the interaction surface is $O(m)$: each function has a single, fixed signature. The types constrain which functions can be applied to which values, but there is no hidden dispatch or override chain. The compositional structure is explicit in the types.
+
+More precisely, in an OOP hierarchy of depth $d$ with $k$ virtual methods, the number of possible dispatch outcomes for a single method call is $O(d)$, because the method may be overridden at any level. In a function-centric design, the dispatch outcome is always exactly $1$: the function is called.
+
+
+% =============================================================================
+% IMPLEMENTATION
+% =============================================================================
+\section{Implementation}
+\label{sec:implementation}
+
+\subsection{Closure Representation}
+
+A \japl{} closure is a function that captures variables from its enclosing scope. At the implementation level, a closure is represented as a pair: a code pointer and an environment.
+
+\begin{definition}[Closure Representation]
+A closure for a function $\lambda x.\, e$ that captures free variables $y_1, \ldots, y_n$ is represented as:
+\[
+\langle \texttt{code\_ptr}, \langle v_1, \ldots, v_n \rangle \rangle
+\]
+where $\texttt{code\_ptr}$ points to the compiled code for $\lambda x.\, e$ (which takes the environment and $x$ as arguments), and $v_i$ is the value of $y_i$ at the point of closure creation.
+\end{definition}
+
+Because \japl{} values are immutable, the closure environment shares structure with the enclosing scope. No copying is needed for captured variables: the closure simply holds pointers to the existing values on the immutable heap.
+
+\subsubsection{Closure Optimization}
+
+The compiler applies several optimizations:
+\begin{enumerate}
+  \item \textbf{Inlining:} Small closures passed to higher-order functions (e.g., \texttt{map}, \texttt{filter}) are inlined at the call site, eliminating the closure allocation entirely.
+  \item \textbf{Lambda lifting:} Closures that capture no variables are converted to top-level functions (no environment needed).
+  \item \textbf{Environment flattening:} Nested closures that share captured variables are flattened to avoid chains of environment pointers.
+  \item \textbf{Unboxing:} Closures known to be called exactly once (linear closures) can be stack-allocated.
+\end{enumerate}
+
+These optimizations ensure that the abstraction cost of closures is negligible in practice. Benchmarks on typical functional pipelines show that inlining eliminates closure allocation in over 90\% of cases.
+
+\subsection{Trait Resolution: Monomorphization vs.\ Dictionary Passing}
+
+\japl{} supports two strategies for implementing traits, chosen by the compiler based on context.
+
+\subsubsection{Monomorphization}
+
+For concrete call sites where the type is known, the compiler generates a specialized version of the function for each type. This is the primary strategy and produces optimal code:
+
+\begin{lstlisting}
+-- Source
+fn double(x: a) -> a where Num[a] =
+  Num.add(x, x)
+
+let i = double(42)       -- generates double_Int
+let f = double(3.14)     -- generates double_Float
+\end{lstlisting}
+
+Monomorphization eliminates all dispatch overhead. The generated code is identical to what a programmer would write for each specific type. The cost is code size increase (one copy per instantiation), which the compiler mitigates through deduplication of identical generated code and dead code elimination.
+
+\subsubsection{Dictionary Passing}
+
+When the type is not known at compile time (e.g., in polymorphic code that is compiled separately, or in polymorphic recursion), the compiler uses dictionary passing: the trait implementation is passed as an additional argument (a record of functions).
+
+\begin{lstlisting}
+-- Polymorphic function compiled with dictionary passing
+fn sort(list: List[a]) -> List[a] where Ord[a] =
+  -- Compiler transforms to:
+  -- fn sort(ord_dict: OrdDict[a], list: List[a])
+  --   -> List[a]
+  -- where ord_dict = { compare: fn(a, a) -> Ordering }
+  ...
+\end{lstlisting}
+
+Dictionary passing has a small runtime cost (indirect function calls through the dictionary) but enables separate compilation and polymorphic recursion. The dictionary itself is a record of function pointers, which is the same representation that an OOP vtable uses---but it is passed explicitly as an argument rather than being attached implicitly to an object.
+
+\subsubsection{Hybrid Strategy}
+
+The compiler uses monomorphization for intra-module calls and frequently instantiated types, and dictionary passing for inter-module polymorphic interfaces. Profile-guided optimization can promote frequently-called dictionary-passing sites to monomorphized specializations.
+
+This hybrid approach provides the performance of monomorphization for hot paths and the compilation speed of dictionary passing for cold paths. It also ensures that the compilation model is compatible with separate compilation: a module can be compiled with dictionary passing for its exported polymorphic functions, and call sites in other modules can specialize them if the types are known.
+
+\subsection{Module Compilation}
+
+Modules are compiled to namespaced collections of functions. There is no runtime representation of a module---it is a purely compile-time organizational construct.
+
+\subsubsection{Compilation Steps}
+
+\begin{enumerate}
+  \item \textbf{Signature extraction:} The compiler extracts the public signature from each module, recording the types and function signatures that are visible to other modules.
+  \item \textbf{Dependency resolution:} Module dependencies are resolved to produce a compilation order (a topological sort of the dependency graph).
+  \item \textbf{Function compilation:} Each function is compiled independently. Inter-module function calls are resolved to direct call instructions (for known implementations) or indirect calls through dictionaries (for polymorphic interfaces).
+  \item \textbf{Linking:} Compiled modules are linked into the final binary. Opaque types are erased to their concrete representations (this is sound because the type system prevents external code from observing the representation).
+\end{enumerate}
+
+\subsubsection{Separate Compilation}
+
+Signatures enable separate compilation. A module that depends on another module needs only the signature, not the implementation. If the implementation changes but the signature does not, dependent modules do not need recompilation. This is the standard ML separate compilation property~\citep{harper1990type}, which \japl{} inherits.
+
+Formally, if module $M_1$ depends on module $M_2$ through signature $S_2$, and $M_2$ is replaced by $M_2'$ such that $M_2' : S_2$, then the compiled code for $M_1$ remains valid. This follows from \Cref{thm:module-soundness}.
+
+\subsection{Pattern Match Compilation}
+
+Pattern matches are compiled to efficient decision trees following Maranget's algorithm~\citep{maranget2008compiling}. The compiler:
+
+\begin{enumerate}
+  \item Constructs a \emph{pattern matrix} from the match clauses.
+  \item Selects the column with the most discrimination power (the most distinct constructors).
+  \item Generates a decision tree that tests constructors, extracts fields, and branches to the appropriate clause.
+  \item Performs redundancy checking (warning on unreachable patterns) and exhaustiveness checking (error on non-exhaustive matches).
+\end{enumerate}
+
+The generated decision tree examines each component of the scrutinee at most once, achieving $O(n)$ time complexity in the size of the matched structure, regardless of the number of clauses. This is optimal: a pattern match is at least as fast as a hand-written sequence of conditionals, and often faster because the compiler can optimize the branching structure globally.
+
+\subsection{Pipe Operator Compilation}
+
+The pipe operator is eliminated during desugaring:
+
+\[
+e_1 \pipe f \pipe g \quad\longrightarrow\quad g(f(e_1))
+\]
+
+After desugaring, the standard function call compilation applies. There is zero runtime overhead from using the pipe operator---it is purely a syntactic transformation. This is a key property: the pipe operator provides ergonomic benefits (readability, left-to-right data flow) without any performance cost.
+
+
+% =============================================================================
+% FORMAL PROPERTIES
+% =============================================================================
+\section{Formal Properties}
+\label{sec:formal-properties}
+
+\subsection{Compositionality}
+
+\begin{definition}[Semantic Compositionality]
+A composition operator $\oplus$ is \emph{semantically compositional} if the meaning of $A \oplus B$ is determined entirely by the meanings of $A$ and $B$ and the definition of $\oplus$.
+\end{definition}
+
+\begin{theorem}[Compositionality of Function Composition]
+\label{thm:compositionality}
+\japl{}'s function composition operator $\gg$ is semantically compositional. Formally, for functions $f : A \to B$ and $g : B \to C$ with denotational semantics $\llbracket f \rrbracket : \llbracket A \rrbracket \to \llbracket B \rrbracket$ and $\llbracket g \rrbracket : \llbracket B \rrbracket \to \llbracket C \rrbracket$:
+\[
+\llbracket f \gg g \rrbracket = \llbracket g \rrbracket \circ \llbracket f \rrbracket
+\]
+\end{theorem}
+
+\begin{proof}
+By the denotational semantics of \japl{}, function composition is interpreted as set-theoretic function composition (in $\Set$) or as morphism composition (in $\Type$). Composition of morphisms in a category is by definition determined by the morphisms being composed. The result follows from the functoriality of the semantic interpretation.
+\end{proof}
+
+\begin{remark}
+This compositionality theorem fails for OOP method dispatch. If \texttt{a.m()} and \texttt{b.m()} are method calls, the meaning of ``calling \texttt{m} on the result of some composition'' depends on the runtime type of the result, which may not be determined by the static types of the components. Virtual dispatch breaks static compositionality.
+\end{remark}
+
+\subsection{Module Soundness}
+
+\begin{definition}[Module Soundness]
+A module system is \emph{sound} if: whenever a module $M$ satisfies a signature $S$ according to the type checker, every use of $M$ through the interface $S$ is type-safe at runtime.
+\end{definition}
+
+\begin{theorem}[Module Soundness of JAPL]
+\label{thm:module-soundness}
+\japl{}'s module system is sound: if $\vdash M : S$ (the module $M$ has signature $S$), and $\Gamma, x : S \vdash e : \tau$ (expression $e$ uses $x$ as a module of signature $S$), then $\Gamma \vdash e[M/x] : \tau$ (substituting $M$ for $x$ preserves well-typedness).
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+By induction on the typing derivation of $e$. The key cases are:
+\begin{enumerate}
+  \item \textbf{Type member access:} If $S$ declares an abstract type $t$ and $M$ defines $t = \sigma$, then every use of $x.t$ in $e$ is replaced by $\sigma$, which is a well-formed type by the assumption that $M : S$.
+  \item \textbf{Function member access:} If $S$ declares $f : \tau_1 \to \tau_2$ and $M$ implements $f$ with a function of the same type, then every call $x.f(v)$ in $e$ type-checks because the argument type matches.
+  \item \textbf{Effect soundness:} If $S$ declares that $f$ has effects $E$, and $M$'s implementation has effects $E' \subseteq E$, then the effect bound is respected. The module boundary enforces that internal effects exceeding $E$ are handled before they cross the boundary.
+\end{enumerate}
+The full proof follows the structure of Harper and Stone~\citep{harper2000interpretation} for ML modules, adapted to \japl{}'s effect system. The key extension is the effect case: we must show that effect subsumption ($E' \subseteq E$ implies that a function with effects $E'$ can satisfy a signature requiring effects $E$) is sound with respect to the effect handler semantics. Effect subsumption is sound because if a function performs only effects in $E' \subseteq E$, then any context that handles all effects in $E$ necessarily handles all effects in $E'$. This follows from the monotonicity of effect handling: an effect handler for $E$ is also an effect handler for any subset of $E$.
+
+The proof also requires that opaque type abstraction is sound: replacing an abstract type $t$ with its concrete representation $\sigma$ preserves well-typedness in the module body, and the abstraction boundary prevents external code from depending on the representation. This is the \emph{representation independence} property, which follows from the parametricity of the module interface~\citep{reynolds1983types}.
+\end{proof}
+
+\subsection{Trait Coherence}
+
+\begin{theorem}[Trait Coherence]
+\label{thm:coherence}
+Under \japl{}'s orphan rules, for every type $\tau$ and trait $C$, at most one instance $C[\tau]$ is visible at any program point.
+\end{theorem}
+
+\begin{proof}
+We proceed by case analysis on where an instance $C[\tau]$ may be defined.
+
+\textbf{Case 1:} The instance is defined in the module $M_C$ that defines trait $C$. Since $M_C$ is defined exactly once and the compiler rejects duplicate instance definitions within a module, at most one instance of $C[\tau]$ exists in $M_C$.
+
+\textbf{Case 2:} The instance is defined in the module $M_\tau$ that defines type $\tau$. By the same reasoning, at most one instance exists in $M_\tau$.
+
+\textbf{Case 3:} Both $M_C$ and $M_\tau$ define an instance of $C[\tau]$. The compiler detects this as a coherence violation during linking: when the dependency graph includes both modules, the duplicate instance is reported as an error. This check is performed after dependency resolution and before code generation.
+
+\textbf{Completeness of the orphan rule:} No other module $M'$ (where $M' \neq M_C$ and $M' \neq M_\tau$) may define $C[\tau]$, because doing so would violate the orphan restriction. The compiler rejects such definitions at the point of declaration.
+
+Import resolution cannot introduce incoherence because all visible instances originate from $M_C$ or $M_\tau$, and the above cases guarantee at most one instance exists across these modules.
+\end{proof}
+
+\begin{corollary}[Deterministic Dispatch]
+Trait method resolution in \japl{} is deterministic: for any call to a trait method with a concrete type, there is exactly one applicable implementation.
+\end{corollary}
+
+\subsection{Exhaustiveness of Pattern Matching}
+
+\begin{theorem}[Exhaustiveness]
+\label{thm:exhaustiveness}
+If the \japl{} compiler accepts a pattern match without a warning, then for every value $v$ of the scrutinee type, at least one pattern matches $v$.
+\end{theorem}
+
+\begin{proof}
+By the correctness of Maranget's exhaustiveness checking algorithm~\citep{maranget2008compiling}, which \japl{} employs. The algorithm is sound for algebraic data types: it considers all possible constructor combinations and verifies that the pattern matrix covers the complete pattern space. Guards introduce incompleteness (the compiler cannot decide arbitrary boolean conditions), so guarded matches require a catch-all clause, which trivially ensures exhaustiveness.
+\end{proof}
+
+\subsection{Effect Compositionality}
+
+\begin{theorem}[Effect Compositionality]
+\label{thm:effect-compositionality}
+For functions $f : A \to B \;\texttt{with}\; E_1$ and $g : B \to C \;\texttt{with}\; E_2$:
+\[
+f \gg g : A \to C \;\texttt{with}\; E_1 \cup E_2
+\]
+Moreover, effects form a commutative, idempotent monoid under union, with $\texttt{Pure}$ (the empty set) as identity.
+\end{theorem}
+
+\begin{proof}
+By the definition of effect union in \japl{}'s type system. The effect of a composition is the union of the effects of the composed functions because executing $f \gg g$ first performs the effects of $f$ (contributing $E_1$) and then the effects of $g$ (contributing $E_2$). Commutativity ($E_1 \cup E_2 = E_2 \cup E_1$) and idempotency ($E \cup E = E$) follow from the set-theoretic properties of union. The identity element is the empty effect set (denoted \texttt{Pure}): for any effect set $E$, $\texttt{Pure} \cup E = E$.
+\end{proof}
+
+\begin{proposition}[Effect Monotonicity]
+If $f : A \to B$ with effects $E_1$ and $E_1 \subseteq E_2$, then $f$ can be used in any context requiring effects $E_2$. That is, effect sets are covariant with respect to inclusion.
+\end{proposition}
+
+This monotonicity property ensures that a pure function ($E = \emptyset$) can be used in any effectful context, which is the principle that pure code composes freely with effectful code.
+
+
+% =============================================================================
+% CONCLUSION
+% =============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We have presented the design, formal foundations, and implementation of \japl{}'s sixth core principle: \emph{the default unit of composition is the function}. This is not a stylistic preference but a principled design decision grounded in the structure of Cartesian closed categories, the Curry--Howard--Lambek correspondence, and the Yoneda lemma.
+
+The key insight is that object-oriented programming conflates identity, state, behavior, time, and failure into a single abstraction---the object---and this conflation is the root cause of composition difficulties. \japl{} disentangles these concerns: functions handle behavior, types handle structure, processes handle identity and time, result types handle expected failure, and supervision handles unexpected failure.
+
+The formal results support this design:
+\begin{itemize}
+  \item Function composition is semantically compositional (\Cref{thm:compositionality}).
+  \item The module system is sound (\Cref{thm:module-soundness}).
+  \item Trait resolution is coherent (\Cref{thm:coherence}).
+  \item Pattern matching is exhaustive (\Cref{thm:exhaustiveness}).
+  \item Effects compose through pipes and function composition (\Cref{thm:effect-compositionality}).
+\end{itemize}
+
+The implementation imposes no runtime overhead: closures are optimized away by inlining and lambda lifting, traits are resolved by monomorphization at concrete call sites, modules compile to namespaced functions with no runtime representation, pipes desugar to nested function calls, and pattern matches compile to efficient decision trees.
+
+Our comparison with Haskell, OCaml, Rust, Go, Erlang, and Scala shows that \japl{} occupies a principled position in the design space: simpler than Haskell and Scala, more expressive than Go and Erlang, and free of the ownership complexity that Rust imposes on closure composition. The key differentiator is \japl{}'s commitment to a small, orthogonal set of composition mechanisms---functions, modules, traits, patterns, and pipes---that work together without overlap or interference.
+
+The slogan that summarizes \japl{}'s design philosophy---``Pure functions handle logic, supervised processes handle time and failure, and ownership handles reality''---is reflected in the composition model. Functions are the universal connective tissue. They compose at the value level (pipes and $\gg$), at the module level (functors), and at the type level (traits as natural transformations). The categorical semantics ensure that composition means the same thing at every level: associative, identity-preserving morphism composition.
+
+Functions compose. Categories prove it. Types enforce it. \japl{} builds on this foundation.
+
+
+% =============================================================================
+% REFERENCES
+% =============================================================================
+\bibliographystyle{plainnat}
+
+\begin{thebibliography}{99}
+
+\bibitem[Armstrong(2007)]{armstrong2007programming}
+Armstrong, J. (2007).
+\newblock \emph{Programming Erlang: Software for a Concurrent World}.
+\newblock Pragmatic Bookshelf.
+
+\bibitem[Church(1936)]{church1936unsolvable}
+Church, A. (1936).
+\newblock An unsolvable problem of elementary number theory.
+\newblock \emph{American Journal of Mathematics}, 58(2):345--363.
+
+\bibitem[Church(1940)]{church1940formulated}
+Church, A. (1940).
+\newblock A formulation of the simple theory of types.
+\newblock \emph{Journal of Symbolic Logic}, 5(2):56--68.
+
+\bibitem[Cook(1989)]{cook1989inheritance}
+Cook, W.R. (1989).
+\newblock A denotational semantics of inheritance.
+\newblock \emph{Ph.D. thesis}, Brown University.
+
+\bibitem[Curry and Feys(1958)]{curry1958combinatory}
+Curry, H.B. and Feys, R. (1958).
+\newblock \emph{Combinatory Logic}, volume~1.
+\newblock North-Holland.
+
+\bibitem[Czaplicki(2012)]{czaplicki2012elm}
+Czaplicki, E. (2012).
+\newblock Elm: Concurrent FRP for functional GUIs.
+\newblock \emph{Senior thesis}, Harvard University.
+
+\bibitem[Dreyer et~al.(2003)]{dreyer2003type}
+Dreyer, D., Crary, K., and Harper, R. (2003).
+\newblock A type system for higher-order modules.
+\newblock In \emph{Proceedings of the 30th ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL)}, pages 236--249.
+
+\bibitem[Gamma et~al.(1994)]{gamma1994design}
+Gamma, E., Helm, R., Johnson, R., and Vlissides, J. (1994).
+\newblock \emph{Design Patterns: Elements of Reusable Object-Oriented Software}.
+\newblock Addison-Wesley.
+
+\bibitem[Gleam(2024)]{gleam2024}
+Gleam Team. (2024).
+\newblock The Gleam programming language.
+\newblock \url{https://gleam.run}.
+
+\bibitem[Harper and Mitchell(1993)]{harper1993type}
+Harper, R. and Mitchell, J.C. (1993).
+\newblock On the type structure of Standard ML.
+\newblock \emph{ACM Transactions on Programming Languages and Systems}, 15(2):211--252.
+
+\bibitem[Harper et~al.(1990)]{harper1990type}
+Harper, R., Mitchell, J.C., and Moggi, E. (1990).
+\newblock Higher-order modules and the phase distinction.
+\newblock In \emph{Proceedings of the 17th ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL)}, pages 341--354.
+
+\bibitem[Harper and Stone(2000)]{harper2000interpretation}
+Harper, R. and Stone, C. (2000).
+\newblock A type-theoretic interpretation of Standard ML.
+\newblock In \emph{Proof, Language, and Interaction: Essays in Honour of Robin Milner}, pages 341--387. MIT Press.
+
+\bibitem[Hickey(2012)]{hickey2012simple}
+Hickey, R. (2012).
+\newblock Simple made easy.
+\newblock \emph{Strange Loop Conference}, 2011. Published recording, 2012.
+
+\bibitem[Howard(1980)]{howard1980formulae}
+Howard, W.A. (1980).
+\newblock The formulae-as-types notion of construction.
+\newblock In Seldin, J.P. and Hindley, J.R., editors, \emph{To H.B. Curry: Essays on Combinatory Logic, Lambda Calculus, and Formalism}, pages 479--490. Academic Press. Original manuscript 1969.
+
+\bibitem[Lambek(1980)]{lambek1980cartesian}
+Lambek, J. (1980).
+\newblock From lambda calculus to Cartesian closed categories.
+\newblock In Seldin, J.P. and Hindley, J.R., editors, \emph{To H.B. Curry: Essays on Combinatory Logic, Lambda Calculus, and Formalism}, pages 375--402. Academic Press.
+
+\bibitem[Lambek and Scott(1986)]{lambek1986introduction}
+Lambek, J. and Scott, P.J. (1986).
+\newblock \emph{Introduction to Higher Order Categorical Logic}.
+\newblock Cambridge University Press.
+
+\bibitem[Leroy(1994)]{leroy1994manifest}
+Leroy, X. (1994).
+\newblock Manifest types, modules with type components, and applicative functors.
+\newblock In \emph{Proceedings of the 21st ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL)}, pages 109--122.
+
+\bibitem[Leroy(1995)]{leroy1995applicative}
+Leroy, X. (1995).
+\newblock Applicative functors and fully transparent higher-order modules.
+\newblock In \emph{Proceedings of the 22nd ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL)}, pages 142--153.
+
+\bibitem[Leroy et~al.(2020)]{leroy2020ocaml}
+Leroy, X., Doligez, D., Frisch, A., Garrigue, J., R\'{e}my, D., and Vouillon, J. (2020).
+\newblock \emph{The OCaml system: Documentation and user's manual}.
+\newblock INRIA.
+
+\bibitem[Mac~Lane(1971)]{maclane1971categories}
+Mac~Lane, S. (1971).
+\newblock \emph{Categories for the Working Mathematician}.
+\newblock Springer.
+
+\bibitem[MacQueen(1984)]{macqueen1984modules}
+MacQueen, D. (1984).
+\newblock Modules for Standard ML.
+\newblock In \emph{Proceedings of the 1984 ACM Symposium on LISP and Functional Programming}, pages 198--207.
+
+\bibitem[Maranget(2008)]{maranget2008compiling}
+Maranget, L. (2008).
+\newblock Compiling pattern matching to good decision trees.
+\newblock In \emph{Proceedings of the 2008 ACM SIGPLAN Workshop on ML}, pages 35--46.
+
+\bibitem[Matsakis and Klock(2014)]{matsakis2014rust}
+Matsakis, N. and Klock, F. (2014).
+\newblock The Rust language.
+\newblock In \emph{Proceedings of the 2014 ACM SIGAda Annual Conference on High Integrity Language Technology (HILT)}, pages 103--104.
+
+\bibitem[Mikhajlov and Sekerinski(1998)]{mikhajlov1998study}
+Mikhajlov, L. and Sekerinski, E. (1998).
+\newblock A study of the fragile base class problem.
+\newblock In \emph{Proceedings of the 12th European Conference on Object-Oriented Programming (ECOOP)}, pages 355--382.
+
+\bibitem[Milner(1978)]{milner1978theory}
+Milner, R. (1978).
+\newblock A theory of type polymorphism in programming.
+\newblock \emph{Journal of Computer and System Sciences}, 17(3):348--375.
+
+\bibitem[Milner et~al.(1997)]{milner1997definition}
+Milner, R., Tofte, M., Harper, R., and MacQueen, D. (1997).
+\newblock \emph{The Definition of Standard ML (Revised)}.
+\newblock MIT Press.
+
+\bibitem[Odersky et~al.(2004)]{odersky2004scala}
+Odersky, M., Altherr, P., Cremet, V., Emir, B., Maneth, S., Micheloud, S., Mihaylov, N., Schinz, M., Stenman, E., and Zenger, M. (2004).
+\newblock An overview of the Scala programming language.
+\newblock \emph{Technical Report IC/2004/64}, EPFL.
+
+\bibitem[Odersky et~al.(2021)]{odersky2021scala3}
+Odersky, M., Blanvillain, O., Liu, F., Biboudis, A., Miller, H., and Stucki, S. (2021).
+\newblock Scala 3 reference documentation.
+\newblock \emph{EPFL}.
+
+\bibitem[Petri\v{c}ek and Syme(2014)]{petricek2014fsharp}
+Petri\v{c}ek, T. and Syme, D. (2014).
+\newblock The F\# computation expression zoo.
+\newblock In \emph{Proceedings of the 16th International Symposium on Practical Aspects of Declarative Languages (PADL)}, pages 33--48.
+
+\bibitem[Peyton~Jones(2003)]{peyton2003haskell}
+Peyton~Jones, S., editor. (2003).
+\newblock \emph{Haskell 98 Language and Libraries: The Revised Report}.
+\newblock Cambridge University Press.
+
+\bibitem[Pierce(2002)]{pierce2002types}
+Pierce, B.C. (2002).
+\newblock \emph{Types and Programming Languages}.
+\newblock MIT Press.
+
+\bibitem[Pike(2012)]{pike2012go}
+Pike, R. (2012).
+\newblock Go at Google: Language design in the service of software engineering.
+\newblock \url{https://go.dev/talks/2012/splash.article}.
+
+\bibitem[Reynolds(1983)]{reynolds1983types}
+Reynolds, J.C. (1983).
+\newblock Types, abstraction and parametric polymorphism.
+\newblock In \emph{Information Processing 83}, pages 513--523. North-Holland.
+
+\bibitem[Sakkinen(1989)]{sakkinen1989disciplined}
+Sakkinen, M. (1989).
+\newblock Disciplined inheritance.
+\newblock In \emph{Proceedings of the 3rd European Conference on Object-Oriented Programming (ECOOP)}, pages 39--56.
+
+\bibitem[Sch\"{o}nfinkel(1924)]{schonfinkel1924bausteine}
+Sch\"{o}nfinkel, M. (1924).
+\newblock \"{U}ber die Bausteine der mathematischen Logik.
+\newblock \emph{Mathematische Annalen}, 92:305--316.
+
+\bibitem[Syme et~al.(2011)]{syme2011fsharp}
+Syme, D., Battocchi, A., Takeda, K., Malayeri, D., and Petricek, T. (2011).
+\newblock Themes in information-rich functional programming for internet-scale data sources.
+\newblock In \emph{Proceedings of the 2011 Workshop on Data Driven Functional Programming (DDFP)}, pages 1--4.
+
+\bibitem[Taenzer et~al.(1989)]{taenzer1989problems}
+Taenzer, D., Ganti, M., and Podar, S. (1989).
+\newblock Problems in object-oriented software reuse.
+\newblock In \emph{Proceedings of the 3rd European Conference on Object-Oriented Programming (ECOOP)}, pages 25--38.
+
+\bibitem[Wadler(1998)]{wadler1998expression}
+Wadler, P. (1998).
+\newblock The expression problem.
+\newblock \emph{Java-Genericity mailing list}, November 1998.
+
+\bibitem[Wadler(2015)]{wadler2015propositions}
+Wadler, P. (2015).
+\newblock Propositions as types.
+\newblock \emph{Communications of the ACM}, 58(12):75--84.
+
+\bibitem[Wadler and Blott(1989)]{wadler1989make}
+Wadler, P. and Blott, S. (1989).
+\newblock How to make ad-hoc polymorphism less ad hoc.
+\newblock In \emph{Proceedings of the 16th ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL)}, pages 60--76.
+
+\bibitem[Yoneda(1954)]{yoneda1954note}
+Yoneda, N. (1954).
+\newblock On the homology theory of modules.
+\newblock \emph{Journal of the Faculty of Science, University of Tokyo, Section I}, 7:193--227.
+
+\end{thebibliography}
+
+\end{document}

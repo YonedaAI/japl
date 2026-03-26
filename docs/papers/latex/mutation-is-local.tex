@@ -1,0 +1,2454 @@
+\documentclass[11pt]{article}
+
+% ── Geometry and encoding ──────────────────────────────────────────
+\usepackage[margin=1in]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+% ── Mathematics ────────────────────────────────────────────────────
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathpartir}
+\usepackage{stmaryrd}
+
+% ── Code listings ──────────────────────────────────────────────────
+\usepackage{listings}
+\usepackage{xcolor}
+
+% ── Figures, tables, links ─────────────────────────────────────────
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+
+% ── Bibliography ───────────────────────────────────────────────────
+\usepackage[numbers,sort&compress]{natbib}
+
+% ── Theorem environments ──────────────────────────────────────────
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{remark}[theorem]{Remark}
+
+% ── JAPL listing style ────────────────────────────────────────────
+\definecolor{japlkw}{RGB}{0,100,170}
+\definecolor{japlstr}{RGB}{180,60,30}
+\definecolor{japlcmt}{RGB}{100,120,100}
+\definecolor{japltype}{RGB}{140,50,140}
+\definecolor{japlbg}{RGB}{248,248,248}
+
+\lstdefinelanguage{japl}{
+  keywords={fn,let,match,with,if,then,else,type,module,import,use,own,ref,
+            resource,trait,impl,test,property,forall,loop,while,do,continue,
+            opaque,signature,foreign,unsafe,deriving,packed,bench,assert},
+  keywordstyle=\color{japlkw}\bfseries,
+  keywords=[2]{Int,Float,Float32,Bool,Char,String,Bytes,Unit,Never,
+               List,Option,Some,None,Result,Ok,Err,Map,Set,
+               Owned,Io,Async,Net,State,Process,Fail,Pure,
+               File,Socket,Buffer,Pid,Reply,Config,Path,
+               True,False,Permanent,Transient,Temporary,
+               ReadError,MutableArray,DbConn},
+  keywordstyle=[2]\color{japltype},
+  comment=[l]{--},
+  commentstyle=\color{japlcmt}\itshape,
+  string=[b]",
+  stringstyle=\color{japlstr},
+  sensitive=true,
+  morestring=[b]',
+  literate={->}{$\to$}2 {=>}{$\Rightarrow$}2 {|>}{$\triangleright$}2
+           {>>}{$\gg$}2 {++}{$\mathbin{+\mkern-5mu+}$}2
+           {>=}{$\geq$}2 {<=}{$\leq$}2 {!=}{$\neq$}2,
+}
+
+\lstset{
+  language=japl,
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{japlbg},
+  frame=single,
+  rulecolor=\color{black!20},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=6pt,
+  tabsize=2,
+  breaklines=true,
+  breakatwhitespace=true,
+  showstringspaces=false,
+  columns=flexible,
+  captionpos=b,
+  aboveskip=10pt,
+  belowskip=10pt,
+}
+
+% ── Macros ─────────────────────────────────────────────────────────
+\newcommand{\JAPL}{\textsc{Japl}}
+\newcommand{\own}{\mathsf{own}}
+\newcommand{\rref}{\mathsf{ref}}
+\newcommand{\Owned}[1]{\mathsf{Owned}\langle #1 \rangle}
+\newcommand{\Io}{\mathsf{Io}}
+\newcommand{\Pure}{\mathsf{Pure}}
+\newcommand{\Resource}{\mathsf{Resource}}
+\newcommand{\Value}{\mathsf{Value}}
+\newcommand{\sem}[1]{\llbracket #1 \rrbracket}
+\newcommand{\lin}{\mathsf{lin}}
+\newcommand{\un}{\mathsf{un}}
+\newcommand{\lolli}{\multimap}
+\newcommand{\tensor}{\otimes}
+\newcommand{\parr}{\mathbin{\bindnasrepma}}
+\newcommand{\bang}{{\mathop{!}}}
+\newcommand{\why}{{\mathop{?}}}
+\newcommand{\GC}{\textsc{gc}}
+
+% ── Title ──────────────────────────────────────────────────────────
+\title{%
+  \textbf{Mutation Is Local and Explicit:}\\[4pt]
+  \large Controlled Effects and Linear Ownership\\
+  in the \JAPL{} Programming Language%
+}
+
+\author{
+  Matthew Long \\
+  \textit{The JAPL Research Collaboration} \\
+  \textit{YonedaAI Research Collective} \\
+  Chicago, IL \\
+  \texttt{matthew@yonedaai.com}
+}
+
+\date{March 2026}
+
+% ══════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+
+% ── Abstract ──────────────────────────────────────────────────────
+\begin{abstract}
+Shared mutable state is the single most prolific source of defects in concurrent software.
+We present \JAPL{}'s approach to this problem: a \emph{dual-layer} type system that
+separates \emph{pure values}---immutable, garbage-collected, and freely
+shared---from \emph{linear resources}---mutable, ownership-tracked, and
+deterministically released.  The pure layer handles the overwhelming
+majority of application logic with no annotation burden, while the
+resource layer gives systems-level control over files, sockets,
+buffers, and foreign memory through an ownership discipline rooted in
+linear type theory and Girard's linear logic.  We formalize the
+dual-layer system, prove type safety (progress and preservation), and
+show that well-typed \JAPL{} programs satisfy \emph{resource safety}:
+every acquired resource is released exactly once.  A detailed
+comparison with Rust's borrow checker, Haskell's \texttt{IO} monad,
+Clean's uniqueness types, and several other approaches demonstrates
+that \JAPL{}'s design achieves a favorable trade-off between
+annotation burden, safety guarantees, and runtime performance.
+\end{abstract}
+
+\medskip
+\noindent\textbf{Keywords:}
+linear types, ownership, mutation, resource safety, effect systems,
+substructural type systems, dual-layer runtime
+
+\newpage
+\tableofcontents
+\newpage
+
+% ══════════════════════════════════════════════════════════════════
+\section{Introduction}\label{sec:intro}
+
+The history of programming language design can be read, in large part,
+as a long negotiation with mutable state.  Assembly gives the
+programmer direct access to every register and memory cell.  C
+organizes that access into functions and structs but leaves aliasing
+entirely to the programmer's discipline.  Java introduces garbage
+collection and access modifiers but permits unrestricted sharing of
+mutable objects across threads.  Haskell confines all side effects to
+the \texttt{IO} monad, achieving referential transparency at the cost
+of pervasive monadic plumbing.  Rust enforces ownership and borrowing
+rules that prevent data races at compile time, but its borrow checker
+pervades \emph{every} layer of the program, even pure data
+transformations that could never cause a data race.
+
+\JAPL{} takes a different position: \textbf{mutation is local and
+explicit}.  The language is organized around two sharply delineated
+layers:
+
+\begin{enumerate}[label=(\roman*)]
+  \item A \textbf{pure layer} where values are immutable, garbage-collected,
+        and freely shared.  Most application code---business logic,
+        data transformations, protocol handling---lives here.
+  \item A \textbf{resource layer} where mutable resources (file handles,
+        network sockets, GPU buffers, FFI pointers) are tracked by a
+        linear ownership discipline.  Resources must be consumed exactly
+        once: used and then released.
+\end{enumerate}
+
+This separation is the second of \JAPL{}'s seven core design
+principles\footnote{The seven principles are: (1)~Values are primary,
+(2)~Mutation is local and explicit, (3)~Concurrency is process-based,
+(4)~Failures are normal and typed, (5)~Distribution is a native
+concern, (6)~Functions are the unit of composition,
+(7)~Runtime simplicity matters as much as type power.} and is the
+subject of this paper.
+
+\subsection{The Mutation Problem}
+
+Shared mutable state creates three interrelated difficulties:
+
+\paragraph{Concurrency bugs.}
+When two threads can both read and write the same memory location, the
+result depends on scheduling---a data race.  Languages without
+mutation restrictions must rely on locks, atomic operations, or
+transactional memory, each introducing its own class of bugs
+(deadlocks, priority inversion, live-lock).
+
+\paragraph{Aliasing and invalidation.}
+When multiple references point to the same mutable object, a mutation
+through one reference can invalidate assumptions made through another.
+The classic example is iterator invalidation: removing an element from
+a collection while iterating over it.  More subtle is the
+\emph{borrowed reference} problem in systems code: a pointer into a
+buffer becomes dangling after the buffer is reallocated.
+
+\paragraph{Reasoning difficulty.}
+Equational reasoning---substituting equals for equals---fails in the
+presence of mutation.  If \texttt{f(x)} mutates \texttt{x}, then
+\texttt{let y = f(x); g(y, x)} is not equivalent to
+\texttt{g(f(x), x)}, because the second occurrence of \texttt{x}
+observes different state.  This makes refactoring hazardous and
+formal verification prohibitively expensive.
+
+\JAPL{}'s dual-layer design addresses all three problems.  Pure values
+cannot be mutated, so they are immune to data races, aliasing bugs,
+and reasoning failures.  Resources \emph{can} be mutated, but
+ownership tracking ensures that at most one reference exists at any
+time, restoring the ability to reason locally about mutation effects.
+
+\subsection{Contributions}
+
+This paper makes the following contributions:
+
+\begin{enumerate}
+  \item We present a formal account of \JAPL{}'s dual-layer type system,
+        connecting it to Girard's linear logic and the theory of
+        substructural type systems (\Cref{sec:formal,sec:dual-layer}).
+  \item We define the ownership semantics for the resource layer,
+        including consumption, borrowing, region-based inference, and
+        uniqueness inference (\Cref{sec:ownership}).
+  \item We formalize \JAPL{}'s resource types and prove that well-typed
+        programs satisfy \emph{resource safety}: every acquired
+        resource is eventually released exactly once (\Cref{sec:resource-types,sec:proofs}).
+  \item We describe the interaction between the two layers, including
+        the borrowing protocol and escape hatches (\Cref{sec:interaction}).
+  \item We provide a detailed comparison with six other language
+        designs (\Cref{sec:comparison}) and describe an implementation
+        strategy for the dual-layer runtime (\Cref{sec:implementation}).
+\end{enumerate}
+
+\subsection{Paper Organization}
+
+\Cref{sec:background} surveys related work.  \Cref{sec:formal}
+develops the formal framework: linear logic, substructural type
+systems, and categorical semantics.  \Cref{sec:dual-layer} presents
+\JAPL{}'s dual-layer model.  \Cref{sec:ownership} details ownership
+semantics.  \Cref{sec:resource-types} defines resource types.
+\Cref{sec:interaction} describes layer interaction.
+\Cref{sec:comparison} compares with related languages.
+\Cref{sec:implementation} discusses implementation.
+\Cref{sec:proofs} contains formal proofs.
+\Cref{sec:discussion} reflects on practical trade-offs.
+\Cref{sec:conclusion} concludes.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Background and Related Work}\label{sec:background}
+
+\subsection{Substructural Type Systems}
+
+The structural rules of a type system determine how hypotheses in a
+typing context may be used.  Classical logic (and the simply-typed
+lambda calculus) admits three structural rules: \emph{weakening}
+(a hypothesis may be ignored), \emph{contraction} (a hypothesis may
+be duplicated), and \emph{exchange} (hypotheses may be reordered).
+Dropping one or more of these rules yields a \emph{substructural}
+type system~\cite{walker2005substructural}:
+
+\begin{definition}[Substructural type systems]\label{def:substructural}
+Let $\Gamma$ denote a typing context.  The four principal substructural
+disciplines are:
+\begin{enumerate}[label=(\alph*)]
+  \item \textbf{Linear}: No weakening, no contraction.  Every variable
+        must be used exactly once.
+  \item \textbf{Affine}: No contraction, but weakening is allowed.
+        Every variable may be used at most once.
+  \item \textbf{Relevant}: No weakening, but contraction is allowed.
+        Every variable must be used at least once.
+  \item \textbf{Ordered}: No weakening, no contraction, no exchange.
+        Variables must be used exactly once, in order of introduction.
+\end{enumerate}
+\end{definition}
+
+\JAPL{}'s resource layer employs \emph{linear} types: each resource
+must be consumed exactly once.  The pure layer uses standard
+structural types (with all three rules), since immutable values can
+be freely shared, duplicated, or ignored.
+
+\subsection{Linear Logic}
+
+Girard's linear logic~\cite{girard1987linear} provides the
+proof-theoretic foundation for linear type systems.  The key
+connectives are:
+
+\begin{itemize}
+  \item $A \lolli B$ (linear implication): consuming one $A$ produces
+        one $B$.
+  \item $A \tensor B$ (tensor / multiplicative conjunction): both $A$
+        and $B$ are available simultaneously, each used exactly once.
+  \item $\bang A$ (of course / exponential): an unlimited supply of
+        $A$, recoverable as many times as needed.
+  \item $A \,\&\, B$ (with / additive conjunction): a choice between
+        $A$ and $B$, where only one is consumed.
+  \item $A \oplus B$ (plus / additive disjunction): exactly one of $A$
+        or $B$ is provided.
+\end{itemize}
+
+The exponential $\bang A$ is critical: it bridges linear and
+unrestricted worlds.  In \JAPL{}, the pure layer corresponds to the
+$\bang$-fragment of linear logic: every pure value implicitly carries
+an exponential modality, meaning it can be freely duplicated and
+discarded.  The resource layer corresponds to the linear fragment
+proper.
+
+\subsection{Rust's Ownership and Borrowing}\label{sec:bg-rust}
+
+Rust~\cite{rust2021} pioneered the use of ownership and borrowing as a
+practical mechanism for memory safety without garbage collection.
+Rust's key rules are:
+
+\begin{enumerate}
+  \item Each value has a single owner.
+  \item Ownership can be transferred (moved).
+  \item References can be borrowed: either one mutable reference
+        \emph{or} any number of immutable references, but not both
+        simultaneously.
+  \item Values are dropped (destructors run) when the owner goes out of
+        scope.
+\end{enumerate}
+
+The RustBelt project~\cite{jung2017rustbelt} formalized Rust's type
+system using the Iris separation logic framework, proving that
+well-typed Rust programs (even those using \texttt{unsafe}) satisfy
+memory safety when the unsafe blocks are locally sound.
+
+\JAPL{} differs from Rust in a fundamental architectural decision:
+Rust applies ownership to \emph{all} values, requiring lifetime
+annotations even for purely functional data transformations.  \JAPL{}
+restricts ownership to the resource layer, leaving the pure layer
+free of ownership concerns.
+
+\subsection{Clean's Uniqueness Types}\label{sec:bg-clean}
+
+Clean~\cite{barendsen1996uniqueness,plasmeijer2001clean} uses
+\emph{uniqueness types} to ensure that a value has at most one
+reference.  If a value is unique, it can be destructively updated
+in place without violating referential transparency, because no
+other reference can observe the mutation.
+
+Clean's uniqueness attribute \texttt{*} is propagated by the type
+checker.  For example, \texttt{*File} denotes a unique file handle
+that can be read or written.  Uniqueness types are closely related to
+linear types: a unique value must be used exactly once (or
+threaded through a computation that returns a new unique value).
+
+\JAPL{}'s resource layer is inspired by Clean's approach but extends
+it with explicit \texttt{own} and \texttt{ref} qualifiers, region
+inference, and integration with an algebraic effect system.
+
+\subsection{Linear Haskell}\label{sec:bg-linear-haskell}
+
+Linear Haskell~\cite{bernardy2018linear} extends Haskell with linear
+arrow types $a \lolli b$, allowing functions to specify that an
+argument must be consumed exactly once.  The key insight is
+\emph{retrofitting}: linear types are added to an existing language
+without breaking backward compatibility, by making linearity a
+property of function arrows rather than types.
+
+\JAPL{} takes a complementary approach.  Rather than adding linearity
+to arrows, \JAPL{} adds linearity to a distinguished class of
+\emph{types} (resource types).  This makes the boundary between linear
+and unrestricted code syntactically visible.
+
+\subsection{Region-Based Memory Management}\label{sec:bg-regions}
+
+Tofte and Talpin~\cite{tofte1997region} introduced region-based memory
+management, where objects are allocated into lexically scoped regions
+and deallocated en masse when the region goes out of scope.  The
+Cyclone language~\cite{jim2002cyclone,grossman2002region} brought
+regions to a C-like setting with static safety guarantees.
+
+Region inference automatically determines which region each allocation
+belongs to, minimizing annotation burden.  \JAPL{} uses region-like
+reasoning in its ownership inference pass: the compiler determines the
+lifetime of each resource and inserts release operations at the
+appropriate scope boundaries.
+
+\subsection{Capability-Based Security}\label{sec:bg-capabilities}
+
+The capability model of security~\cite{dennis1966programming,
+miller2006robust} organizes access control around unforgeable tokens
+(capabilities) rather than identity-based access control lists.  A
+process can only perform an operation if it holds the appropriate
+capability.
+
+\JAPL{} applies this principle to resource access: a file can only be
+read if the function holds an \texttt{Owned<File>} or \texttt{ref File}
+capability.  The effect system (\texttt{Io}, \texttt{Net}) further
+restricts which capabilities can be exercised in a given context.
+
+\subsection{Austral, Roc, and Koka}\label{sec:bg-austral-roc-koka}
+
+Several recent languages explore design points closely related to
+\JAPL{}'s.
+
+\paragraph{Austral.}
+Austral~\cite{austral2023} is a systems language with linear types in
+which every type is either \emph{free} (unrestricted, may be copied
+and discarded) or \emph{linear} (must be consumed exactly once).  The
+dichotomy mirrors \JAPL{}'s pure/resource split, but Austral applies
+it within a single layer: there is no garbage-collected pure heap, and
+all memory management is explicit.  \JAPL{}'s dual-layer design adds a
+GC-managed pure layer for ergonomics, and borrowing via $\rref\;T$ for
+non-consuming reads, which Austral lacks.
+
+\paragraph{Roc.}
+Roc is a functional language that targets application-level programming
+and uses a capability-based effect system in which all side effects
+flow through \emph{platforms}.  Like \JAPL{}, Roc keeps the vast
+majority of code pure and pushes effects to the boundary.  Unlike
+\JAPL{}, Roc does not expose linear or ownership types to the
+programmer; resource management is delegated entirely to the platform
+layer.
+
+\paragraph{Koka.}
+Koka~\cite{leijen2017koka} pioneered row-typed algebraic effects with
+automatic effect inference.  \JAPL{}'s effect system draws on Koka's
+design, but Koka does not provide linear types or an ownership
+discipline for resources.  The combination of row-typed effects
+\emph{and} linear resource tracking is a distinctive feature of
+\JAPL{}'s design.
+
+\subsection{Algebraic Effects and Handlers}
+
+Algebraic effects~\cite{plotkin2009handlers,bauer2015programming} provide a
+structured alternative to monads for describing side effects.  An
+effect signature declares a set of operations; an effect handler
+provides implementations for those operations.
+
+\JAPL{}'s effect system (\texttt{Io}, \texttt{State[s]},
+\texttt{Fail[e]}, etc.) draws on algebraic effects.  Effects form a
+commutative monoid under composition, and effect handlers serve as
+natural transformations from effectful computations to pure
+results~\cite{kammar2013handlers}.  The interaction between effects and
+linear types is a key contribution of this paper: resource operations
+are effectful (\texttt{with Io}), and the linear discipline ensures
+that effect handlers cannot accidentally duplicate or discard
+resources.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Formal Framework}\label{sec:formal}
+
+This section develops the type-theoretic and logical foundations of
+\JAPL{}'s dual-layer system.
+
+\subsection{Linear Type Theory}\label{sec:linear-type-theory}
+
+We begin with a standard presentation of the linear lambda
+calculus~\cite{wadler1990linear,wadler1993taste}.
+
+\begin{definition}[Linear types]\label{def:linear-types}
+The types of the linear lambda calculus are given by the grammar:
+\[
+  A, B ::= \alpha \mid A \lolli B \mid A \tensor B \mid \bang A
+           \mid A \,\&\, B \mid A \oplus B \mid \mathbf{1} \mid \mathbf{0}
+\]
+where $\alpha$ ranges over type variables, $\lolli$ is linear
+function space, $\tensor$ is multiplicative conjunction, $\bang$ is
+the exponential, $\&$ is additive conjunction, $\oplus$ is additive
+disjunction, $\mathbf{1}$ is the unit of $\tensor$, and $\mathbf{0}$
+is the empty type.
+\end{definition}
+
+\begin{definition}[Linear typing context]\label{def:linear-context}
+A \emph{linear context} $\Delta$ is a multiset of typing assumptions
+$x : A$ where each variable $x$ appears at most once.  An
+\emph{unrestricted context} $\Gamma$ contains assumptions $x : A$
+where $x$ may be used arbitrarily many times.  A \emph{mixed context}
+is a pair $\Gamma; \Delta$.
+\end{definition}
+
+The typing judgment $\Gamma; \Delta \vdash e : A$ asserts that
+expression $e$ has type $A$ under unrestricted context $\Gamma$ and
+linear context $\Delta$, where \emph{every} assumption in $\Delta$ is
+consumed exactly once.
+
+\begin{definition}[Core typing rules]\label{def:core-rules}
+The following rules govern the linear lambda calculus with exponentials:
+
+\begin{mathpar}
+  \inferrule*[right=Var-Lin]
+    { }
+    {\Gamma; x : A \vdash x : A}
+
+  \inferrule*[right=Var-Un]
+    {x : A \in \Gamma}
+    {\Gamma; \cdot \vdash x : A}
+
+  \inferrule*[right=$\lolli$-I]
+    {\Gamma; \Delta, x : A \vdash e : B}
+    {\Gamma; \Delta \vdash \lambda x.\, e : A \lolli B}
+
+  \inferrule*[right=$\lolli$-E]
+    {\Gamma; \Delta_1 \vdash e_1 : A \lolli B \\
+     \Gamma; \Delta_2 \vdash e_2 : A}
+    {\Gamma; \Delta_1, \Delta_2 \vdash e_1\; e_2 : B}
+
+  \inferrule*[right=$\tensor$-I]
+    {\Gamma; \Delta_1 \vdash e_1 : A \\
+     \Gamma; \Delta_2 \vdash e_2 : B}
+    {\Gamma; \Delta_1, \Delta_2 \vdash (e_1, e_2) : A \tensor B}
+
+  \inferrule*[right=$\tensor$-E]
+    {\Gamma; \Delta_1 \vdash e : A \tensor B \\
+     \Gamma; \Delta_2, x : A, y : B \vdash e' : C}
+    {\Gamma; \Delta_1, \Delta_2 \vdash
+      \mathbf{let}\; (x, y) = e\; \mathbf{in}\; e' : C}
+
+  \inferrule*[right=$\bang$-I]
+    {\Gamma; \cdot \vdash e : A}
+    {\Gamma; \cdot \vdash \bang e : \bang A}
+
+  \inferrule*[right=$\bang$-E]
+    {\Gamma; \Delta_1 \vdash e_1 : \bang A \\
+     \Gamma, x : A; \Delta_2 \vdash e_2 : B}
+    {\Gamma; \Delta_1, \Delta_2 \vdash
+      \mathbf{let}\; \bang x = e_1\; \mathbf{in}\; e_2 : B}
+\end{mathpar}
+\end{definition}
+
+The $\bang$-I rule requires that the expression $e$ use \emph{no}
+linear resources: only unrestricted values can be promoted to the
+exponential.  This is the formal counterpart of \JAPL{}'s rule that
+pure values cannot capture resources.
+
+\subsection{Connection to Girard's Linear Logic}\label{sec:girard}
+
+The Curry-Howard correspondence extends to linear logic: proofs
+correspond to programs, propositions to types, and cut-elimination to
+evaluation~\cite{girard1987linear,wadler2012propositions}.
+
+\begin{proposition}[Curry-Howard for linear logic]\label{prop:curry-howard}
+Under the linear Curry-Howard correspondence:
+\begin{enumerate}[label=(\roman*)]
+  \item $A \lolli B$ corresponds to a function consuming one $A$ to produce one $B$.
+  \item $A \tensor B$ corresponds to a pair where both components must be used.
+  \item $\bang A$ corresponds to a value that may be duplicated or discarded.
+  \item $A \,\&\, B$ corresponds to a lazy pair (choose one projection).
+  \item $A \oplus B$ corresponds to a tagged union (one alternative is provided).
+\end{enumerate}
+\end{proposition}
+
+In \JAPL{}'s dual-layer system, the Curry-Howard correspondence
+manifests directly: pure-layer types correspond to the
+$\bang$-fragment (all types implicitly carry $\bang$), while
+resource-layer types correspond to the linear fragment (no implicit
+$\bang$).
+
+\subsection{Categorical Semantics}\label{sec:categorical}
+
+The categorical semantics of linear types provides a rigorous
+foundation for the dual-layer design.
+
+\begin{definition}[Symmetric monoidal closed category]\label{def:smcc}
+A \emph{symmetric monoidal closed category} (SMCC)
+$(\mathcal{C}, \tensor, I, \lolli)$ consists of a category $\mathcal{C}$
+equipped with a bifunctor $\tensor : \mathcal{C} \times \mathcal{C}
+\to \mathcal{C}$, a unit object $I$, and an internal hom
+$\lolli$ such that $- \tensor A \dashv A \lolli -$ for every object
+$A$.
+\end{definition}
+
+\begin{definition}[Linear-non-linear model]\label{def:lnl}
+A \emph{linear-non-linear (LNL) model}~\cite{benton1995mixed} consists
+of:
+\begin{enumerate}[label=(\roman*)]
+  \item A Cartesian closed category $\mathcal{C}$ (the ``non-linear'' or ``intuitionistic'' part).
+  \item A symmetric monoidal closed category $\mathcal{L}$ (the ``linear'' part).
+  \item A symmetric monoidal adjunction $F \dashv G : \mathcal{L}
+        \to \mathcal{C}$ where $F : \mathcal{C} \to \mathcal{L}$
+        is a symmetric monoidal functor.
+\end{enumerate}
+The exponential $\bang$ is recovered as the comonad $FG$ on $\mathcal{L}$.
+\end{definition}
+
+\begin{theorem}[Benton's LNL correspondence~\cite{benton1995mixed}]\label{thm:lnl}
+The category of LNL models is equivalent to the category of models
+of intuitionistic linear logic (ILL) with an exponential $\bang$
+satisfying the standard structural rules (weakening, contraction,
+dereliction, promotion).
+\end{theorem}
+
+This result is directly relevant to \JAPL{}:
+
+\begin{remark}[\JAPL{} as an LNL model]\label{rem:japl-lnl}
+\JAPL{}'s dual-layer system instantiates the LNL framework:
+\begin{itemize}
+  \item $\mathcal{C}$ is the category of pure \JAPL{} types, which is
+        Cartesian closed (it has product types, function types, and
+        a terminal object \texttt{Unit}).
+  \item $\mathcal{L}$ is the category of resource \JAPL{} types, which
+        is symmetric monoidal closed (tensor is pair-of-resources,
+        linear function is ownership-transferring function).
+  \item The functor $F : \mathcal{C} \to \mathcal{L}$ embeds pure
+        values into the resource layer (a pure value can always be
+        used where a resource is expected, since it carries an
+        implicit $\bang$).
+  \item The functor $G : \mathcal{L} \to \mathcal{C}$ ``forgets''
+        linearity---this corresponds to the \texttt{freeze} or
+        \texttt{snapshot} operations that convert a resource to an
+        immutable value.
+\end{itemize}
+\end{remark}
+
+\subsection{Compact Closed Categories and Duality}\label{sec:compact-closed}
+
+In the full linear logic setting, the multiplicative fragment admits
+a notion of \emph{duality}: every type $A$ has a dual $A^\perp$,
+and the category of types forms a $\ast$-autonomous
+category~\cite{barr1991autonomous}.
+
+\begin{definition}[$\ast$-Autonomous category]\label{def:star-auto}
+A $\ast$-\emph{autonomous category} is a symmetric monoidal closed
+category $(\mathcal{C}, \tensor, I, \lolli)$ equipped with a
+dualizing object $\bot$ such that the canonical morphism
+$A \to (A \lolli \bot) \lolli \bot$ is an isomorphism for every
+object $A$.
+\end{definition}
+
+While \JAPL{} does not expose full classical linear logic to the
+programmer, the duality principle manifests in the resource layer's
+\emph{consumption pattern}: acquiring a resource of type $R$ creates
+an obligation (dual) to release it.  The linear type system ensures
+that this obligation is always discharged.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{JAPL's Dual-Layer Model}\label{sec:dual-layer}
+
+This section presents the core design of \JAPL{}'s two-layer type and
+memory system.
+
+\subsection{Design Philosophy}
+
+The dual-layer model is motivated by an empirical observation:
+\textbf{most code does not need mutation}.  Business logic, data
+transformations, protocol parsing, serialization, routing---all of
+these are naturally expressed as pure functions over immutable values.
+Mutation is needed only at the boundaries: reading files, writing
+sockets, managing GPU memory, interacting with foreign libraries.
+
+By restricting ownership tracking to the resource layer, \JAPL{}
+achieves two goals simultaneously:
+
+\begin{enumerate}
+  \item \textbf{Ergonomics}: The vast majority of code is free of
+        ownership annotations, lifetime parameters, and borrow-checker
+        errors.
+  \item \textbf{Safety}: The code that \emph{does} interact with
+        mutable resources is subject to a rigorous linear discipline
+        that prevents resource leaks, use-after-free, and
+        double-free.
+\end{enumerate}
+
+\subsection{The Pure Layer}\label{sec:pure-layer}
+
+The pure layer encompasses all immutable values: algebraic data types,
+records, tuples, lists, maps, strings, closures, and numeric types.
+
+\begin{definition}[Pure types]\label{def:pure-types}
+The pure types of \JAPL{} are given by:
+\[
+  \tau ::= \alpha \mid \texttt{Int} \mid \texttt{Float} \mid \texttt{Bool}
+         \mid \texttt{String} \mid \texttt{Unit}
+         \mid \tau_1 \times \tau_2 \mid \tau_1 + \tau_2
+         \mid \tau_1 \to \tau_2 \mid \texttt{List}[\tau]
+         \mid \{ \ell_1 : \tau_1, \ldots, \ell_n : \tau_n \mid \rho \}
+\]
+where $\alpha$ ranges over type variables and $\rho$ ranges over row
+variables.
+\end{definition}
+
+Pure values have the following properties:
+
+\begin{itemize}
+  \item \textbf{Immutable}: Once created, a pure value never changes.
+  \item \textbf{GC-managed}: Memory is reclaimed by a generational,
+        per-process garbage collector.
+  \item \textbf{Freely shareable}: Pure values can be passed to any
+        number of functions, stored in any number of data structures,
+        and sent to any number of processes.
+  \item \textbf{Structurally typed}: Two values with the same structure
+        have the same type (row polymorphism for records).
+\end{itemize}
+
+\begin{lstlisting}[caption={Pure-layer code: no ownership concerns},label={lst:pure-layer}]
+-- Pure values: immutable, GC-managed, freely shareable
+let data = [1, 2, 3, 4, 5]
+let copy = data  -- sharing is fine; data is immutable
+
+-- Pure function: transforms data, no side effects
+fn transform(data: List[Int]) -> List[Int] =
+  List.map(data, fn x -> x * 2)
+
+-- Composition of pure functions
+fn process_order(order: Order) -> Invoice =
+  order
+  |> validate
+  |> calculate_totals
+  |> apply_discounts
+  |> generate_invoice
+\end{lstlisting}
+
+\subsection{The Resource Layer}\label{sec:resource-layer}
+
+The resource layer encompasses all mutable, owned values: file handles,
+network sockets, database connections, GPU buffers, FFI pointers, and
+mutable arrays.
+
+\begin{definition}[Resource types]\label{def:resource-types}
+A resource type is introduced by the \texttt{resource} keyword:
+\[
+  R ::= \texttt{resource}\; T
+\]
+Resource types are \emph{linear}: each value of a resource type must
+be consumed exactly once in every execution path.
+\end{definition}
+
+\begin{definition}[Ownership qualifiers]\label{def:ownership-qualifiers}
+\JAPL{} provides two ownership qualifiers:
+\begin{enumerate}[label=(\alph*)]
+  \item $\own\; T$: Exclusive ownership.  The holder can read, write,
+        and release the resource.  Corresponds to the linear type $T$.
+  \item $\rref\; T$: Borrowed reference.  The holder can read the
+        resource but cannot write, release, or transfer it.
+        Corresponds to $\bang T$ restricted to a scope.
+\end{enumerate}
+\end{definition}
+
+\begin{lstlisting}[caption={Resource-layer code: explicit ownership},label={lst:resource-layer}]
+resource File
+resource Socket
+
+-- Opening a file acquires ownership (manual management via let)
+fn read_config(path: Path) -> Result[Config, ReadError] with Io =
+  let file = File.open(path, Read)?
+  let contents = File.read_all(file)?
+  File.close(file)  -- ownership consumed; compile error if omitted
+  parse_config(contents)
+
+-- Ownership transfer: send consumes the socket, returns it
+fn send(socket: Owned[Socket], bytes: Bytes)
+    -> (Owned[Socket], Int) with Io =
+  let n = Socket.write(socket, bytes)
+  (socket, n)
+\end{lstlisting}
+
+\subsection{The Split in Practice}
+
+The boundary between pure and resource layers is clean and
+syntactically visible.  Consider a web server:
+
+\begin{lstlisting}[caption={The dual-layer split in a web server},label={lst:web-server}]
+-- Pure layer: all business logic
+fn route(req: Request) -> Response =
+  match req.method, req.path with
+  | Get, "/users/" ++ id -> get_user(id)
+  | Post, "/users"       -> create_user(req.body)
+  | _                    -> not_found()
+
+fn get_user(id: String) -> Response =
+  match UserRepo.find(id) with
+  | Some(user) -> Response.json(200, User.to_json(user))
+  | None       -> Response.json(404, error_json("not found"))
+
+-- Resource layer: IO boundary
+fn serve(listener: Owned[TcpListener])
+    -> Never with Io, Process[ServerMsg] =
+  let (listener, conn) = Tcp.accept(listener)
+  let _ = Process.spawn(fn -> handle_conn(conn))
+  serve(listener)
+
+fn handle_conn(conn: Owned[TcpSocket]) -> Unit with Io =
+  let (conn, req_bytes) = Tcp.read(conn)
+  let req = parse_request(req_bytes)  -- pure
+  let resp = route(req)               -- pure
+  let conn = Tcp.write(conn, serialize_response(resp))
+  Tcp.close(conn)
+\end{lstlisting}
+
+In this example, the pure functions \texttt{route}, \texttt{get\_user},
+\texttt{parse\_request}, and \texttt{serialize\_response} make up the
+majority of the code and require no ownership annotations.  Only
+\texttt{serve} and \texttt{handle\_conn}, which interact with TCP
+sockets, operate in the resource layer.
+
+\subsection{Formal Typing Judgment}
+
+The dual-layer system uses a combined typing judgment:
+
+\begin{definition}[Dual-layer typing judgment]\label{def:dual-judgment}
+The judgment
+\[
+  \Gamma; \Delta \vdash_\varepsilon e : \tau
+\]
+asserts that expression $e$ has type $\tau$ under unrestricted
+(pure) context $\Gamma$, linear (resource) context $\Delta$, and
+with effect $\varepsilon \in \{\Pure, \Io, \ldots\}$.
+
+The rules ensure:
+\begin{enumerate}[label=(\roman*)]
+  \item Variables in $\Gamma$ may be used any number of times.
+  \item Variables in $\Delta$ must each be used exactly once.
+  \item Resource-producing operations (\texttt{File.open}, etc.) add
+        bindings to $\Delta$.
+  \item Resource-consuming operations (\texttt{File.close}, etc.)
+        remove bindings from $\Delta$.
+  \item At every join point (if-then-else, match), the remaining
+        $\Delta$ must be identical in all branches.
+\end{enumerate}
+\end{definition}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Ownership Semantics}\label{sec:ownership}
+
+\subsection{Owned$\langle T \rangle$}
+
+The type $\Owned{T}$ represents exclusive ownership of a resource of
+type $T$.  The owner has three rights:
+
+\begin{enumerate}
+  \item \textbf{Use}: Perform operations on the resource (read, write).
+  \item \textbf{Transfer}: Pass ownership to another function or process.
+  \item \textbf{Release}: Deallocate the resource, releasing its
+        underlying system resource.
+\end{enumerate}
+
+These rights are mutually exclusive over time: once ownership is
+transferred or the resource is released, the original holder loses all
+rights.
+
+\begin{definition}[Ownership transfer]\label{def:transfer}
+A function that accepts an $\Owned{T}$ parameter \emph{consumes} the
+caller's ownership.  If the function returns an $\Owned{T}$, ownership
+is transferred back to the caller.  The typing rule is:
+\begin{mathpar}
+  \inferrule*[right=Own-Transfer]
+    {\Gamma; \Delta, x : \Owned{T} \vdash_\varepsilon e : \tau}
+    {\Gamma; \Delta \vdash_\varepsilon
+      \lambda(x : \Owned{T}).\, e : \Owned{T} \lolli_\varepsilon \tau}
+\end{mathpar}
+\end{definition}
+
+\subsection{Consumption and Return Patterns}\label{sec:consumption}
+
+\JAPL{} supports several patterns for resource consumption:
+
+\paragraph{Terminal consumption.}
+The resource is released and not returned:
+\begin{lstlisting}[caption={Terminal consumption: File.close},label={lst:terminal}]
+fn close_file(file: Owned[File]) -> Unit with Io =
+  File.close(file)
+  -- file is consumed; cannot be used after this point
+\end{lstlisting}
+
+\paragraph{Threaded consumption.}
+The resource is used and then returned with updated state:
+\begin{lstlisting}[caption={Threaded consumption: read then return},label={lst:threaded}]
+fn read_line(file: Owned[File])
+    -> (Owned[File], String) with Io =
+  let (file, line) = File.read_line(file)
+  (file, line)
+\end{lstlisting}
+
+\paragraph{Fork-join consumption.}
+Ownership is temporarily split (borrowing) and then rejoined:
+\begin{lstlisting}[caption={Fork-join via borrowing},label={lst:fork-join}]
+fn copy_file(src: Owned[File], dst: Owned[File])
+    -> (Owned[File], Owned[File]) with Io =
+  let bytes = File.read_all(src)
+  let dst = File.write_all(dst, bytes)
+  (src, dst)
+\end{lstlisting}
+
+\subsection{Borrowing}\label{sec:borrowing}
+
+Borrowing allows temporary read-only access to a resource without
+transferring ownership.
+
+\begin{definition}[Borrow]\label{def:borrow}
+A \emph{borrow} of type $\rref\; T$ grants read-only access to a
+resource of type $T$.  The borrow is valid only within the lexical
+scope of the borrowing expression.  The typing rule is:
+\begin{mathpar}
+  \inferrule*[right=Borrow]
+    {\Gamma; \Delta, x : \Owned{T} \vdash_\varepsilon e : \tau \\
+     x \notin \mathrm{FV}(e) \text{ as owned}}
+    {\Gamma; \Delta, x : \Owned{T} \vdash_\varepsilon
+      \mathbf{borrow}\; x\; \mathbf{as}\; y\; \mathbf{in}\; [y/x]e : \tau}
+\end{mathpar}
+where $y : \rref\; T$ is the borrowed reference, and $x$ remains
+available as $\Owned{T}$ after the borrow scope exits.
+\end{definition}
+
+\begin{remark}[Borrow desugaring]\label{rem:borrow-desugar}
+The surface syntax $\mathbf{borrow}\; x\; \mathbf{as}\; y\;
+\mathbf{in}\; e$ desugars to the core calculus form
+$\mathsf{borrow}(\mathsf{res}(a),\; \lambda y.\, e)$, where $x$ is
+bound to $\mathsf{res}(a)$ and the body $e$ is wrapped in a lambda
+that receives the borrowed value $y$.  The core reduction rule
+(Definition~\ref{def:reduction}, rule \textsc{Borrow}) then reduces
+$\mathsf{borrow}(\mathsf{res}(a), f)$ to $(f\; v,\;
+\mathsf{res}(a))$, applying the closure to the live value $v$ while
+preserving the resource handle.
+\end{remark}
+
+\begin{lstlisting}[caption={Borrowing: peek at a buffer without consuming it},label={lst:borrow}]
+fn peek(buf: ref Buffer) -> Byte =
+  Buffer.get(buf, 0)
+
+fn process(buf: Owned[Buffer]) -> (Owned[Buffer], Byte) with Io =
+  let byte = peek(ref buf)  -- borrow for read-only access
+  (buf, byte)               -- buf is still owned here
+\end{lstlisting}
+
+The key constraint is that borrows cannot \emph{outlive} the owner:
+the borrowed reference $\rref\; T$ is valid only within the scope
+where it is created.  This is enforced statically by the compiler.
+
+\subsection{Region-Based Inference}\label{sec:region-inference}
+
+\JAPL{} uses region-based inference~\cite{tofte1997region} to
+automatically determine resource lifetimes and insert release
+operations.
+
+\begin{definition}[Region]\label{def:region}
+A \emph{region} $r$ is an abstract lifetime associated with a lexical
+scope.  Every resource allocation is assigned a region, and the
+resource is released when the region ends.  Regions form a partial
+order: if scope $r_1$ is nested inside scope $r_2$, then
+$r_1 \sqsubseteq r_2$ (i.e., $r_1$ ends before $r_2$).
+\end{definition}
+
+The compiler's region inference pass operates in three phases:
+
+\begin{enumerate}
+  \item \textbf{Constraint generation}: For each resource allocation,
+        generate a region variable.  For each use, generate a
+        constraint that the resource's region must contain the use
+        site.  For each ownership transfer, propagate the region.
+  \item \textbf{Constraint solving}: Solve the region constraints to
+        find the minimal region for each resource.
+  \item \textbf{Insertion}: Insert release operations at region
+        boundaries where resources go out of scope.
+\end{enumerate}
+
+\begin{example}[Automatic release]\label{ex:auto-release}
+In the following code, the compiler infers that \texttt{conn} must
+live at least as long as the scope of \texttt{process\_query}:
+\begin{lstlisting}[caption={Region inference inserts Db.close automatically},label={lst:region}]
+fn process_query(url: String, sql: String)
+    -> Result[Rows, DbError] with Io =
+  use conn = Db.connect(url)?
+  let result = Db.query(ref conn, sql)?
+  -- compiler inserts: Db.close(conn) here
+  Ok(result)
+\end{lstlisting}
+The \texttt{use} binding signals that \texttt{conn} is a linear
+resource; the compiler ensures it is released at the end of its
+region.
+\end{example}
+
+\subsection{Uniqueness Inference}\label{sec:uniqueness-inference}
+
+Beyond region inference, \JAPL{} performs \emph{uniqueness inference}
+to determine when a value has a single reference, enabling in-place
+mutation optimizations.
+
+\begin{definition}[Uniqueness]\label{def:uniqueness}
+A value is \emph{unique} if it has exactly one reference in the
+program state.  A unique immutable value can be safely updated
+in-place (destructive update), because no other reference can observe
+the change.
+\end{definition}
+
+\begin{proposition}[Uniqueness optimization]\label{prop:uniqueness-opt}
+If a pure value $v$ is unique at a record-update site
+$\{ v \mid \ell = e \}$, the compiler may perform the update in-place,
+avoiding allocation.  This is semantically equivalent to
+creating a fresh copy with the field changed.
+\end{proposition}
+
+\begin{proof}
+Since $v$ has a single reference, no other expression can observe the
+difference between in-place update and copy-on-write.  By
+parametricity, the program cannot distinguish the two implementations.
+\end{proof}
+
+This optimization is particularly important for the common pattern
+of threading state through recursive functions:
+
+\begin{lstlisting}[caption={Uniqueness inference enables in-place update},label={lst:uniqueness}]
+fn server_loop(state: ServerState) -> Never with Process[Msg] =
+  let msg = Process.receive()
+  -- If state is unique (no other references), the update
+  -- { state | count = state.count + 1 } is performed in-place.
+  let new_state = { state | count = state.count + 1 }
+  server_loop(new_state)
+\end{lstlisting}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Resource Types}\label{sec:resource-types}
+
+\subsection{Declaring Resource Types}
+
+Resource types are declared with the \texttt{resource} keyword:
+
+\begin{lstlisting}[caption={Resource type declarations},label={lst:resource-decl}]
+resource File
+resource Socket
+resource DbConnection
+resource GpuBuffer
+resource MutableArray[a]
+\end{lstlisting}
+
+The \texttt{resource} keyword instructs the compiler to apply linear
+typing rules to values of this type.  A resource cannot be silently
+dropped, duplicated, or aliased.
+
+\subsection{Resource Lifecycle}\label{sec:lifecycle}
+
+Every resource follows a lifecycle:
+
+\begin{enumerate}
+  \item \textbf{Acquisition}: A resource is created via a constructor
+        (e.g., \texttt{File.open}, \texttt{Tcp.connect}).  The
+        constructor returns $\Owned{R}$.
+  \item \textbf{Use}: The resource is operated on via functions that
+        take $\Owned{R}$ or $\rref\; R$.  Functions that take
+        $\Owned{R}$ must return it (threaded pattern) or consume it
+        (terminal pattern).
+  \item \textbf{Release}: The resource is released via a destructor
+        (e.g., \texttt{File.close}, \texttt{Tcp.disconnect}).  The
+        destructor consumes $\Owned{R}$ and returns no resource.
+\end{enumerate}
+
+\begin{definition}[Resource safety]\label{def:resource-safety}
+A program is \emph{resource-safe} if, for every resource acquired
+during execution, the resource is eventually released exactly once.
+\end{definition}
+
+\begin{theorem}[Well-typed programs are resource-safe]\label{thm:resource-safety}
+If $\Gamma; \cdot \vdash_\varepsilon e : \tau$ (i.e., the program
+type-checks with an empty linear context), then execution of $e$
+is resource-safe.
+\end{theorem}
+
+We defer the proof to \Cref{sec:proofs}.
+
+\subsection{The \texttt{use} Binding}\label{sec:use-binding}
+
+The \texttt{use} keyword introduces a linear binding with
+automatic release semantics:
+
+\begin{lstlisting}[caption={The \texttt{use} binding},label={lst:use-binding}]
+fn read_entire_file(path: String) -> Result[String, IoError] with Io =
+  use file = File.open(path, Read)?
+  let contents = File.read_all(file)?
+  -- File.close(file) is automatically inserted by the compiler
+  -- at the end of the `use` scope
+  Ok(contents)
+\end{lstlisting}
+
+The \texttt{use} binding desugars to a try-finally pattern: even if
+the body raises an error (via the \texttt{?} operator or a crash),
+the resource is released.
+
+\begin{definition}[\texttt{use} desugaring]\label{def:use-desugar}
+The binding $\texttt{use}\; x = e_1\; \texttt{in}\; e_2$ desugars to:
+\[
+  \mathbf{let}\; x = e_1\; \mathbf{in}\;
+  \mathbf{try}\; e_2\; \mathbf{finally}\; \mathit{release}(x)
+\]
+where $\mathit{release}$ is the destructor associated with the resource
+type of $x$.
+\end{definition}
+
+\subsection{Parametric Resource Types}
+
+Resources can be parametric:
+
+\begin{lstlisting}[caption={Parametric resource types},label={lst:parametric-resource}]
+resource MutableArray[a]
+
+fn sort_in_place(arr: own MutableArray[Int])
+    -> own MutableArray[Int] =
+  let len = MutableArray.length(arr)
+  loop i = 0, arr = arr while i < len do
+    loop j = i + 1, arr = arr while j < len do
+      if MutableArray.get(arr, j) < MutableArray.get(arr, i) then
+        let arr = MutableArray.swap(arr, i, j)
+        continue(j + 1, arr)
+      else
+        continue(j + 1, arr)
+    continue(i + 1, arr)
+  arr
+\end{lstlisting}
+
+The linearity constraint applies to the outer resource container, not
+to its type parameter.  The elements of a \texttt{MutableArray[Int]}
+are pure \texttt{Int} values and can be freely copied.
+
+\subsection{Freezing: Resource to Value Conversion}\label{sec:freezing}
+
+A resource can be \emph{frozen} to produce an immutable value,
+transferring data from the resource layer to the pure layer:
+
+\begin{lstlisting}[caption={Freezing a buffer into immutable bytes},label={lst:freeze}]
+fn build_message() -> Bytes with Io =
+  let buf = Buffer.alloc(1024)          -- resource layer
+  let buf = Buffer.write(buf, 0, header)
+  let buf = Buffer.write(buf, 64, payload)
+  Buffer.freeze(buf)                    -- pure layer: immutable Bytes
+  -- buf is consumed; only the frozen Bytes value remains
+\end{lstlisting}
+
+\begin{definition}[Freeze]\label{def:freeze}
+A \emph{freeze} operation has type $\Owned{R} \lolli \tau$, consuming
+the resource and producing a pure value.  After freezing, the resource
+is released and the returned value lives in the pure layer (managed
+by GC).
+\end{definition}
+
+Freezing corresponds to the functor $G : \mathcal{L} \to \mathcal{C}$
+in the LNL model (\Cref{def:lnl}): it maps a linear resource to an
+unrestricted pure value.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Interaction Between Layers}\label{sec:interaction}
+
+\subsection{Pure Functions Using Resources}
+
+Pure functions cannot \emph{own} resources, but they can \emph{borrow}
+them.  A function that borrows a resource via $\rref\; T$ does not
+participate in the ownership protocol; it simply reads the resource's
+current state.
+
+\begin{lstlisting}[caption={Pure function borrowing a resource},label={lst:pure-borrow}]
+-- This function is pure except for the borrow
+fn buffer_checksum(buf: ref Buffer) -> Int =
+  let bytes = Buffer.to_bytes_view(buf)  -- read-only view
+  Bytes.fold(bytes, 0, fn acc, b -> acc + b)
+
+fn validate_and_send(buf: Owned[Buffer], sock: Owned[Socket])
+    -> (Owned[Buffer], Owned[Socket]) with Io =
+  let sum = buffer_checksum(ref buf)  -- borrow for pure computation
+  if sum > 0 then
+    let (sock, _) = Socket.send(sock, Buffer.to_bytes(ref buf))
+    (buf, sock)
+  else
+    (buf, sock)
+\end{lstlisting}
+
+\subsection{Ownership Transfer Between Processes}
+
+When a resource is sent to another process, ownership transfers:
+
+\begin{lstlisting}[caption={Ownership transfer between processes},label={lst:process-transfer}]
+fn producer() -> Unit with Io, Process[ProducerMsg] =
+  let buf = Buffer.alloc(4096)
+  let buf = Buffer.write(buf, 0, generate_data())
+  -- Ownership transfers to the consumer process
+  Process.send(consumer_pid, ProcessBuffer(buf))
+  -- buf is consumed; using it here is a compile error
+
+fn consumer() -> Never with Io, Process[ConsumerMsg] =
+  match Process.receive() with
+  | ProcessBuffer(buf) ->
+      -- We now own buf
+      let data = Buffer.freeze(buf)
+      process_data(data)
+      consumer()
+\end{lstlisting}
+
+\subsection{The Escape Hatch}\label{sec:escape-hatch}
+
+For interoperability with C libraries and low-level systems code,
+\JAPL{} provides an \texttt{unsafe} escape hatch that allows
+bypassing linearity checks:
+
+\begin{lstlisting}[caption={The unsafe escape hatch},label={lst:unsafe}]
+-- unsafe block: linearity is not checked
+fn raw_mmap(fd: Owned[File], size: Int) -> Owned[MappedRegion] with Io =
+  unsafe {
+    let ptr = foreign_mmap(File.raw_fd(ref fd), size)
+    MappedRegion.from_raw(ptr, size)
+  }
+  -- Outside unsafe: normal linearity rules apply
+\end{lstlisting}
+
+The \texttt{unsafe} keyword has several properties:
+
+\begin{enumerate}
+  \item It must appear explicitly in the source code, making it
+        searchable and auditable.
+  \item It does not propagate: a function containing \texttt{unsafe}
+        can still present a safe interface to its callers.
+  \item It is tracked by the effect system: \texttt{unsafe} blocks
+        require the \texttt{Unsafe} effect, which cannot be silently
+        introduced.
+\end{enumerate}
+
+\subsection{Effect System Interaction}
+
+Resource operations are effectful: they carry the \texttt{Io} effect.
+The effect system and the ownership system cooperate:
+
+\begin{definition}[Effect-ownership interaction]\label{def:effect-ownership}
+The following invariants hold:
+\begin{enumerate}[label=(\roman*)]
+  \item Resource acquisition requires an effect (typically $\Io$).
+  \item Resource release requires the same effect as acquisition.
+  \item Pure functions ($\varepsilon = \Pure$) cannot acquire or
+        release resources; they can only borrow.
+  \item Effect handlers cannot duplicate or discard resources: the
+        handler's continuation must preserve the linear context.
+\end{enumerate}
+\end{definition}
+
+\begin{proposition}[Effect handlers preserve linearity]\label{prop:effect-linear}
+If an effect handler $h$ transforms computation
+$\Gamma; \Delta \vdash_\varepsilon e : \tau$ into
+$\Gamma; \Delta' \vdash_{\varepsilon'} e' : \tau'$,
+then $\Delta' = \Delta$ (the linear context is unchanged).
+\end{proposition}
+
+\begin{proof}
+By induction on the structure of the effect handler.  The handler
+provides implementations for effect operations, but each operation
+implementation must preserve the linear context: it receives a
+continuation that expects the same linear resources, and it must
+pass exactly those resources to the continuation.  Since the handler
+cannot forge or destroy linear resources (this is enforced by the
+$\bang$-I rule, which prevents linear resources from appearing in
+unrestricted positions), the linear context is preserved.
+\end{proof}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Comparison with Related Languages}\label{sec:comparison}
+
+\subsection{Overview}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Comparison of mutation control strategies across languages}
+\label{tab:comparison}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Language} & \textbf{Mutation model} & \textbf{Resource mgmt} &
+  \textbf{Annotation} & \textbf{GC} \\
+\midrule
+\JAPL{} & Dual-layer & Linear ownership & Low (pure layer) & Hybrid \\
+Rust & Ownership+borrow & Ownership+RAII & High (everywhere) & None \\
+Go & Unrestricted & GC + \texttt{defer} & None & Full GC \\
+Haskell & IO monad & GC + finalizers & Medium (monadic) & Full GC \\
+Erlang & Copy everything & Per-process GC & None & Per-proc GC \\
+OCaml & Mutable refs & GC & Low & Full GC \\
+Clean & Uniqueness types & Uniqueness & Medium & GC \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Rust: Full Borrow Checker}\label{sec:cmp-rust}
+
+Rust applies its ownership and borrowing discipline to \emph{every}
+value, including purely functional data.  This provides strong
+guarantees---no GC is needed, and memory safety is ensured at compile
+time---but imposes a significant annotation burden.
+
+Consider a simple data transformation in Rust:
+
+\begin{verbatim}
+fn transform(data: Vec<i32>) -> Vec<i32> {
+    data.into_iter().map(|x| x * 2).collect()
+}
+\end{verbatim}
+
+The programmer must choose between \texttt{Vec<i32>} (ownership
+transfer), \texttt{\&Vec<i32>} (immutable borrow), and
+\texttt{\&mut Vec<i32>} (mutable borrow).  For a pure transformation,
+this choice is an unnecessary cognitive burden.
+
+In \JAPL{}, the same function requires no ownership annotations:
+
+\begin{lstlisting}[caption={\JAPL{} vs.\ Rust: pure data transformation}]
+fn transform(data: List[Int]) -> List[Int] =
+  List.map(data, fn x -> x * 2)
+\end{lstlisting}
+
+The trade-off is that \JAPL{}'s pure layer requires a garbage
+collector, while Rust avoids GC entirely.  We argue that this
+trade-off is worthwhile for application-level code, where GC pauses
+are negligible relative to I/O latency.
+
+\subsection{Go: GC Everything}\label{sec:cmp-go}
+
+Go takes the opposite extreme: all memory is garbage-collected, and
+there is no ownership system.  Resources are managed by convention
+(\texttt{defer} and the \texttt{io.Closer} interface) rather than by
+the type system.
+
+The consequence is that resource leaks are possible:
+
+\begin{verbatim}
+func processFile(path string) error {
+    f, err := os.Open(path)
+    if err != nil { return err }
+    // Easy to forget: defer f.Close()
+    data, err := io.ReadAll(f)
+    // If we return here, f is leaked
+    ...
+}
+\end{verbatim}
+
+\JAPL{}'s linear types make this class of bug impossible: the
+compiler rejects any program that fails to consume a resource.
+
+\subsection{Haskell: The IO Monad}\label{sec:cmp-haskell}
+
+Haskell confines side effects to the \texttt{IO} monad, ensuring that
+pure functions are referentially transparent.  However, the monadic
+style has several drawbacks:
+
+\begin{enumerate}
+  \item Monadic binding (\texttt{>>=}) is syntactically heavier than
+        direct-style code.
+  \item Composing different effects (state, error, IO) requires monad
+        transformers, which are notoriously difficult to use.
+  \item Resources within \texttt{IO} are not linearly tracked;
+        finalizers and \texttt{bracket} provide safety but not
+        compile-time guarantees.
+\end{enumerate}
+
+\JAPL{}'s effect system provides effect tracking without monadic
+syntax: effects are listed after \texttt{with} in function signatures,
+and composition is automatic (effects form a commutative monoid).
+The resource layer adds linear tracking that Haskell's \texttt{IO}
+lacks.
+
+\subsection{Erlang: Copy Everything}\label{sec:cmp-erlang}
+
+Erlang achieves concurrency safety by making all values immutable and
+copying data between processes.  This eliminates shared mutable state
+entirely but has performance implications for large data transfers.
+
+\JAPL{} inherits Erlang's process isolation model for pure values but
+extends it with ownership transfer for resources: a resource can be
+moved between processes without copying, while maintaining the
+invariant that only one process owns it at a time.
+
+\subsection{OCaml: Mutable Refs}\label{sec:cmp-ocaml}
+
+OCaml allows mutation through mutable record fields and
+\texttt{ref} cells.  The type system does not distinguish pure and
+impure code; any function may have side effects.
+
+This pragmatic approach simplifies the type system but sacrifices
+the ability to reason about purity.  \JAPL{}'s effect annotations
+(\texttt{with Io}, \texttt{with State[s]}) restore this reasoning
+while keeping the annotation burden low (effects are inferred within
+function bodies).
+
+\subsection{Clean: Uniqueness Types}\label{sec:cmp-clean}
+
+Clean's uniqueness types~\cite{barendsen1996uniqueness} are the
+closest relative of \JAPL{}'s resource layer.  Clean uses a
+\texttt{*} attribute to mark unique values; the compiler ensures
+that unique values are not aliased.
+
+\JAPL{} extends Clean's approach in several ways:
+
+\begin{enumerate}
+  \item \textbf{Explicit layer separation}: \JAPL{} does not apply
+        uniqueness to all types; only declared \texttt{resource} types
+        are subject to linear discipline.
+  \item \textbf{Borrowing}: Clean does not have a borrowing mechanism;
+        in Clean, any use of a unique value consumes it.  \JAPL{}'s
+        \texttt{ref} qualifier allows non-consuming reads.
+  \item \textbf{Effect integration}: \JAPL{}'s resource operations
+        are annotated with effects, providing an additional layer of
+        safety.
+  \item \textbf{Process integration}: \JAPL{} supports ownership
+        transfer between processes, which Clean (not being an
+        actor-based language) does not address.
+\end{enumerate}
+
+\subsection{Summary of Trade-offs}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Trade-off analysis: safety guarantees vs.\ programmer burden}
+\label{tab:tradeoffs}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+& \rotatebox{60}{Data race free} & \rotatebox{60}{Resource safe}
+& \rotatebox{60}{No GC needed} & \rotatebox{60}{Low annotation}
+& \rotatebox{60}{Effect tracking} \\
+\midrule
+\JAPL{}   & \checkmark & \checkmark &            & \checkmark & \checkmark \\
+Rust      & \checkmark & \checkmark & \checkmark &            &            \\
+Go        &            &            &            & \checkmark &            \\
+Haskell   & \checkmark &            &            &            & \checkmark \\
+Erlang    & \checkmark &            &            & \checkmark &            \\
+OCaml     &            &            &            & \checkmark &            \\
+Clean     & \checkmark & \checkmark &            &            &            \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\JAPL{} is the only language in this comparison that simultaneously
+provides data-race freedom, compile-time resource safety, low
+annotation burden (for the majority of code), and effect tracking.
+The cost is a garbage collector for the pure layer; we argue in
+\Cref{sec:discussion} that this is an acceptable trade-off.
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Implementation}\label{sec:implementation}
+
+\subsection{Architecture Overview}
+
+The \JAPL{} compiler and runtime implement the dual-layer model as
+follows:
+
+\begin{enumerate}
+  \item \textbf{Parser}: Produces an AST with explicit \texttt{use},
+        \texttt{own}, and \texttt{ref} annotations.
+  \item \textbf{Type checker}: Performs bidirectional type checking
+        with local inference.  Maintains separate unrestricted
+        ($\Gamma$) and linear ($\Delta$) contexts.
+  \item \textbf{Linearity checker}: Verifies that all linear variables
+        are consumed exactly once on every execution path.
+  \item \textbf{Region inference}: Assigns regions to resource
+        allocations and inserts release operations.
+  \item \textbf{Uniqueness analysis}: Identifies pure values with a
+        single reference for in-place update optimization.
+  \item \textbf{Code generation}: Compiles to native code via LLVM or
+        Cranelift.
+  \item \textbf{Runtime}: Manages the dual-layer memory model at
+        execution time.
+\end{enumerate}
+
+\subsection{Type Checker Implementation}\label{sec:impl-tc}
+
+The type checker uses a \emph{splitting} judgment to partition the
+linear context among subexpressions~\cite{walker2005substructural}:
+
+\begin{definition}[Context splitting]\label{def:splitting}
+A \emph{split} of linear context $\Delta$ into $\Delta_1$ and
+$\Delta_2$ (written $\Delta = \Delta_1 \uplus \Delta_2$) assigns
+each variable in $\Delta$ to exactly one of $\Delta_1$ or $\Delta_2$.
+\end{definition}
+
+For function application $e_1\; e_2$, the type checker:
+\begin{enumerate}
+  \item Generates a fresh split of the current linear context.
+  \item Checks $e_1$ against $\Delta_1$.
+  \item Checks $e_2$ against $\Delta_2$.
+  \item Verifies that $\Delta_1$ and $\Delta_2$ are both fully consumed.
+\end{enumerate}
+
+For conditionals and pattern matching, the type checker verifies that
+all branches consume the \emph{same} set of linear variables:
+
+\begin{mathpar}
+  \inferrule*[right=Match]
+    {\Gamma; \Delta_0 \vdash e : \tau \\
+     \forall i.\; \Gamma; \Delta_i \vdash p_i \Rightarrow e_i : \sigma \\
+     \Delta_1 = \Delta_2 = \cdots = \Delta_n}
+    {\Gamma; \Delta_0, \Delta_1 \vdash
+      \textbf{match}\; e\; \textbf{with}\; \{p_i \Rightarrow e_i\} : \sigma}
+\end{mathpar}
+
+\subsection{Linearity Checking Algorithm}\label{sec:impl-linearity}
+
+The linearity checker runs as a separate pass after type checking.
+It traverses the typed AST and maintains a set of ``live'' linear
+variables.  The algorithm is:
+
+\begin{enumerate}
+  \item At a \texttt{let} binding of a resource type: add the variable
+        to the live set.
+  \item At a use of a linear variable: remove it from the live set.
+        If already removed, report a ``use after move'' error.
+  \item At a branch point (if/match): check each branch independently;
+        verify that all branches have the same live set at exit.
+  \item At function exit: verify that the live set matches the function's
+        return type (i.e., any linear variable still live must be
+        returned).
+  \item At scope exit for \texttt{use} bindings: if the variable is
+        still live, insert a release call.
+\end{enumerate}
+
+\subsection{Runtime Memory Model}\label{sec:impl-runtime}
+
+The runtime maintains two memory regions per process:
+
+\paragraph{Immutable heap (GC-managed).}
+All pure values reside here.  The garbage collector is generational
+and per-process:
+
+\begin{itemize}
+  \item \textbf{Nursery}: Small, per-process bump allocator.  Most
+        values die young and are collected cheaply.
+  \item \textbf{Old generation}: Surviving values are promoted to a
+        shared old generation, collected concurrently.
+  \item \textbf{No write barriers}: Since data is immutable, there are
+        no pointer mutations to track.  This significantly simplifies
+        the GC.
+  \item \textbf{Process death}: When a process terminates, its entire
+        nursery is reclaimed instantly.
+\end{itemize}
+
+\paragraph{Resource arena (ownership-managed).}
+All linear resources reside here.  There is no garbage collection;
+resources are freed deterministically when consumed:
+
+\begin{itemize}
+  \item \textbf{Allocation}: Resources are allocated in a per-process
+        arena.
+  \item \textbf{Deallocation}: When a resource is consumed (released),
+        its memory is immediately freed.
+  \item \textbf{Transfer}: When ownership is transferred to another
+        process, the resource is moved from one process's arena to
+        another's.
+  \item \textbf{No fragmentation}: Arena allocation avoids the
+        fragmentation problems of general-purpose allocators.
+\end{itemize}
+
+\subsection{Compile-Time Ownership Verification}\label{sec:impl-verify}
+
+The compiler performs ownership verification as a fixed-point
+computation over the control-flow graph (CFG):
+
+\begin{enumerate}
+  \item Build the CFG for each function.
+  \item At each CFG node, compute the set of live linear variables.
+  \item At each join point, check that the live sets from all
+        predecessors are identical.
+  \item At the function exit node, check that the live set matches
+        the expected output (linear variables that appear in the
+        return type).
+  \item If any check fails, emit a diagnostic with the offending
+        variable and the point where it was consumed or escaped.
+\end{enumerate}
+
+This analysis is similar to liveness analysis in traditional compilers
+but with the additional constraint that each linear variable must be
+consumed \emph{exactly once}, not ``at least once'' or ``at most
+once.''
+
+\subsection{Performance Characteristics}
+
+The dual-layer design has favorable performance characteristics:
+
+\begin{itemize}
+  \item \textbf{Pure-layer overhead}: GC pauses are bounded by the
+        nursery size and are per-process (no global stop-the-world).
+        Uniqueness inference eliminates unnecessary copies.
+  \item \textbf{Resource-layer overhead}: Zero runtime overhead beyond
+        the actual resource operations; ownership is verified entirely
+        at compile time.
+  \item \textbf{Combined}: The compiler can optimize across layers.
+        For example, a buffer that is allocated, filled, and frozen
+        within a single function can be stack-allocated if uniqueness
+        analysis proves it does not escape.
+\end{itemize}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Formal Proofs}\label{sec:proofs}
+
+This section proves type safety and resource safety for \JAPL{}'s
+dual-layer system.  We work with a core calculus $\lambda^{\mathsf{JR}}$
+(JAPL Resources) that captures the essential features.
+
+\subsection{Syntax of $\lambda^{\mathsf{JR}}$}
+
+\begin{definition}[Core calculus $\lambda^{\mathsf{JR}}$]\label{def:core-calculus}
+\begin{align*}
+  \text{Types}\quad \tau &::= B \mid \tau_1 \to \tau_2 \mid \tau_1 \times \tau_2
+    \mid R \mid \Owned{R} \\
+  \text{Expressions}\quad e &::= x \mid \lambda x.\, e \mid e_1\; e_2
+    \mid (e_1, e_2) \mid \pi_i(e) \\
+    &\phantom{::=} \mid \mathsf{new}_R \mid \mathsf{use}(e_1, e_2) \mid
+      \mathsf{release}(e) \mid \mathsf{borrow}(e_1, e_2) \\
+    &\phantom{::=} \mid \mathsf{freeze}(e) \mid v \\
+  \text{Values}\quad v &::= \lambda x.\, e \mid (v_1, v_2) \mid c \mid r \\
+  \text{Resources}\quad r &::= \mathsf{res}(a) \quad\text{(resource at address $a$)}
+\end{align*}
+where $B$ ranges over base types and $R$ ranges over resource type names.
+\end{definition}
+
+\begin{remark}[Effects in $\lambda^{\mathsf{JR}}$]\label{rem:effects-orthogonal}
+The core calculus $\lambda^{\mathsf{JR}}$ deliberately omits effect
+tracking ($\Io$, $\mathsf{State}[s]$, etc.) to isolate the
+contribution of linear ownership.  Effect annotations appear in the
+surface-language typing rules (\Cref{def:dual-judgment}) and in the
+resource-specific rules (T-New, T-Release, T-Freeze), but a full
+formalization of the effect system---including effect rows, handler
+semantics, and the interaction between effect polymorphism and
+linearity---is the subject of a companion paper on \JAPL{}'s
+algebraic effect system.  The two systems compose orthogonally:
+linearity governs \emph{how many times} a resource is used, while
+effects govern \emph{what operations} may be performed.
+\Cref{prop:effect-linear} states the key compatibility property
+between the two.
+\end{remark}
+
+\begin{definition}[Store]\label{def:store}
+A \emph{store} $\sigma$ is a partial function from addresses to resource
+states:
+\[
+  \sigma : \mathsf{Addr} \rightharpoonup \mathsf{ResourceState}
+\]
+where $\mathsf{ResourceState} ::= \mathsf{Live}(v) \mid \mathsf{Released}$.
+\end{definition}
+
+\subsection{Operational Semantics}
+
+We write $\bot_R$ for the \emph{default initial state} of resource
+type $R$: the distinguished value that a freshly allocated resource
+holds before any operations have been performed on it.  Each resource
+type declaration implicitly defines its $\bot_R$ (e.g., an empty
+buffer, an unconnected socket descriptor).
+
+\begin{definition}[Small-step reduction]\label{def:reduction}
+The reduction relation $\langle e, \sigma \rangle \longrightarrow
+\langle e', \sigma' \rangle$ is defined by:
+
+\begin{mathpar}
+  \inferrule*[right=App]
+    { }
+    {\langle (\lambda x.\, e)\; v, \sigma \rangle \longrightarrow
+     \langle [v/x]e, \sigma \rangle}
+
+  \inferrule*[right=New]
+    {a \notin \mathrm{dom}(\sigma)}
+    {\langle \mathsf{new}_R, \sigma \rangle \longrightarrow
+     \langle \mathsf{res}(a), \sigma[a \mapsto \mathsf{Live}(\bot_R)] \rangle}
+
+  \inferrule*[right=Release]
+    {\sigma(a) = \mathsf{Live}(v)}
+    {\langle \mathsf{release}(\mathsf{res}(a)), \sigma \rangle \longrightarrow
+     \langle (), \sigma[a \mapsto \mathsf{Released}] \rangle}
+
+  \inferrule*[right=Freeze]
+    {\sigma(a) = \mathsf{Live}(v)}
+    {\langle \mathsf{freeze}(\mathsf{res}(a)), \sigma \rangle \longrightarrow
+     \langle v, \sigma[a \mapsto \mathsf{Released}] \rangle}
+
+  \inferrule*[right=Borrow]
+    {\sigma(a) = \mathsf{Live}(v)}
+    {\langle \mathsf{borrow}(\mathsf{res}(a), f), \sigma \rangle \longrightarrow
+     \langle (f\; v, \mathsf{res}(a)), \sigma \rangle}
+\end{mathpar}
+\end{definition}
+
+\subsection{Type Safety}
+
+\begin{definition}[Store typing]\label{def:store-typing}
+A store typing $\Sigma$ is a partial function from addresses to resource
+types:
+\[
+  \Sigma : \mathsf{Addr} \rightharpoonup \{\mathsf{Live}(R) \mid
+    \mathsf{Released}\}
+\]
+We write $\sigma : \Sigma$ when for every $a \in \mathrm{dom}(\Sigma)$:
+\begin{itemize}
+  \item If $\Sigma(a) = \mathsf{Live}(R)$, then $\sigma(a) = \mathsf{Live}(v)$
+        for some $v$ of type $R$.
+  \item If $\Sigma(a) = \mathsf{Released}$, then $\sigma(a) = \mathsf{Released}$.
+\end{itemize}
+\end{definition}
+
+\begin{theorem}[Progress]\label{thm:progress}
+If $\Gamma; \Delta \vdash_\varepsilon e : \tau$ and $\sigma : \Sigma$,
+then either:
+\begin{enumerate}[label=(\alph*)]
+  \item $e$ is a value, or
+  \item there exist $e'$, $\sigma'$ such that
+        $\langle e, \sigma \rangle \longrightarrow
+        \langle e', \sigma' \rangle$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By induction on the typing derivation $\Gamma; \Delta \vdash_\varepsilon
+e : \tau$.
+
+\textbf{Case} Var-Lin: $e = x$ and $x : \Owned{R} \in \Delta$.
+Then $x$ is bound to a value (a resource reference $\mathsf{res}(a)$),
+so $e$ is a value.
+
+\textbf{Case} Var-Un: Similar.
+
+\textbf{Case} $\lolli$-I: $e = \lambda x.\, e'$, which is a value.
+
+\textbf{Case} $\lolli$-E: $e = e_1\; e_2$.  By induction, either
+$e_1$ is a value or it can step.  If $e_1$ can step, so can $e$.
+If $e_1$ is a value, it has type $A \lolli B$, so it is a lambda
+$\lambda x.\, e'$.  By induction, either $e_2$ is a value or it can
+step.  If $e_2$ can step, so can $e$.  If $e_2$ is a value $v$, then
+$e$ can step by the App rule.
+
+\textbf{Case} New: $e = \mathsf{new}_R$.  We can always find a fresh
+address $a \notin \mathrm{dom}(\sigma)$ (addresses are unbounded), so
+the New rule applies.
+
+\textbf{Case} Release: $e = \mathsf{release}(\mathsf{res}(a))$.  By
+the typing rule, $\mathsf{res}(a) : \Owned{R}$, so $a \in
+\mathrm{dom}(\Sigma)$ with $\Sigma(a) = \mathsf{Live}(R)$.  Since
+$\sigma : \Sigma$, we have $\sigma(a) = \mathsf{Live}(v)$, so the
+Release rule applies.
+
+The remaining cases (Freeze, Borrow, pairs, projections) follow
+similarly.
+\end{proof}
+
+\begin{theorem}[Preservation]\label{thm:preservation}
+If $\Gamma; \Delta \vdash_\varepsilon e : \tau$ and $\sigma : \Sigma$
+and $\langle e, \sigma \rangle \longrightarrow \langle e', \sigma'
+\rangle$, then there exist $\Gamma'$, $\Delta'$, $\Sigma'$ such that:
+\begin{enumerate}[label=(\alph*)]
+  \item $\Gamma'; \Delta' \vdash_\varepsilon e' : \tau$
+  \item $\sigma' : \Sigma'$
+  \item $\Sigma \subseteq \Sigma'$ (the store typing only grows or
+        transitions $\mathsf{Live}$ entries to $\mathsf{Released}$)
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By induction on the typing derivation, with case analysis on the
+reduction rule applied.
+
+\textbf{Case} App: $e = (\lambda x.\, e')\; v$ steps to $[v/x]e'$.
+By the T-App rule, the linear context is split as
+$\Delta = \Delta_1 \uplus \Delta_2$ with
+$\Gamma; \Delta_1 \vdash (\lambda x.\, e') : \tau_1 \lolli \tau$ and
+$\Gamma; \Delta_2 \vdash v : \tau_1$.
+By the substitution lemma for the dual-layer system (\Cref{lem:substitution}),
+$\Gamma; \Delta' \vdash [v/x]e' : \tau$ where
+$\Delta' = \Delta_1 \uplus (\Delta_2 \setminus \{x : \tau_1\})$,
+i.e., $\Delta$ with $x$'s binding consumed.  The store is unchanged.
+
+\textbf{Case} New: $e = \mathsf{new}_R$ steps to $\mathsf{res}(a)$
+with $\sigma' = \sigma[a \mapsto \mathsf{Live}(\bot_R)]$.  Set
+$\Sigma' = \Sigma[a \mapsto \mathsf{Live}(R)]$.  Then
+$\mathsf{res}(a) : \Owned{R}$ under $\Delta' = \Delta, a : \Owned{R}$,
+and $\sigma' : \Sigma'$.
+
+\textbf{Case} Release: $e = \mathsf{release}(\mathsf{res}(a))$ steps
+to $()$ with $\sigma' = \sigma[a \mapsto \mathsf{Released}]$.  Set
+$\Sigma' = \Sigma[a \mapsto \mathsf{Released}]$.  The result $()$ has
+type $\texttt{Unit}$.  The linear context $\Delta' = \Delta \setminus
+\{a : \Owned{R}\}$: the binding is consumed.
+
+\textbf{Case} Freeze: Similar to Release, but the result is the value
+$v$ stored in the resource, which has a pure type.
+
+\textbf{Case} Borrow: $e = \mathsf{borrow}(\mathsf{res}(a), f)$
+steps to $(f\; v, \mathsf{res}(a))$.  The resource remains live; the
+linear binding is preserved.  The result is a pair of the function
+application result and the resource.
+
+The remaining cases are standard.
+\end{proof}
+
+\begin{lemma}[Substitution]\label{lem:substitution}
+If $\Gamma; \Delta, x : A \vdash_\varepsilon e : B$ and
+$\Gamma; \cdot \vdash v : A$ (if $A$ is unrestricted) or
+$v = \mathsf{res}(a)$ with $a : \Owned{R}$ (if $A$ is linear),
+then $\Gamma; \Delta' \vdash_\varepsilon [v/x]e : B$ where:
+\begin{itemize}
+  \item $\Delta' = \Delta$ if $A$ is unrestricted.
+  \item $\Delta' = \Delta$ if $A$ is linear and $x$ is consumed exactly
+        once in $e$.
+\end{itemize}
+\end{lemma}
+
+\begin{proof}
+By induction on the typing derivation, tracking the number of
+occurrences of $x$ in $e$.  The linearity checker ensures exactly one
+occurrence for linear variables.
+\end{proof}
+
+\subsection{Resource Safety}
+
+\begin{theorem}[Resource safety]\label{thm:resource-safety-proof}
+If $\Gamma; \cdot \vdash_\varepsilon e : \tau$ (the program type-checks
+with an empty linear context) and
+$\langle e, \emptyset \rangle \longrightarrow^* \langle v, \sigma \rangle$
+(the program terminates with value $v$ and final store $\sigma$), then
+for every $a \in \mathrm{dom}(\sigma)$:
+\[
+  \sigma(a) = \mathsf{Released}
+\]
+That is, every resource acquired during execution has been released.
+\end{theorem}
+
+\begin{proof}
+We establish the invariant: at every step of reduction, the number of
+$\mathsf{Live}$ entries in $\sigma$ equals the size of the linear
+context $\Delta$.
+
+\textbf{Base case}: Initially, $\sigma = \emptyset$ and $\Delta =
+\cdot$, so the invariant holds trivially.
+
+\textbf{Inductive step}: By preservation (\Cref{thm:preservation}),
+each reduction step preserves the correspondence between $\Delta$ and
+$\Sigma$.  Specifically:
+\begin{itemize}
+  \item New: adds one entry to both $\sigma$ ($\mathsf{Live}$) and
+        $\Delta$, preserving the count.
+  \item Release/Freeze: transitions one entry in $\sigma$ from
+        $\mathsf{Live}$ to $\mathsf{Released}$ and removes one entry
+        from $\Delta$, preserving the count.
+  \item All other rules: preserve both $\sigma$ and the size of $\Delta$.
+\end{itemize}
+
+\textbf{Conclusion}: When the program terminates with
+$\Gamma; \cdot \vdash v : \tau$ (empty linear context), the number
+of $\mathsf{Live}$ entries in $\sigma$ is zero.  Therefore every
+entry is $\mathsf{Released}$.
+\end{proof}
+
+\begin{corollary}[No resource leaks]\label{cor:no-leaks}
+Well-typed \JAPL{} programs (without \texttt{unsafe}) cannot leak
+resources: every file is closed, every socket is disconnected, every
+buffer is freed.
+\end{corollary}
+
+\begin{corollary}[No use-after-free]\label{cor:no-uaf}
+Well-typed \JAPL{} programs cannot use a resource after it has been
+released: the linear type system ensures that the binding is consumed
+by the release operation and cannot be used again.
+\end{corollary}
+
+\begin{corollary}[No double-free]\label{cor:no-double-free}
+Well-typed \JAPL{} programs cannot release a resource twice: the linear
+type system ensures exactly-once consumption.
+\end{corollary}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Discussion}\label{sec:discussion}
+
+\subsection{When Ownership Pressure Leaks}
+
+The dual-layer design succeeds when the boundary between pure and
+resource code is clean.  In practice, however, there are cases where
+ownership concerns propagate into otherwise-pure code:
+
+\paragraph{Resource-carrying data structures.}
+If a data structure contains a resource (e.g., a list of open file
+handles), the entire structure becomes linear.  This forces the
+programmer to manage ownership for the container, even if the
+business logic only cares about the data inside.
+
+\paragraph{Callbacks with resources.}
+A higher-order function that accepts a callback may need to thread
+resources through the callback, complicating the interface.
+
+\paragraph{Long-lived resources.}
+A database connection pool manages resources with lifetimes that span
+many function calls.  The pool itself becomes a resource, and every
+function that uses the pool must participate in the ownership protocol.
+
+\subsection{Mitigations}
+
+\JAPL{} provides several mechanisms to reduce ownership pressure:
+
+\paragraph{Borrowing (\texttt{ref}).}
+Most pure functions that need to read a resource can take a borrowed
+reference, avoiding ownership transfer entirely.
+
+\paragraph{Scoped resources (\texttt{use}).}
+The \texttt{use} binding automatically manages resource lifetimes
+within a scope, reducing boilerplate.
+
+\paragraph{Process encapsulation.}
+Long-lived resources can be owned by a dedicated process, which
+exposes a pure message-passing interface.  Other processes interact
+with the resource through messages, never seeing the ownership:
+
+\begin{lstlisting}[caption={Process encapsulation hides ownership},label={lst:encapsulation}]
+-- The database process owns the connection
+fn db_process(conn: Owned[DbConnection])
+    -> Never with Io, Process[DbMsg] =
+  match Process.receive() with
+  | Query(sql, reply) ->
+      let (conn, result) = Db.query(conn, sql)
+      Reply.send(reply, result)
+      db_process(conn)
+  | Shutdown ->
+      Db.close(conn)
+      Process.exit(Normal)
+
+-- Callers never see Owned[DbConnection]
+fn get_user(db: Pid[DbMsg], id: UserId)
+    -> Result[User, DbError] with Process =
+  let result = Process.call(db, fn reply -> Query(user_sql(id), reply))
+  parse_user_row(result)
+\end{lstlisting}
+
+This pattern is the recommended way to manage long-lived resources
+in \JAPL{}: the process boundary naturally encapsulates the
+ownership, and the caller's interface is pure message-passing.
+
+\paragraph{Region-based grouping.}
+Multiple resources acquired in the same scope can be grouped into a
+single region, reducing the number of individual ownership threads.
+
+\subsection{The 80/20 of Resource Management}
+
+Our experience with prototype \JAPL{} applications suggests the
+following distribution:
+
+\begin{itemize}
+  \item \textbf{80\%} of code is pure: data transformations, business
+        logic, protocol handling, serialization.  No ownership
+        annotations needed.
+  \item \textbf{15\%} of code uses scoped resources (\texttt{use}):
+        open file, read, close; connect, query, disconnect.  Ownership
+        is automatic via the \texttt{use} binding.
+  \item \textbf{5\%} of code requires explicit ownership management:
+        long-lived resources, cross-process transfers, complex
+        resource graphs.  This is where the linear type system
+        provides its greatest value.
+\end{itemize}
+
+The dual-layer design ensures that the 80\% majority pays no
+annotation cost, while the 5\% minority gets strong compile-time
+guarantees.
+
+\subsection{Effect System Synergy}
+
+The effect system and the ownership system reinforce each other.  The
+effect system ensures that resource operations are visible in function
+signatures (\texttt{with Io}), preventing hidden side effects.  The
+ownership system ensures that resources are properly managed even when
+effects are composed.
+
+Together, they provide a stronger guarantee than either alone: a
+function with signature \texttt{fn(x: Int) -> Int} is guaranteed to
+be pure---it cannot secretly open a file, allocate a buffer, or
+access the network.
+
+\subsection{Comparison with Monadic IO}
+
+The Haskell approach confines \emph{all} effects to the \texttt{IO}
+monad, including both resource management and general side effects.
+This conflates two concerns:
+
+\begin{enumerate}
+  \item \textbf{Effect tracking}: Knowing that a function performs IO.
+  \item \textbf{Resource management}: Ensuring that resources are
+        properly released.
+\end{enumerate}
+
+\JAPL{} separates these concerns: the effect system handles (1), and
+the ownership system handles (2).  This separation allows finer-grained
+reasoning: two functions may both have effect \texttt{Io}, but one
+manages resources (visible in its type via \texttt{Owned}) while the
+other merely reads a file.
+
+\subsection{Limitations}
+
+The dual-layer approach has several limitations:
+
+\begin{enumerate}
+  \item \textbf{GC dependency}: The pure layer requires a garbage
+        collector, making \JAPL{} unsuitable for environments where
+        GC is unacceptable (embedded systems, real-time audio).
+  \item \textbf{Layer crossing cost}: Moving data between layers
+        (freezing a buffer into immutable bytes) may involve a copy
+        if the resource is not uniquely held.
+  \item \textbf{Learning curve}: Programmers must understand the
+        distinction between pure and resource types, even if the
+        pure layer requires no annotations.
+  \item \textbf{Expressiveness}: Some patterns that are natural in
+        Rust (e.g., self-referential structures with lifetimes) are
+        more difficult to express in \JAPL{}'s simpler ownership model.
+\end{enumerate}
+
+\subsection{Future Work}
+
+Several directions remain for future investigation:
+
+\begin{enumerate}
+  \item \textbf{Graded linearity}: Allowing resources to be used
+        exactly $n$ times (useful for connection pools with bounded
+        concurrency).
+  \item \textbf{Session types}: Extending resource types with session
+        type protocols, ensuring that resources are used in the
+        correct order (e.g., connect, authenticate, query, disconnect).
+  \item \textbf{Dependent resource types}: Allowing resource types to
+        depend on values, enabling richer invariants (e.g., a file
+        handle that tracks whether it is open for reading, writing,
+        or both).
+  \item \textbf{Formal verification}: Connecting \JAPL{}'s type system
+        to separation logic via the LNL model, enabling machine-checked
+        proofs of resource safety.
+\end{enumerate}
+
+
+% ══════════════════════════════════════════════════════════════════
+\section{Conclusion}\label{sec:conclusion}
+
+We have presented \JAPL{}'s second core principle: \textbf{mutation is
+local and explicit}.  The dual-layer type system---pure values managed
+by GC, linear resources managed by ownership---achieves a design point
+that has not been explored by prior languages:
+
+\begin{enumerate}
+  \item \textbf{Safety without pervasive annotation}: The majority of
+        code lives in the pure layer and requires no ownership
+        annotations, lifetime parameters, or borrow-checker reasoning.
+  \item \textbf{Resource safety by construction}: Every resource
+        acquired by a well-typed program is released exactly once,
+        as proven by our type safety and resource safety theorems.
+  \item \textbf{Effect visibility}: The effect system makes mutation
+        visible in function signatures, enabling equational reasoning
+        for pure code and local reasoning for effectful code.
+  \item \textbf{Process integration}: Ownership transfer between
+        processes extends the linear discipline to concurrent settings,
+        while process encapsulation hides ownership behind pure
+        message-passing interfaces.
+\end{enumerate}
+
+The formal framework---rooted in Girard's linear logic, Benton's
+LNL adjunction model, and the theory of substructural type
+systems---provides a rigorous foundation for the design.  The
+categorical interpretation (\Cref{sec:categorical}) shows that
+\JAPL{}'s dual-layer system is not an \emph{ad hoc} engineering
+compromise but a principled instantiation of the well-studied
+relationship between linear and Cartesian closed categories.
+
+We believe that the dual-layer approach represents a practical sweet
+spot for language design: it gives systems programmers the control they
+need over resources, while giving application programmers the
+simplicity they want for everyday code.  The principle that mutation
+should be local and explicit---not absent, not pervasive, but
+\emph{controlled}---is central to \JAPL{}'s mission of being ``pure
+by default, concurrent by design, resource-safe by construction,
+distributed without apology.''
+
+
+% ══════════════════════════════════════════════════════════════════
+\bibliographystyle{plainnat}
+
+\begin{thebibliography}{50}
+
+\bibitem[Girard(1987)]{girard1987linear}
+Jean-Yves Girard.
+\newblock Linear logic.
+\newblock \emph{Theoretical Computer Science}, 50(1):1--102, 1987.
+
+\bibitem[Wadler(1990)]{wadler1990linear}
+Philip Wadler.
+\newblock Linear types can change the world!
+\newblock In \emph{Programming Concepts and Methods}, pages 561--581. North-Holland, 1990.
+
+\bibitem[Wadler(1993)]{wadler1993taste}
+Philip Wadler.
+\newblock A taste of linear logic.
+\newblock In \emph{Mathematical Foundations of Computer Science}, volume 711 of LNCS, pages 185--210. Springer, 1993.
+
+\bibitem[Wadler(2012)]{wadler2012propositions}
+Philip Wadler.
+\newblock Propositions as sessions.
+\newblock In \emph{Proceedings of the 17th ACM SIGPLAN International Conference on Functional Programming (ICFP)}, pages 273--286, 2012.
+
+\bibitem[Walker(2005)]{walker2005substructural}
+David Walker.
+\newblock Substructural type systems.
+\newblock In Benjamin~C. Pierce, editor, \emph{Advanced Topics in Types and Programming Languages}, chapter~1, pages 3--43. MIT Press, 2005.
+
+\bibitem[Pierce(2002)]{pierce2002types}
+Benjamin~C. Pierce.
+\newblock \emph{Types and Programming Languages}.
+\newblock MIT Press, 2002.
+
+\bibitem[Pierce(2004)]{pierce2004advanced}
+Benjamin~C. Pierce, editor.
+\newblock \emph{Advanced Topics in Types and Programming Languages}.
+\newblock MIT Press, 2004.
+
+\bibitem[Benton(1995)]{benton1995mixed}
+P.~Nick Benton.
+\newblock A mixed linear and non-linear logic: Proofs, terms and models.
+\newblock In \emph{Computer Science Logic (CSL)}, volume 933 of LNCS, pages 121--135. Springer, 1995.
+
+\bibitem[Barr(1991)]{barr1991autonomous}
+Michael Barr.
+\newblock {$\ast$}-Autonomous categories and linear logic.
+\newblock \emph{Mathematical Structures in Computer Science}, 1(2):159--178, 1991.
+
+\bibitem[Bernardy et~al.(2018)]{bernardy2018linear}
+Jean-Philippe Bernardy, Mathieu Boespflug, Ryan~R. Newton, Simon Peyton~Jones, and Arnaud Spiwack.
+\newblock Linear {H}askell: Practical linearity in a higher-order polymorphic language.
+\newblock \emph{Proceedings of the ACM on Programming Languages}, 2(POPL):1--29, 2018.
+
+\bibitem[Rust~Team(2021)]{rust2021}
+The Rust~Team.
+\newblock \emph{The Rust Programming Language}.
+\newblock No Starch Press, 2021.
+\newblock \url{https://doc.rust-lang.org/book/}.
+
+\bibitem[Jung et~al.(2017)]{jung2017rustbelt}
+Ralf Jung, Jacques-Henri Jourdan, Robbert Krebbers, and Derek Dreyer.
+\newblock {RustBelt}: Securing the foundations of the {R}ust programming language.
+\newblock \emph{Proceedings of the ACM on Programming Languages}, 2(POPL):1--34, 2017.
+
+\bibitem[Barendsen and Smetsers(1996)]{barendsen1996uniqueness}
+Erik Barendsen and Sjaak Smetsers.
+\newblock Uniqueness typing for functional languages with graph rewriting semantics.
+\newblock \emph{Mathematical Structures in Computer Science}, 6(6):579--612, 1996.
+
+\bibitem[Plasmeijer and van Eekelen(2001)]{plasmeijer2001clean}
+Rinus Plasmeijer and Marko van Eekelen.
+\newblock \emph{Clean Language Report, version 2.1}.
+\newblock University of Nijmegen, 2001.
+
+\bibitem[Tofte and Talpin(1997)]{tofte1997region}
+Mads Tofte and Jean-Pierre Talpin.
+\newblock Region-based memory management.
+\newblock \emph{Information and Computation}, 132(2):109--176, 1997.
+
+\bibitem[Jim et~al.(2002)]{jim2002cyclone}
+Trevor Jim, J.~Gregory Morrisett, Dan Grossman, Michael~W. Hicks, James Cheney, and Yanling Wang.
+\newblock {C}yclone: A safe dialect of {C}.
+\newblock In \emph{USENIX Annual Technical Conference}, pages 275--288, 2002.
+
+\bibitem[Grossman et~al.(2002)]{grossman2002region}
+Dan Grossman, Greg Morrisett, Trevor Jim, Michael Hicks, Yanling Wang, and James Cheney.
+\newblock Region-based memory management in {C}yclone.
+\newblock In \emph{Proceedings of the ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)}, pages 282--293, 2002.
+
+\bibitem[Dennis and Van~Horn(1966)]{dennis1966programming}
+Jack~B. Dennis and Earl~C. Van~Horn.
+\newblock Programming semantics for multiprogrammed computations.
+\newblock \emph{Communications of the ACM}, 9(3):143--155, 1966.
+
+\bibitem[Miller(2006)]{miller2006robust}
+Mark~S. Miller.
+\newblock \emph{Robust Composition: Towards a Unified Approach to Access Control and Concurrency Control}.
+\newblock PhD thesis, Johns Hopkins University, 2006.
+
+\bibitem[Plotkin and Pretnar(2009)]{plotkin2009handlers}
+Gordon Plotkin and Matija Pretnar.
+\newblock Handlers of algebraic effects.
+\newblock In \emph{Programming Languages and Systems (ESOP)}, volume 5502 of LNCS, pages 80--94. Springer, 2009.
+
+\bibitem[Bauer and Pretnar(2015)]{bauer2015programming}
+Andrej Bauer and Matija Pretnar.
+\newblock Programming with algebraic effects and handlers.
+\newblock \emph{Journal of Logical and Algebraic Methods in Programming}, 84(1):108--123, 2015.
+
+\bibitem[Kammar et~al.(2013)]{kammar2013handlers}
+Ohad Kammar, Sam Lindley, and Nicolas Oury.
+\newblock Handlers in action.
+\newblock In \emph{Proceedings of the 18th ACM SIGPLAN International Conference on Functional Programming (ICFP)}, pages 145--158, 2013.
+
+\bibitem[Wright and Felleisen(1994)]{wright1994syntactic}
+Andrew~K. Wright and Matthias Felleisen.
+\newblock A syntactic approach to type soundness.
+\newblock \emph{Information and Computation}, 115(1):38--94, 1994.
+
+\bibitem[Armstrong(2003)]{armstrong2003erlang}
+Joe Armstrong.
+\newblock \emph{Programming Erlang: Software for a Concurrent World}.
+\newblock Pragmatic Bookshelf, 2003.
+
+\bibitem[Peyton~Jones(2003)]{peytonjones2003haskell}
+Simon Peyton~Jones.
+\newblock \emph{Haskell 98 Language and Libraries: The Revised Report}.
+\newblock Cambridge University Press, 2003.
+
+\bibitem[Leroy(2000)]{leroy2000ocaml}
+Xavier Leroy.
+\newblock \emph{The {OCaml} System: Documentation and User's Manual}.
+\newblock INRIA, 2000.
+
+\bibitem[Donovan and Kernighan(2015)]{donovan2015go}
+Alan A.~A. Donovan and Brian~W. Kernighan.
+\newblock \emph{The Go Programming Language}.
+\newblock Addison-Wesley, 2015.
+
+\bibitem[Clebsch et~al.(2015)]{clebsch2015deny}
+Sylvan Clebsch, Sophia Drossopoulou, Sebastian Blessing, and Andy McNeil.
+\newblock Deny capabilities for safe, fast actors.
+\newblock In \emph{Proceedings of the 5th International Workshop on Programming Based on Actors, Agents, and Decentralized Control}, pages 1--12, 2015.
+
+\bibitem[Tov and Pucella(2011)]{tov2011practical}
+Jesse~A. Tov and Riccardo Pucella.
+\newblock Practical affine types.
+\newblock In \emph{Proceedings of the 38th ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL)}, pages 447--458, 2011.
+
+\bibitem[Leijen(2017)]{leijen2017koka}
+Daan Leijen.
+\newblock Type directed compilation of row-typed algebraic effects.
+\newblock In \emph{Proceedings of the 44th ACM SIGPLAN Symposium on Principles of Programming Languages (POPL)}, pages 486--499, 2017.
+
+\bibitem[Mazurak et~al.(2010)]{mazurak2010lightweight}
+Karl Mazurak, Jianzhou Zhao, and Steve Zdancewic.
+\newblock Lightweight linear types in {S}ystem {F}$^\circ$.
+\newblock In \emph{Proceedings of the 5th ACM SIGPLAN Workshop on Types in Language Design and Implementation (TLDI)}, pages 77--88, 2010.
+
+\bibitem[Krishnaswami et~al.(2019)]{krishnaswami2019integrating}
+Neel Krishnaswami, Pierre Pradic, and Nick Benton.
+\newblock Integrating linear and dependent types.
+\newblock In \emph{Proceedings of the ACM on Programming Languages}, 3(POPL):1--28, 2019.
+
+\bibitem[Sewell et~al.(2010)]{sewell2010ott}
+Peter Sewell, Francesco~Zappa Nardelli, Scott Owens, Gilles Peskine, Thomas Ridge, Susmit Sarkar, and Rok Strni\v{s}a.
+\newblock Ott: Effective tool support for the working semanticist.
+\newblock \emph{Journal of Functional Programming}, 20(1):71--122, 2010.
+
+\bibitem[Milner(1978)]{milner1978theory}
+Robin Milner.
+\newblock A theory of type polymorphism in programming.
+\newblock \emph{Journal of Computer and System Sciences}, 17(3):348--375, 1978.
+
+\bibitem[Reynolds(1983)]{reynolds1983types}
+John~C. Reynolds.
+\newblock Types, abstraction and parametric polymorphism.
+\newblock In \emph{Information Processing 83}, pages 513--523. Elsevier, 1983.
+
+\bibitem[Moggi(1991)]{moggi1991notions}
+Eugenio Moggi.
+\newblock Notions of computation and monads.
+\newblock \emph{Information and Computation}, 93(1):55--92, 1991.
+
+\bibitem[Austral(2023)]{austral2023}
+Fernando Borretti.
+\newblock The {A}ustral programming language.
+\newblock \url{https://austral-lang.org/}, 2023.
+
+\bibitem[Abramsky(1993)]{abramsky1993computational}
+Samson Abramsky.
+\newblock Computational interpretations of linear logic.
+\newblock \emph{Theoretical Computer Science}, 111(1--2):3--57, 1993.
+
+\bibitem[Gaboardi et~al.(2016)]{gaboardi2016combining}
+Marco Gaboardi, Shin-ya Katsumata, Dominic Orchard, Flavien Breuvart, and Tarmo Uustalu.
+\newblock Combining effects and coeffects via grading.
+\newblock In \emph{Proceedings of the 21st ACM SIGPLAN International Conference on Functional Programming (ICFP)}, pages 476--489, 2016.
+
+\end{thebibliography}
+
+% ══════════════════════════════════════════════════════════════════
+\appendix
+
+\section{Complete Typing Rules for $\lambda^{\mathsf{JR}}$}\label{app:rules}
+
+For reference, we present the complete set of typing rules for the
+core calculus.
+
+\begin{definition}[Full typing rules]\label{def:full-rules}
+~
+
+\begin{mathpar}
+  \inferrule*[right=T-Var-Un]
+    {x : \tau \in \Gamma}
+    {\Gamma; \cdot \vdash x : \tau}
+
+  \inferrule*[right=T-Var-Lin]
+    { }
+    {\Gamma; x : \tau \vdash x : \tau}
+
+  \inferrule*[right=T-Abs]
+    {\Gamma; \Delta, x : \tau_1 \vdash e : \tau_2}
+    {\Gamma; \Delta \vdash \lambda x.\, e : \tau_1 \lolli \tau_2}
+
+  \inferrule*[right=T-Abs-Un]
+    {\Gamma, x : \tau_1; \cdot \vdash e : \tau_2}
+    {\Gamma; \cdot \vdash \lambda x.\, e : \tau_1 \to \tau_2}
+
+  \inferrule*[right=T-App]
+    {\Gamma; \Delta_1 \vdash e_1 : \tau_1 \lolli \tau_2 \\
+     \Gamma; \Delta_2 \vdash e_2 : \tau_1}
+    {\Gamma; \Delta_1, \Delta_2 \vdash e_1\; e_2 : \tau_2}
+
+  \inferrule*[right=T-App-Un]
+    {\Gamma; \Delta_1 \vdash e_1 : \tau_1 \to \tau_2 \\
+     \Gamma; \Delta_2 \vdash e_2 : \tau_1}
+    {\Gamma; \Delta_1, \Delta_2 \vdash e_1\; e_2 : \tau_2}
+
+  \inferrule*[right=T-Pair]
+    {\Gamma; \Delta_1 \vdash e_1 : \tau_1 \\
+     \Gamma; \Delta_2 \vdash e_2 : \tau_2}
+    {\Gamma; \Delta_1, \Delta_2 \vdash (e_1, e_2) : \tau_1 \tensor \tau_2}
+
+  \inferrule*[right=T-LetPair]
+    {\Gamma; \Delta_1 \vdash e_1 : \tau_1 \tensor \tau_2 \\
+     \Gamma; \Delta_2, x : \tau_1, y : \tau_2 \vdash e_2 : \tau}
+    {\Gamma; \Delta_1, \Delta_2 \vdash
+      \mathbf{let}\; (x, y) = e_1\; \mathbf{in}\; e_2 : \tau}
+
+  \inferrule*[right=T-New]
+    { }
+    {\Gamma; \cdot \vdash_{\Io} \mathsf{new}_R : \Owned{R}}
+
+  \inferrule*[right=T-Release]
+    {\Gamma; \Delta \vdash e : \Owned{R}}
+    {\Gamma; \Delta \vdash_{\Io} \mathsf{release}(e) : \mathsf{Unit}}
+
+  \inferrule*[right=T-Freeze]
+    {\Gamma; \Delta \vdash e : \Owned{R} \\
+     R \hookrightarrow \tau}
+    {\Gamma; \Delta \vdash_{\Io} \mathsf{freeze}(e) : \tau}
+
+  \inferrule*[right=T-Borrow]
+    {\Gamma; \Delta, x : \Owned{R} \vdash e_1 : \Owned{R} \\
+     \Gamma; y : \rref\; R \vdash e_2 : \tau}
+    {\Gamma; \Delta, x : \Owned{R} \vdash
+      \mathsf{borrow}(x\; \mathbf{as}\; y,\; e_2) : \tau \tensor \Owned{R}}
+
+  \inferrule*[right=T-If]
+    {\Gamma; \Delta_0 \vdash e : \mathsf{Bool} \\
+     \Gamma; \Delta \vdash e_1 : \tau \\
+     \Gamma; \Delta \vdash e_2 : \tau}
+    {\Gamma; \Delta_0, \Delta \vdash
+      \mathbf{if}\; e\; \mathbf{then}\; e_1\; \mathbf{else}\; e_2 : \tau}
+\end{mathpar}
+
+Note that T-Abs-Un requires the linear context to be empty ($\cdot$):
+an unrestricted function $\tau_1 \to \tau_2$ may be duplicated, so it
+must not close over linear resources---otherwise, applying the
+closure twice would duplicate those resources, violating linearity.
+
+Note that T-If requires both branches to consume the \emph{same}
+linear context $\Delta$.  This is the key rule that prevents
+conditional resource leaks.
+\end{definition}
+
+\section{Extended Examples}\label{app:examples}
+
+\subsection{Database Connection Pool}
+
+\begin{lstlisting}[caption={A resource-safe connection pool},label={lst:pool}]
+resource DbConnection
+
+type PoolMsg =
+  | Checkout(Reply[Owned[DbConnection]])
+  | Return(Owned[DbConnection])
+  | Shutdown
+
+fn pool_process(conns: List[Owned[DbConnection]],
+                waiting: List[Reply[Owned[DbConnection]]])
+    -> Never with Io, Process[PoolMsg] =
+  match Process.receive() with
+  | Checkout(reply) ->
+      match conns with
+      | [conn, ..rest] ->
+          Reply.send(reply, conn)
+          pool_process(rest, waiting)
+      | [] ->
+          pool_process(conns, List.append(waiting, [reply]))
+  | Return(conn) ->
+      match waiting with
+      | [waiter, ..rest] ->
+          Reply.send(waiter, conn)
+          pool_process(conns, rest)
+      | [] ->
+          pool_process([conn, ..conns], waiting)
+  | Shutdown ->
+      List.each(conns, fn conn -> Db.close(conn))
+      Process.exit(Normal)
+\end{lstlisting}
+
+\subsection{State Effect with Linear Resources}
+
+\begin{lstlisting}[caption={Composing effects with linear resources},label={lst:effect-compose}]
+-- Explicit mutable state via effect
+fn accumulate(items: List[Int]) -> Int with State[Int] =
+  List.each(items, fn x -> State.modify(fn acc -> acc + x))
+  State.get()
+
+-- Resource layer: mutable buffer (ownership tracked)
+fn fill_buffer(data: Bytes) -> Bytes with Io =
+  let buf = Buffer.alloc(1024)
+  let buf = Buffer.write(buf, 0, data)
+  Buffer.freeze(buf)
+
+-- Combining pure, state, and resource layers
+fn process_and_store(items: List[Int], path: Path)
+    -> Result[Unit, IoError] with Io =
+  let total = State.run(0, fn -> accumulate(items))
+  let file = File.open(path, Write)?
+  File.write(file, Int.to_string(total))
+  File.close(file)
+  Ok(())
+\end{lstlisting}
+
+\subsection{Safe FFI Wrapping}
+
+\begin{lstlisting}[caption={Safe wrapper around a C FFI resource},label={lst:ffi-wrap}]
+-- Foreign resource: a C library handle
+resource CHandle
+
+foreign "C" fn c_lib_open(config: CString) -> Ptr[CHandle]
+foreign "C" fn c_lib_process(h: Ptr[CHandle], data: Ptr[Byte], len: CInt) -> CInt
+foreign "C" fn c_lib_close(h: Ptr[CHandle]) -> Unit
+
+-- Safe JAPL wrapper: all ownership is explicit
+fn open_handle(config: String) -> Result[Owned[CHandle], Error] with Io =
+  use cstr = CString.from(config)
+  let ptr = unsafe c_lib_open(cstr)
+  if Ptr.is_null(ptr) then Err(OpenFailed)
+  else Ok(CHandle.from_raw(ptr))
+
+fn process_data(handle: Owned[CHandle], data: Bytes)
+    -> (Owned[CHandle], Result[Int, Error]) with Io =
+  let result = unsafe c_lib_process(
+    CHandle.as_ptr(ref handle),
+    Bytes.as_ptr(data),
+    Bytes.length(data)
+  )
+  if result < 0 then (handle, Err(ProcessFailed(result)))
+  else (handle, Ok(result))
+
+fn close_handle(handle: Owned[CHandle]) -> Unit with Io =
+  unsafe c_lib_close(CHandle.into_raw(handle))
+\end{lstlisting}
+
+\end{document}

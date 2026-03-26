@@ -1,0 +1,2763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mutation Is Local and Explicit: Controlled Effects and Linear Ownership in JAPL — JAPL Research</title>
+  <meta name="description" content="Mutation Is Local and Explicit: Controlled Effects and Linear Ownership in JAPL — Part of the JAPL programming language research series.">Japl</span> Programming Language
+ — Part of the JAPL programming language research series.">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Mutation Is Local and Explicit: Controlled Effects and Linear Ownership in JAPL — JAPL Research">Japl</span> Programming Language
+ — JAPL Research">
+  <meta property="og:description" content="Part of the JAPL programming language research series. Just Another Programming Language.">
+  <meta property="og:url" content="https://japl-nine.vercel.app/papers/mutation-is-local.html">
+  <meta property="og:image" content="https://japl-nine.vercel.app/og-image.png">
+  <meta property="og:site_name" content="JAPL">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Mutation Is Local and Explicit: Controlled Effects and Linear Ownership in JAPL — JAPL Research">Japl</span> Programming Language
+ — JAPL Research">
+  <meta name="twitter:description" content="Part of the JAPL programming language research series.">
+  <meta name="twitter:image" content="https://japl-nine.vercel.app/og-image.png">
+
+  <!-- KaTeX for math -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      if (typeof renderMathInElement !== "undefined") {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: "\\[", right: "\\]", display: true},
+            {left: "\\(", right: "\\)", display: false}
+          ]
+        });
+      }
+    });
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e17;
+      --surface: #141922;
+      --surface-2: #1a1f2e;
+      --accent: #7c5cfc;
+      --accent-dim: rgba(124, 92, 252, 0.15);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --dim: #64748b;
+      --code-bg: #1a1f2e;
+      --border: #1e293b;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 17px;
+    }
+
+    /* Top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 23, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    .topbar a:hover { color: var(--accent); }
+    .topbar .logo { color: var(--text); font-weight: 700; font-size: 1.1rem; }
+    .topbar .logo span { color: var(--accent); }
+    .topbar-links { display: flex; gap: 1.5rem; }
+
+    /* Layout */
+    .wrapper {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Sidebar TOC */
+    .sidebar {
+      position: sticky;
+      top: 60px;
+      width: 260px;
+      min-width: 260px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+      padding: 2rem 1rem 2rem 2rem;
+      border-right: 1px solid var(--border);
+    }
+    .sidebar h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      margin-bottom: 1rem;
+    }
+    .sidebar ul { list-style: none; }
+    .sidebar li { margin-bottom: 0.4rem; }
+    .sidebar a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      display: block;
+      padding: 0.2rem 0;
+      transition: color 0.2s;
+    }
+    .sidebar a:hover { color: var(--accent); }
+    .sidebar .toc-h3 { padding-left: 1rem; font-size: 0.8rem; }
+
+    /* Main content */
+    .content {
+      flex: 1;
+      min-width: 0;
+      padding: 2.5rem 3rem 4rem;
+      max-width: 800px;
+    }
+
+    /* Paper header */
+    .paper-header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .paper-part {
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+    .paper-header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 1rem;
+    }
+    .paper-author {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .paper-links-bar {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+    }
+    .paper-links-bar a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .paper-links-bar a:hover {
+      background: var(--accent-dim);
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--text);
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+      line-height: 1.3;
+    }
+    h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h3 { font-size: 1.2rem; color: var(--muted); }
+    h4 { font-size: 1.05rem; }
+    p { margin-bottom: 1rem; }
+    a { color: var(--accent); }
+
+    /* Abstract */
+    .abstract {
+      background: var(--surface);
+      border-left: 3px solid var(--accent);
+      padding: 1.5rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 2rem;
+    }
+    .abstract p { margin-bottom: 0; }
+
+    /* Code */
+    pre, code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.6rem 0.8rem;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      background: var(--surface);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:nth-child(even) { background: rgba(20, 25, 34, 0.5); }
+
+    /* Small caps */
+    .smallcaps { font-variant: small-caps; }
+
+    /* Lists */
+    ul, ol { margin: 1rem 0; padding-left: 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+
+    /* Blockquote */
+    blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 1rem;
+      color: var(--muted);
+      margin: 1.5rem 0;
+    }
+
+    /* Figures */
+    figure { margin: 2rem 0; text-align: center; }
+    figcaption { color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* Math */
+    .math.display { overflow-x: auto; padding: 0.5rem 0; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .content { padding: 1.5rem; }
+      .topbar { padding: 0.75rem 1rem; }
+    }
+
+    /* Footer */
+    .paper-footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 0.85rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="../index.html" class="logo">JAPL<span>.</span></a>
+  <div class="topbar-links">
+    <a href="../index.html#papers">All Papers</a>
+    <a href="pdf/mutation-is-local.pdf">Download PDF</a>
+    <a href="https://github.com/YonedaAI/japl" target="_blank">GitHub</a>
+  </div>
+</div>
+
+<div class="wrapper">
+  <nav class="sidebar" id="sidebar">
+    <h4>Contents</h4>
+    <ul id="toc"></ul>
+  </nav>
+
+  <main class="content">
+    <div class="paper-header">
+      <div class="paper-part">Part II</div>
+      <h1> <strong>Mutation Is Local and Explicit:</strong><br />
+Controlled Effects and Linear Ownership<br />
+in the <span class="smallcaps">Japl</span> Programming Language </h1>
+      <div class="paper-author">Matthew Long — The JAPL Research Collaboration<br>YonedaAI Research Collective, Chicago, IL</div>
+      <div class="paper-links-bar">
+        <a href="pdf/mutation-is-local.pdf">PDF</a>
+        <a href="latex/mutation-is-local.tex">LaTeX Source</a>
+        <a href="../index.html#papers">Series Index</a>
+      </div>
+    </div>
+
+    <p><strong>Keywords:</strong> linear types, ownership, mutation,
+    resource safety, effect systems, substructural type systems,
+    dual-layer runtime</p>
+    <h1 data-number="1" id="sec:intro"><span
+    class="header-section-number">1</span> Introduction</h1>
+    <p>The history of programming language design can be read, in large
+    part, as a long negotiation with mutable state. Assembly gives the
+    programmer direct access to every register and memory cell. C
+    organizes that access into functions and structs but leaves aliasing
+    entirely to the programmer’s discipline. Java introduces garbage
+    collection and access modifiers but permits unrestricted sharing of
+    mutable objects across threads. Haskell confines all side effects to
+    the <code>IO</code> monad, achieving referential transparency at the
+    cost of pervasive monadic plumbing. Rust enforces ownership and
+    borrowing rules that prevent data races at compile time, but its
+    borrow checker pervades <em>every</em> layer of the program, even
+    pure data transformations that could never cause a data race.</p>
+    <p><span class="smallcaps">Japl</span> takes a different position:
+    <strong>mutation is local and explicit</strong>. The language is
+    organized around two sharply delineated layers:</p>
+    <ol>
+    <li><p>A <strong>pure layer</strong> where values are immutable,
+    garbage-collected, and freely shared. Most application code—business
+    logic, data transformations, protocol handling—lives here.</p></li>
+    <li><p>A <strong>resource layer</strong> where mutable resources
+    (file handles, network sockets, GPU buffers, FFI pointers) are
+    tracked by a linear ownership discipline. Resources must be consumed
+    exactly once: used and then released.</p></li>
+    </ol>
+    <p>This separation is the second of <span
+    class="smallcaps">Japl</span>’s seven core design principles<a
+    href="#fn1" class="footnote-ref" id="fnref1"
+    role="doc-noteref"><sup>1</sup></a> and is the subject of this
+    paper.</p>
+    <h2 data-number="1.1" id="the-mutation-problem"><span
+    class="header-section-number">1.1</span> The Mutation Problem</h2>
+    <p>Shared mutable state creates three interrelated difficulties:</p>
+    <h4 data-number="1.1.0.1" id="concurrency-bugs."><span
+    class="header-section-number">1.1.0.1</span> Concurrency bugs.</h4>
+    <p>When two threads can both read and write the same memory
+    location, the result depends on scheduling—a data race. Languages
+    without mutation restrictions must rely on locks, atomic operations,
+    or transactional memory, each introducing its own class of bugs
+    (deadlocks, priority inversion, live-lock).</p>
+    <h4 data-number="1.1.0.2" id="aliasing-and-invalidation."><span
+    class="header-section-number">1.1.0.2</span> Aliasing and
+    invalidation.</h4>
+    <p>When multiple references point to the same mutable object, a
+    mutation through one reference can invalidate assumptions made
+    through another. The classic example is iterator invalidation:
+    removing an element from a collection while iterating over it. More
+    subtle is the <em>borrowed reference</em> problem in systems code: a
+    pointer into a buffer becomes dangling after the buffer is
+    reallocated.</p>
+    <h4 data-number="1.1.0.3" id="reasoning-difficulty."><span
+    class="header-section-number">1.1.0.3</span> Reasoning
+    difficulty.</h4>
+    <p>Equational reasoning—substituting equals for equals—fails in the
+    presence of mutation. If <code>f(x)</code> mutates <code>x</code>,
+    then <code>let y = f(x); g(y, x)</code> is not equivalent to
+    <code>g(f(x), x)</code>, because the second occurrence of
+    <code>x</code> observes different state. This makes refactoring
+    hazardous and formal verification prohibitively expensive.</p>
+    <p><span class="smallcaps">Japl</span>’s dual-layer design addresses
+    all three problems. Pure values cannot be mutated, so they are
+    immune to data races, aliasing bugs, and reasoning failures.
+    Resources <em>can</em> be mutated, but ownership tracking ensures
+    that at most one reference exists at any time, restoring the ability
+    to reason locally about mutation effects.</p>
+    <h2 data-number="1.2" id="contributions"><span
+    class="header-section-number">1.2</span> Contributions</h2>
+    <p>This paper makes the following contributions:</p>
+    <ol>
+    <li><p>We present a formal account of <span
+    class="smallcaps">Japl</span>’s dual-layer type system, connecting
+    it to Girard’s linear logic and the theory of substructural type
+    systems (<a href="#sec:formal,sec:dual-layer"
+    data-reference-type="ref+Label"
+    data-reference="sec:formal,sec:dual-layer">[sec:formal,sec:dual-layer]</a>).</p></li>
+    <li><p>We define the ownership semantics for the resource layer,
+    including consumption, borrowing, region-based inference, and
+    uniqueness inference (<a href="#sec:ownership"
+    data-reference-type="ref+Label"
+    data-reference="sec:ownership">5</a>).</p></li>
+    <li><p>We formalize <span class="smallcaps">Japl</span>’s resource
+    types and prove that well-typed programs satisfy <em>resource
+    safety</em>: every acquired resource is eventually released exactly
+    once (<a href="#sec:resource-types,sec:proofs"
+    data-reference-type="ref+Label"
+    data-reference="sec:resource-types,sec:proofs">[sec:resource-types,sec:proofs]</a>).</p></li>
+    <li><p>We describe the interaction between the two layers, including
+    the borrowing protocol and escape hatches (<a
+    href="#sec:interaction" data-reference-type="ref+Label"
+    data-reference="sec:interaction">7</a>).</p></li>
+    <li><p>We provide a detailed comparison with six other language
+    designs (<a href="#sec:comparison" data-reference-type="ref+Label"
+    data-reference="sec:comparison">8</a>) and describe an
+    implementation strategy for the dual-layer runtime (<a
+    href="#sec:implementation" data-reference-type="ref+Label"
+    data-reference="sec:implementation">9</a>).</p></li>
+    </ol>
+    <h2 data-number="1.3" id="paper-organization"><span
+    class="header-section-number">1.3</span> Paper Organization</h2>
+    <p><a href="#sec:background" data-reference-type="ref+Label"
+    data-reference="sec:background">2</a> surveys related work. <a
+    href="#sec:formal" data-reference-type="ref+Label"
+    data-reference="sec:formal">3</a> develops the formal framework:
+    linear logic, substructural type systems, and categorical semantics.
+    <a href="#sec:dual-layer" data-reference-type="ref+Label"
+    data-reference="sec:dual-layer">4</a> presents <span
+    class="smallcaps">Japl</span>’s dual-layer model. <a
+    href="#sec:ownership" data-reference-type="ref+Label"
+    data-reference="sec:ownership">5</a> details ownership semantics. <a
+    href="#sec:resource-types" data-reference-type="ref+Label"
+    data-reference="sec:resource-types">6</a> defines resource types. <a
+    href="#sec:interaction" data-reference-type="ref+Label"
+    data-reference="sec:interaction">7</a> describes layer interaction.
+    <a href="#sec:comparison" data-reference-type="ref+Label"
+    data-reference="sec:comparison">8</a> compares with related
+    languages. <a href="#sec:implementation"
+    data-reference-type="ref+Label"
+    data-reference="sec:implementation">9</a> discusses implementation.
+    <a href="#sec:proofs" data-reference-type="ref+Label"
+    data-reference="sec:proofs">10</a> contains formal proofs. <a
+    href="#sec:discussion" data-reference-type="ref+Label"
+    data-reference="sec:discussion">11</a> reflects on practical
+    trade-offs. <a href="#sec:conclusion"
+    data-reference-type="ref+Label"
+    data-reference="sec:conclusion">12</a> concludes.</p>
+    <h1 data-number="2" id="sec:background"><span
+    class="header-section-number">2</span> Background and Related
+    Work</h1>
+    <h2 data-number="2.1" id="substructural-type-systems"><span
+    class="header-section-number">2.1</span> Substructural Type
+    Systems</h2>
+    <p>The structural rules of a type system determine how hypotheses in
+    a typing context may be used. Classical logic (and the simply-typed
+    lambda calculus) admits three structural rules: <em>weakening</em>
+    (a hypothesis may be ignored), <em>contraction</em> (a hypothesis
+    may be duplicated), and <em>exchange</em> (hypotheses may be
+    reordered). Dropping one or more of these rules yields a
+    <em>substructural</em> type system <span class="citation"
+    data-cites="walker2005substructural"></span>:</p>
+    <div id="def:substructural" class="definition">
+    <p><strong>Definition 1</strong> (Substructural type systems).
+    <em>Let <span class="math inline">\(\Gamma\)</span> denote a typing
+    context. The four principal substructural disciplines are:</em></p>
+    <ol>
+    <li><p><em><strong>Linear</strong>: No weakening, no contraction.
+    Every variable must be used exactly once.</em></p></li>
+    <li><p><em><strong>Affine</strong>: No contraction, but weakening is
+    allowed. Every variable may be used at most once.</em></p></li>
+    <li><p><em><strong>Relevant</strong>: No weakening, but contraction
+    is allowed. Every variable must be used at least once.</em></p></li>
+    <li><p><em><strong>Ordered</strong>: No weakening, no contraction,
+    no exchange. Variables must be used exactly once, in order of
+    introduction.</em></p></li>
+    </ol>
+    </div>
+    <p><span class="smallcaps">Japl</span>’s resource layer employs
+    <em>linear</em> types: each resource must be consumed exactly once.
+    The pure layer uses standard structural types (with all three
+    rules), since immutable values can be freely shared, duplicated, or
+    ignored.</p>
+    <h2 data-number="2.2" id="linear-logic"><span
+    class="header-section-number">2.2</span> Linear Logic</h2>
+    <p>Girard’s linear logic <span class="citation"
+    data-cites="girard1987linear"></span> provides the proof-theoretic
+    foundation for linear type systems. The key connectives are:</p>
+    <ul>
+    <li><p><span class="math inline">\(A \multimap B\)</span> (linear
+    implication): consuming one <span class="math inline">\(A\)</span>
+    produces one <span class="math inline">\(B\)</span>.</p></li>
+    <li><p><span class="math inline">\(A \otimes B\)</span> (tensor /
+    multiplicative conjunction): both <span
+    class="math inline">\(A\)</span> and <span
+    class="math inline">\(B\)</span> are available simultaneously, each
+    used exactly once.</p></li>
+    <li><p><span class="math inline">\({\mathop{!}}A\)</span> (of course
+    / exponential): an unlimited supply of <span
+    class="math inline">\(A\)</span>, recoverable as many times as
+    needed.</p></li>
+    <li><p><span class="math inline">\(A \,\&amp;\, B\)</span> (with /
+    additive conjunction): a choice between <span
+    class="math inline">\(A\)</span> and <span
+    class="math inline">\(B\)</span>, where only one is
+    consumed.</p></li>
+    <li><p><span class="math inline">\(A \oplus B\)</span> (plus /
+    additive disjunction): exactly one of <span
+    class="math inline">\(A\)</span> or <span
+    class="math inline">\(B\)</span> is provided.</p></li>
+    </ul>
+    <p>The exponential <span
+    class="math inline">\({\mathop{!}}A\)</span> is critical: it bridges
+    linear and unrestricted worlds. In <span
+    class="smallcaps">Japl</span>, the pure layer corresponds to the
+    <span class="math inline">\({\mathop{!}}\)</span>-fragment of linear
+    logic: every pure value implicitly carries an exponential modality,
+    meaning it can be freely duplicated and discarded. The resource
+    layer corresponds to the linear fragment proper.</p>
+    <h2 data-number="2.3" id="sec:bg-rust"><span
+    class="header-section-number">2.3</span> Rust’s Ownership and
+    Borrowing</h2>
+    <p>Rust <span class="citation" data-cites="rust2021"></span>
+    pioneered the use of ownership and borrowing as a practical
+    mechanism for memory safety without garbage collection. Rust’s key
+    rules are:</p>
+    <ol>
+    <li><p>Each value has a single owner.</p></li>
+    <li><p>Ownership can be transferred (moved).</p></li>
+    <li><p>References can be borrowed: either one mutable reference
+    <em>or</em> any number of immutable references, but not both
+    simultaneously.</p></li>
+    <li><p>Values are dropped (destructors run) when the owner goes out
+    of scope.</p></li>
+    </ol>
+    <p>The RustBelt project <span class="citation"
+    data-cites="jung2017rustbelt"></span> formalized Rust’s type system
+    using the Iris separation logic framework, proving that well-typed
+    Rust programs (even those using <code>unsafe</code>) satisfy memory
+    safety when the unsafe blocks are locally sound.</p>
+    <p><span class="smallcaps">Japl</span> differs from Rust in a
+    fundamental architectural decision: Rust applies ownership to
+    <em>all</em> values, requiring lifetime annotations even for purely
+    functional data transformations. <span class="smallcaps">Japl</span>
+    restricts ownership to the resource layer, leaving the pure layer
+    free of ownership concerns.</p>
+    <h2 data-number="2.4" id="sec:bg-clean"><span
+    class="header-section-number">2.4</span> Clean’s Uniqueness
+    Types</h2>
+    <p>Clean <span class="citation"
+    data-cites="barendsen1996uniqueness plasmeijer2001clean"></span>
+    uses <em>uniqueness types</em> to ensure that a value has at most
+    one reference. If a value is unique, it can be destructively updated
+    in place without violating referential transparency, because no
+    other reference can observe the mutation.</p>
+    <p>Clean’s uniqueness attribute <code>*</code> is propagated by the
+    type checker. For example, <code>*File</code> denotes a unique file
+    handle that can be read or written. Uniqueness types are closely
+    related to linear types: a unique value must be used exactly once
+    (or threaded through a computation that returns a new unique
+    value).</p>
+    <p><span class="smallcaps">Japl</span>’s resource layer is inspired
+    by Clean’s approach but extends it with explicit <code>own</code>
+    and <code>ref</code> qualifiers, region inference, and integration
+    with an algebraic effect system.</p>
+    <h2 data-number="2.5" id="sec:bg-linear-haskell"><span
+    class="header-section-number">2.5</span> Linear Haskell</h2>
+    <p>Linear Haskell <span class="citation"
+    data-cites="bernardy2018linear"></span> extends Haskell with linear
+    arrow types <span class="math inline">\(a \multimap b\)</span>,
+    allowing functions to specify that an argument must be consumed
+    exactly once. The key insight is <em>retrofitting</em>: linear types
+    are added to an existing language without breaking backward
+    compatibility, by making linearity a property of function arrows
+    rather than types.</p>
+    <p><span class="smallcaps">Japl</span> takes a complementary
+    approach. Rather than adding linearity to arrows, <span
+    class="smallcaps">Japl</span> adds linearity to a distinguished
+    class of <em>types</em> (resource types). This makes the boundary
+    between linear and unrestricted code syntactically visible.</p>
+    <h2 data-number="2.6" id="sec:bg-regions"><span
+    class="header-section-number">2.6</span> Region-Based Memory
+    Management</h2>
+    <p>Tofte and Talpin <span class="citation"
+    data-cites="tofte1997region"></span> introduced region-based memory
+    management, where objects are allocated into lexically scoped
+    regions and deallocated en masse when the region goes out of scope.
+    The Cyclone language <span class="citation"
+    data-cites="jim2002cyclone grossman2002region"></span> brought
+    regions to a C-like setting with static safety guarantees.</p>
+    <p>Region inference automatically determines which region each
+    allocation belongs to, minimizing annotation burden. <span
+    class="smallcaps">Japl</span> uses region-like reasoning in its
+    ownership inference pass: the compiler determines the lifetime of
+    each resource and inserts release operations at the appropriate
+    scope boundaries.</p>
+    <h2 data-number="2.7" id="sec:bg-capabilities"><span
+    class="header-section-number">2.7</span> Capability-Based
+    Security</h2>
+    <p>The capability model of security <span class="citation"
+    data-cites="dennis1966programming miller2006robust"></span>
+    organizes access control around unforgeable tokens (capabilities)
+    rather than identity-based access control lists. A process can only
+    perform an operation if it holds the appropriate capability.</p>
+    <p><span class="smallcaps">Japl</span> applies this principle to
+    resource access: a file can only be read if the function holds an
+    <code>Owned&lt;File&gt;</code> or <code>ref File</code> capability.
+    The effect system (<code>Io</code>, <code>Net</code>) further
+    restricts which capabilities can be exercised in a given
+    context.</p>
+    <h2 data-number="2.8" id="sec:bg-austral-roc-koka"><span
+    class="header-section-number">2.8</span> Austral, Roc, and Koka</h2>
+    <p>Several recent languages explore design points closely related to
+    <span class="smallcaps">Japl</span>’s.</p>
+    <h4 data-number="2.8.0.1" id="austral."><span
+    class="header-section-number">2.8.0.1</span> Austral.</h4>
+    <p>Austral <span class="citation" data-cites="austral2023"></span>
+    is a systems language with linear types in which every type is
+    either <em>free</em> (unrestricted, may be copied and discarded) or
+    <em>linear</em> (must be consumed exactly once). The dichotomy
+    mirrors <span class="smallcaps">Japl</span>’s pure/resource split,
+    but Austral applies it within a single layer: there is no
+    garbage-collected pure heap, and all memory management is explicit.
+    <span class="smallcaps">Japl</span>’s dual-layer design adds a
+    GC-managed pure layer for ergonomics, and borrowing via <span
+    class="math inline">\(\mathsf{ref}\;T\)</span> for non-consuming
+    reads, which Austral lacks.</p>
+    <h4 data-number="2.8.0.2" id="roc."><span
+    class="header-section-number">2.8.0.2</span> Roc.</h4>
+    <p>Roc is a functional language that targets application-level
+    programming and uses a capability-based effect system in which all
+    side effects flow through <em>platforms</em>. Like <span
+    class="smallcaps">Japl</span>, Roc keeps the vast majority of code
+    pure and pushes effects to the boundary. Unlike <span
+    class="smallcaps">Japl</span>, Roc does not expose linear or
+    ownership types to the programmer; resource management is delegated
+    entirely to the platform layer.</p>
+    <h4 data-number="2.8.0.3" id="koka."><span
+    class="header-section-number">2.8.0.3</span> Koka.</h4>
+    <p>Koka <span class="citation" data-cites="leijen2017koka"></span>
+    pioneered row-typed algebraic effects with automatic effect
+    inference. <span class="smallcaps">Japl</span>’s effect system draws
+    on Koka’s design, but Koka does not provide linear types or an
+    ownership discipline for resources. The combination of row-typed
+    effects <em>and</em> linear resource tracking is a distinctive
+    feature of <span class="smallcaps">Japl</span>’s design.</p>
+    <h2 data-number="2.9" id="algebraic-effects-and-handlers"><span
+    class="header-section-number">2.9</span> Algebraic Effects and
+    Handlers</h2>
+    <p>Algebraic effects <span class="citation"
+    data-cites="plotkin2009handlers bauer2015programming"></span>
+    provide a structured alternative to monads for describing side
+    effects. An effect signature declares a set of operations; an effect
+    handler provides implementations for those operations.</p>
+    <p><span class="smallcaps">Japl</span>’s effect system
+    (<code>Io</code>, <code>State[s]</code>, <code>Fail[e]</code>, etc.)
+    draws on algebraic effects. Effects form a commutative monoid under
+    composition, and effect handlers serve as natural transformations
+    from effectful computations to pure results <span class="citation"
+    data-cites="kammar2013handlers"></span>. The interaction between
+    effects and linear types is a key contribution of this paper:
+    resource operations are effectful (<code>with Io</code>), and the
+    linear discipline ensures that effect handlers cannot accidentally
+    duplicate or discard resources.</p>
+    <h1 data-number="3" id="sec:formal"><span
+    class="header-section-number">3</span> Formal Framework</h1>
+    <p>This section develops the type-theoretic and logical foundations
+    of <span class="smallcaps">Japl</span>’s dual-layer system.</p>
+    <h2 data-number="3.1" id="sec:linear-type-theory"><span
+    class="header-section-number">3.1</span> Linear Type Theory</h2>
+    <p>We begin with a standard presentation of the linear lambda
+    calculus <span class="citation"
+    data-cites="wadler1990linear wadler1993taste"></span>.</p>
+    <div id="def:linear-types" class="definition">
+    <p><strong>Definition 2</strong> (Linear types). <em>The types of
+    the linear lambda calculus are given by the grammar: <span
+    class="math display">\[A, B ::= \alpha \mid A \multimap B \mid A
+    \otimes B \mid {\mathop{!}}A
+               \mid A \,\&amp;\, B \mid A \oplus B \mid \mathbf{1} \mid
+    \mathbf{0}\]</span> where <span
+    class="math inline">\(\alpha\)</span> ranges over type variables,
+    <span class="math inline">\(\multimap\)</span> is linear function
+    space, <span class="math inline">\(\otimes\)</span> is
+    multiplicative conjunction, <span
+    class="math inline">\({\mathop{!}}\)</span> is the exponential,
+    <span class="math inline">\(\&amp;\)</span> is additive conjunction,
+    <span class="math inline">\(\oplus\)</span> is additive disjunction,
+    <span class="math inline">\(\mathbf{1}\)</span> is the unit of <span
+    class="math inline">\(\otimes\)</span>, and <span
+    class="math inline">\(\mathbf{0}\)</span> is the empty
+    type.</em></p>
+    </div>
+    <div id="def:linear-context" class="definition">
+    <p><strong>Definition 3</strong> (Linear typing context). <em>A
+    <em>linear context</em> <span class="math inline">\(\Delta\)</span>
+    is a multiset of typing assumptions <span class="math inline">\(x :
+    A\)</span> where each variable <span
+    class="math inline">\(x\)</span> appears at most once. An
+    <em>unrestricted context</em> <span
+    class="math inline">\(\Gamma\)</span> contains assumptions <span
+    class="math inline">\(x : A\)</span> where <span
+    class="math inline">\(x\)</span> may be used arbitrarily many times.
+    A <em>mixed context</em> is a pair <span
+    class="math inline">\(\Gamma; \Delta\)</span>.</em></p>
+    </div>
+    <p>The typing judgment <span class="math inline">\(\Gamma; \Delta
+    \vdash e : A\)</span> asserts that expression <span
+    class="math inline">\(e\)</span> has type <span
+    class="math inline">\(A\)</span> under unrestricted context <span
+    class="math inline">\(\Gamma\)</span> and linear context <span
+    class="math inline">\(\Delta\)</span>, where <em>every</em>
+    assumption in <span class="math inline">\(\Delta\)</span> is
+    consumed exactly once.</p>
+    <div id="def:core-rules" class="definition">
+    <p><strong>Definition 4</strong> (Core typing rules). <em>The
+    following rules govern the linear lambda calculus with
+    exponentials:</em></p>
+    <div class="mathpar">
+    <p><em><span>; x : A x : A</span></em></p>
+    <p><em><span>; x : A</span></em></p>
+    <p><em><span>; x.  e : A B</span></em></p>
+    <p><em><span>; _1, _2 e_1 e_2 : B</span></em></p>
+    <p><em><span>; _1, _2 (e_1, e_2) : A B</span></em></p>
+    <p><em><span>; _1, _2 (x, y) = e e’ : C</span></em></p>
+    <p><em><span>; e : A</span></em></p>
+    <p><em><span>; _1, _2 x = e_1 e_2 : B</span></em></p>
+    </div>
+    </div>
+    <p>The <span class="math inline">\({\mathop{!}}\)</span>-I rule
+    requires that the expression <span class="math inline">\(e\)</span>
+    use <em>no</em> linear resources: only unrestricted values can be
+    promoted to the exponential. This is the formal counterpart of <span
+    class="smallcaps">Japl</span>’s rule that pure values cannot capture
+    resources.</p>
+    <h2 data-number="3.2" id="sec:girard"><span
+    class="header-section-number">3.2</span> Connection to Girard’s
+    Linear Logic</h2>
+    <p>The Curry-Howard correspondence extends to linear logic: proofs
+    correspond to programs, propositions to types, and cut-elimination
+    to evaluation <span class="citation"
+    data-cites="girard1987linear wadler2012propositions"></span>.</p>
+    <div id="prop:curry-howard" class="proposition">
+    <p><strong>Proposition 5</strong> (Curry-Howard for linear logic).
+    <em>Under the linear Curry-Howard correspondence:</em></p>
+    <ol>
+    <li><p><em><span class="math inline">\(A \multimap B\)</span>
+    corresponds to a function consuming one <span
+    class="math inline">\(A\)</span> to produce one <span
+    class="math inline">\(B\)</span>.</em></p></li>
+    <li><p><em><span class="math inline">\(A \otimes B\)</span>
+    corresponds to a pair where both components must be
+    used.</em></p></li>
+    <li><p><em><span class="math inline">\({\mathop{!}}A\)</span>
+    corresponds to a value that may be duplicated or
+    discarded.</em></p></li>
+    <li><p><em><span class="math inline">\(A \,\&amp;\, B\)</span>
+    corresponds to a lazy pair (choose one projection).</em></p></li>
+    <li><p><em><span class="math inline">\(A \oplus B\)</span>
+    corresponds to a tagged union (one alternative is
+    provided).</em></p></li>
+    </ol>
+    </div>
+    <p>In <span class="smallcaps">Japl</span>’s dual-layer system, the
+    Curry-Howard correspondence manifests directly: pure-layer types
+    correspond to the <span
+    class="math inline">\({\mathop{!}}\)</span>-fragment (all types
+    implicitly carry <span class="math inline">\({\mathop{!}}\)</span>),
+    while resource-layer types correspond to the linear fragment (no
+    implicit <span class="math inline">\({\mathop{!}}\)</span>).</p>
+    <h2 data-number="3.3" id="sec:categorical"><span
+    class="header-section-number">3.3</span> Categorical Semantics</h2>
+    <p>The categorical semantics of linear types provides a rigorous
+    foundation for the dual-layer design.</p>
+    <div id="def:smcc" class="definition">
+    <p><strong>Definition 6</strong> (Symmetric monoidal closed
+    category). <em>A <em>symmetric monoidal closed category</em> (SMCC)
+    <span class="math inline">\((\mathcal{C}, \otimes, I,
+    \multimap)\)</span> consists of a category <span
+    class="math inline">\(\mathcal{C}\)</span> equipped with a bifunctor
+    <span class="math inline">\(\otimes: \mathcal{C} \times \mathcal{C}
+    \to \mathcal{C}\)</span>, a unit object <span
+    class="math inline">\(I\)</span>, and an internal hom <span
+    class="math inline">\(\multimap\)</span> such that <span
+    class="math inline">\(- \otimes A \dashv A \multimap-\)</span> for
+    every object <span class="math inline">\(A\)</span>.</em></p>
+    </div>
+    <div id="def:lnl" class="definition">
+    <p><strong>Definition 7</strong> (Linear-non-linear model). <em>A
+    <em>linear-non-linear (LNL) model</em> <span class="citation"
+    data-cites="benton1995mixed"></span> consists of:</em></p>
+    <ol>
+    <li><p><em>A Cartesian closed category <span
+    class="math inline">\(\mathcal{C}\)</span> (the “non-linear” or
+    “intuitionistic” part).</em></p></li>
+    <li><p><em>A symmetric monoidal closed category <span
+    class="math inline">\(\mathcal{L}\)</span> (the “linear”
+    part).</em></p></li>
+    <li><p><em>A symmetric monoidal adjunction <span
+    class="math inline">\(F \dashv G : \mathcal{L}
+            \to \mathcal{C}\)</span> where <span class="math inline">\(F
+    : \mathcal{C} \to \mathcal{L}\)</span> is a symmetric monoidal
+    functor.</em></p></li>
+    </ol>
+    <p><em>The exponential <span
+    class="math inline">\({\mathop{!}}\)</span> is recovered as the
+    comonad <span class="math inline">\(FG\)</span> on <span
+    class="math inline">\(\mathcal{L}\)</span>.</em></p>
+    </div>
+    <div id="thm:lnl" class="theorem">
+    <p><strong>Theorem 8</strong> (Benton’s LNL correspondence <span
+    class="citation" data-cites="benton1995mixed"></span>). <em>The
+    category of LNL models is equivalent to the category of models of
+    intuitionistic linear logic (ILL) with an exponential <span
+    class="math inline">\({\mathop{!}}\)</span> satisfying the standard
+    structural rules (weakening, contraction, dereliction,
+    promotion).</em></p>
+    </div>
+    <p>This result is directly relevant to <span
+    class="smallcaps">Japl</span>:</p>
+    <div id="rem:japl-lnl" class="remark">
+    <p><strong>Remark 9</strong> (<span class="smallcaps">Japl</span> as
+    an LNL model). <em><span class="smallcaps">Japl</span>’s dual-layer
+    system instantiates the LNL framework:</em></p>
+    <ul>
+    <li><p><em><span class="math inline">\(\mathcal{C}\)</span> is the
+    category of pure <span class="smallcaps">Japl</span> types, which is
+    Cartesian closed (it has product types, function types, and a
+    terminal object <code>Unit</code>).</em></p></li>
+    <li><p><em><span class="math inline">\(\mathcal{L}\)</span> is the
+    category of resource <span class="smallcaps">Japl</span> types,
+    which is symmetric monoidal closed (tensor is pair-of-resources,
+    linear function is ownership-transferring function).</em></p></li>
+    <li><p><em>The functor <span class="math inline">\(F : \mathcal{C}
+    \to \mathcal{L}\)</span> embeds pure values into the resource layer
+    (a pure value can always be used where a resource is expected, since
+    it carries an implicit <span
+    class="math inline">\({\mathop{!}}\)</span>).</em></p></li>
+    <li><p><em>The functor <span class="math inline">\(G : \mathcal{L}
+    \to \mathcal{C}\)</span> “forgets” linearity—this corresponds to the
+    <code>freeze</code> or <code>snapshot</code> operations that convert
+    a resource to an immutable value.</em></p></li>
+    </ul>
+    </div>
+    <h2 data-number="3.4" id="sec:compact-closed"><span
+    class="header-section-number">3.4</span> Compact Closed Categories
+    and Duality</h2>
+    <p>In the full linear logic setting, the multiplicative fragment
+    admits a notion of <em>duality</em>: every type <span
+    class="math inline">\(A\)</span> has a dual <span
+    class="math inline">\(A^\perp\)</span>, and the category of types
+    forms a <span class="math inline">\(\ast\)</span>-autonomous
+    category <span class="citation"
+    data-cites="barr1991autonomous"></span>.</p>
+    <div id="def:star-auto" class="definition">
+    <p><strong>Definition 10</strong> (<span
+    class="math inline">\(\ast\)</span>-Autonomous category). <em>A
+    <span class="math inline">\(\ast\)</span>-<em>autonomous
+    category</em> is a symmetric monoidal closed category <span
+    class="math inline">\((\mathcal{C}, \otimes, I, \multimap)\)</span>
+    equipped with a dualizing object <span
+    class="math inline">\(\bot\)</span> such that the canonical morphism
+    <span class="math inline">\(A \to (A \multimap\bot)
+    \multimap\bot\)</span> is an isomorphism for every object <span
+    class="math inline">\(A\)</span>.</em></p>
+    </div>
+    <p>While <span class="smallcaps">Japl</span> does not expose full
+    classical linear logic to the programmer, the duality principle
+    manifests in the resource layer’s <em>consumption pattern</em>:
+    acquiring a resource of type <span class="math inline">\(R\)</span>
+    creates an obligation (dual) to release it. The linear type system
+    ensures that this obligation is always discharged.</p>
+    <h1 data-number="4" id="sec:dual-layer"><span
+    class="header-section-number">4</span> JAPL’s Dual-Layer Model</h1>
+    <p>This section presents the core design of <span
+    class="smallcaps">Japl</span>’s two-layer type and memory
+    system.</p>
+    <h2 data-number="4.1" id="design-philosophy"><span
+    class="header-section-number">4.1</span> Design Philosophy</h2>
+    <p>The dual-layer model is motivated by an empirical observation:
+    <strong>most code does not need mutation</strong>. Business logic,
+    data transformations, protocol parsing, serialization, routing—all
+    of these are naturally expressed as pure functions over immutable
+    values. Mutation is needed only at the boundaries: reading files,
+    writing sockets, managing GPU memory, interacting with foreign
+    libraries.</p>
+    <p>By restricting ownership tracking to the resource layer, <span
+    class="smallcaps">Japl</span> achieves two goals simultaneously:</p>
+    <ol>
+    <li><p><strong>Ergonomics</strong>: The vast majority of code is
+    free of ownership annotations, lifetime parameters, and
+    borrow-checker errors.</p></li>
+    <li><p><strong>Safety</strong>: The code that <em>does</em> interact
+    with mutable resources is subject to a rigorous linear discipline
+    that prevents resource leaks, use-after-free, and
+    double-free.</p></li>
+    </ol>
+    <h2 data-number="4.2" id="sec:pure-layer"><span
+    class="header-section-number">4.2</span> The Pure Layer</h2>
+    <p>The pure layer encompasses all immutable values: algebraic data
+    types, records, tuples, lists, maps, strings, closures, and numeric
+    types.</p>
+    <div id="def:pure-types" class="definition">
+    <p><strong>Definition 11</strong> (Pure types). <em>The pure types
+    of <span class="smallcaps">Japl</span> are given by: <span
+    class="math display">\[\tau ::= \alpha \mid \texttt{Int} \mid
+    \texttt{Float} \mid \texttt{Bool}
+             \mid \texttt{String} \mid \texttt{Unit}
+             \mid \tau_1 \times \tau_2 \mid \tau_1 + \tau_2
+             \mid \tau_1 \to \tau_2 \mid \texttt{List}[\tau]
+             \mid \{ \ell_1 : \tau_1, \ldots, \ell_n : \tau_n \mid \rho
+    \}\]</span> where <span class="math inline">\(\alpha\)</span> ranges
+    over type variables and <span class="math inline">\(\rho\)</span>
+    ranges over row variables.</em></p>
+    </div>
+    <p>Pure values have the following properties:</p>
+    <ul>
+    <li><p><strong>Immutable</strong>: Once created, a pure value never
+    changes.</p></li>
+    <li><p><strong>GC-managed</strong>: Memory is reclaimed by a
+    generational, per-process garbage collector.</p></li>
+    <li><p><strong>Freely shareable</strong>: Pure values can be passed
+    to any number of functions, stored in any number of data structures,
+    and sent to any number of processes.</p></li>
+    <li><p><strong>Structurally typed</strong>: Two values with the same
+    structure have the same type (row polymorphism for
+    records).</p></li>
+    </ul>
+    <pre id="lst:pure-layer"
+    data-caption="Pure-layer code: no ownership concerns"
+    data-label="lst:pure-layer"><code>-- Pure values: immutable, GC-managed, freely shareable
+let data = [1, 2, 3, 4, 5]
+let copy = data  -- sharing is fine; data is immutable
+
+-- Pure function: transforms data, no side effects
+fn transform(data: List[Int]) -&gt; List[Int] =
+  List.map(data, fn x -&gt; x * 2)
+
+-- Composition of pure functions
+fn process_order(order: Order) -&gt; Invoice =
+  order
+  |&gt; validate
+  |&gt; calculate_totals
+  |&gt; apply_discounts
+  |&gt; generate_invoice</code></pre>
+    <h2 data-number="4.3" id="sec:resource-layer"><span
+    class="header-section-number">4.3</span> The Resource Layer</h2>
+    <p>The resource layer encompasses all mutable, owned values: file
+    handles, network sockets, database connections, GPU buffers, FFI
+    pointers, and mutable arrays.</p>
+    <div id="def:resource-types" class="definition">
+    <p><strong>Definition 12</strong> (Resource types). <em>A resource
+    type is introduced by the <code>resource</code> keyword: <span
+    class="math display">\[R ::= \texttt{resource}\; T\]</span> Resource
+    types are <em>linear</em>: each value of a resource type must be
+    consumed exactly once in every execution path.</em></p>
+    </div>
+    <div id="def:ownership-qualifiers" class="definition">
+    <p><strong>Definition 13</strong> (Ownership qualifiers). <em><span
+    class="smallcaps">Japl</span> provides two ownership
+    qualifiers:</em></p>
+    <ol>
+    <li><p><em><span class="math inline">\(\mathsf{own}\; T\)</span>:
+    Exclusive ownership. The holder can read, write, and release the
+    resource. Corresponds to the linear type <span
+    class="math inline">\(T\)</span>.</em></p></li>
+    <li><p><em><span class="math inline">\(\mathsf{ref}\; T\)</span>:
+    Borrowed reference. The holder can read the resource but cannot
+    write, release, or transfer it. Corresponds to <span
+    class="math inline">\({\mathop{!}}T\)</span> restricted to a
+    scope.</em></p></li>
+    </ol>
+    </div>
+    <pre id="lst:resource-layer"
+    data-caption="Resource-layer code: explicit ownership"
+    data-label="lst:resource-layer"><code>resource File
+resource Socket
+
+-- Opening a file acquires ownership (manual management via let)
+fn read_config(path: Path) -&gt; Result[Config, ReadError] with Io =
+  let file = File.open(path, Read)?
+  let contents = File.read_all(file)?
+  File.close(file)  -- ownership consumed; compile error if omitted
+  parse_config(contents)
+
+-- Ownership transfer: send consumes the socket, returns it
+fn send(socket: Owned[Socket], bytes: Bytes)
+    -&gt; (Owned[Socket], Int) with Io =
+  let n = Socket.write(socket, bytes)
+  (socket, n)</code></pre>
+    <h2 data-number="4.4" id="the-split-in-practice"><span
+    class="header-section-number">4.4</span> The Split in Practice</h2>
+    <p>The boundary between pure and resource layers is clean and
+    syntactically visible. Consider a web server:</p>
+    <pre id="lst:web-server"
+    data-caption="The dual-layer split in a web server"
+    data-label="lst:web-server"><code>-- Pure layer: all business logic
+fn route(req: Request) -&gt; Response =
+  match req.method, req.path with
+  | Get, &quot;/users/&quot; ++ id -&gt; get_user(id)
+  | Post, &quot;/users&quot;       -&gt; create_user(req.body)
+  | _                    -&gt; not_found()
+
+fn get_user(id: String) -&gt; Response =
+  match UserRepo.find(id) with
+  | Some(user) -&gt; Response.json(200, User.to_json(user))
+  | None       -&gt; Response.json(404, error_json(&quot;not found&quot;))
+
+-- Resource layer: IO boundary
+fn serve(listener: Owned[TcpListener])
+    -&gt; Never with Io, Process[ServerMsg] =
+  let (listener, conn) = Tcp.accept(listener)
+  let _ = Process.spawn(fn -&gt; handle_conn(conn))
+  serve(listener)
+
+fn handle_conn(conn: Owned[TcpSocket]) -&gt; Unit with Io =
+  let (conn, req_bytes) = Tcp.read(conn)
+  let req = parse_request(req_bytes)  -- pure
+  let resp = route(req)               -- pure
+  let conn = Tcp.write(conn, serialize_response(resp))
+  Tcp.close(conn)</code></pre>
+    <p>In this example, the pure functions <code>route</code>,
+    <code>get_user</code>, <code>parse_request</code>, and
+    <code>serialize_response</code> make up the majority of the code and
+    require no ownership annotations. Only <code>serve</code> and
+    <code>handle_conn</code>, which interact with TCP sockets, operate
+    in the resource layer.</p>
+    <h2 data-number="4.5" id="formal-typing-judgment"><span
+    class="header-section-number">4.5</span> Formal Typing Judgment</h2>
+    <p>The dual-layer system uses a combined typing judgment:</p>
+    <div id="def:dual-judgment" class="definition">
+    <p><strong>Definition 14</strong> (Dual-layer typing judgment).
+    <em>The judgment <span class="math display">\[\Gamma; \Delta
+    \vdash_\varepsilon e : \tau\]</span> asserts that expression <span
+    class="math inline">\(e\)</span> has type <span
+    class="math inline">\(\tau\)</span> under unrestricted (pure)
+    context <span class="math inline">\(\Gamma\)</span>, linear
+    (resource) context <span class="math inline">\(\Delta\)</span>, and
+    with effect <span class="math inline">\(\varepsilon \in
+    \{\mathsf{Pure}, \mathsf{Io}, \ldots\}\)</span>.</em></p>
+    <p><em>The rules ensure:</em></p>
+    <ol>
+    <li><p><em>Variables in <span class="math inline">\(\Gamma\)</span>
+    may be used any number of times.</em></p></li>
+    <li><p><em>Variables in <span class="math inline">\(\Delta\)</span>
+    must each be used exactly once.</em></p></li>
+    <li><p><em>Resource-producing operations (<code>File.open</code>,
+    etc.) add bindings to <span
+    class="math inline">\(\Delta\)</span>.</em></p></li>
+    <li><p><em>Resource-consuming operations (<code>File.close</code>,
+    etc.) remove bindings from <span
+    class="math inline">\(\Delta\)</span>.</em></p></li>
+    <li><p><em>At every join point (if-then-else, match), the remaining
+    <span class="math inline">\(\Delta\)</span> must be identical in all
+    branches.</em></p></li>
+    </ol>
+    </div>
+    <h1 data-number="5" id="sec:ownership"><span
+    class="header-section-number">5</span> Ownership Semantics</h1>
+    <h2 data-number="5.1" id="ownedlangle-t-rangle"><span
+    class="header-section-number">5.1</span> Owned<span
+    class="math inline">\(\langle T \rangle\)</span></h2>
+    <p>The type <span class="math inline">\(\mathsf{Owned}\langle T
+    \rangle\)</span> represents exclusive ownership of a resource of
+    type <span class="math inline">\(T\)</span>. The owner has three
+    rights:</p>
+    <ol>
+    <li><p><strong>Use</strong>: Perform operations on the resource
+    (read, write).</p></li>
+    <li><p><strong>Transfer</strong>: Pass ownership to another function
+    or process.</p></li>
+    <li><p><strong>Release</strong>: Deallocate the resource, releasing
+    its underlying system resource.</p></li>
+    </ol>
+    <p>These rights are mutually exclusive over time: once ownership is
+    transferred or the resource is released, the original holder loses
+    all rights.</p>
+    <div id="def:transfer" class="definition">
+    <p><strong>Definition 15</strong> (Ownership transfer). <em>A
+    function that accepts an <span
+    class="math inline">\(\mathsf{Owned}\langle T \rangle\)</span>
+    parameter <em>consumes</em> the caller’s ownership. If the function
+    returns an <span class="math inline">\(\mathsf{Owned}\langle T
+    \rangle\)</span>, ownership is transferred back to the caller. The
+    typing rule is:</em></p>
+    <div class="mathpar">
+    <p><em><span>; _ (x : T ).  e : T _</span></em></p>
+    </div>
+    </div>
+    <h2 data-number="5.2" id="sec:consumption"><span
+    class="header-section-number">5.2</span> Consumption and Return
+    Patterns</h2>
+    <p><span class="smallcaps">Japl</span> supports several patterns for
+    resource consumption:</p>
+    <h4 data-number="5.2.0.1" id="terminal-consumption."><span
+    class="header-section-number">5.2.0.1</span> Terminal
+    consumption.</h4>
+    <p>The resource is released and not returned:</p>
+    <pre id="lst:terminal"
+    data-caption="Terminal consumption: File.close"
+    data-label="lst:terminal"><code>fn close_file(file: Owned[File]) -&gt; Unit with Io =
+  File.close(file)
+  -- file is consumed; cannot be used after this point</code></pre>
+    <h4 data-number="5.2.0.2" id="threaded-consumption."><span
+    class="header-section-number">5.2.0.2</span> Threaded
+    consumption.</h4>
+    <p>The resource is used and then returned with updated state:</p>
+    <pre id="lst:threaded"
+    data-caption="Threaded consumption: read then return"
+    data-label="lst:threaded"><code>fn read_line(file: Owned[File])
+    -&gt; (Owned[File], String) with Io =
+  let (file, line) = File.read_line(file)
+  (file, line)</code></pre>
+    <h4 data-number="5.2.0.3" id="fork-join-consumption."><span
+    class="header-section-number">5.2.0.3</span> Fork-join
+    consumption.</h4>
+    <p>Ownership is temporarily split (borrowing) and then rejoined:</p>
+    <pre id="lst:fork-join" data-caption="Fork-join via borrowing"
+    data-label="lst:fork-join"><code>fn copy_file(src: Owned[File], dst: Owned[File])
+    -&gt; (Owned[File], Owned[File]) with Io =
+  let bytes = File.read_all(src)
+  let dst = File.write_all(dst, bytes)
+  (src, dst)</code></pre>
+    <h2 data-number="5.3" id="sec:borrowing"><span
+    class="header-section-number">5.3</span> Borrowing</h2>
+    <p>Borrowing allows temporary read-only access to a resource without
+    transferring ownership.</p>
+    <div id="def:borrow" class="definition">
+    <p><strong>Definition 16</strong> (Borrow). <em>A <em>borrow</em> of
+    type <span class="math inline">\(\mathsf{ref}\; T\)</span> grants
+    read-only access to a resource of type <span
+    class="math inline">\(T\)</span>. The borrow is valid only within
+    the lexical scope of the borrowing expression. The typing rule
+    is:</em></p>
+    <div class="mathpar">
+    <p><em><span>; , x : T _ x y e : </span></em></p>
+    </div>
+    <p><em>where <span class="math inline">\(y : \mathsf{ref}\;
+    T\)</span> is the borrowed reference, and <span
+    class="math inline">\(x\)</span> remains available as <span
+    class="math inline">\(\mathsf{Owned}\langle T \rangle\)</span> after
+    the borrow scope exits.</em></p>
+    </div>
+    <div id="rem:borrow-desugar" class="remark">
+    <p><strong>Remark 17</strong> (Borrow desugaring). <em>The surface
+    syntax <span class="math inline">\(\mathbf{borrow}\; x\;
+    \mathbf{as}\; y\;
+    \mathbf{in}\; e\)</span> desugars to the core calculus form <span
+    class="math inline">\(\mathsf{borrow}(\mathsf{res}(a),\; \lambda
+    y.\, e)\)</span>, where <span class="math inline">\(x\)</span> is
+    bound to <span class="math inline">\(\mathsf{res}(a)\)</span> and
+    the body <span class="math inline">\(e\)</span> is wrapped in a
+    lambda that receives the borrowed value <span
+    class="math inline">\(y\)</span>. The core reduction rule
+    (Definition <a href="#def:reduction" data-reference-type="ref"
+    data-reference="def:reduction">32</a>, rule <span
+    class="smallcaps">Borrow</span>) then reduces <span
+    class="math inline">\(\mathsf{borrow}(\mathsf{res}(a), f)\)</span>
+    to <span class="math inline">\((f\; v,\;
+    \mathsf{res}(a))\)</span>, applying the closure to the live value
+    <span class="math inline">\(v\)</span> while preserving the resource
+    handle.</em></p>
+    </div>
+    <pre id="lst:borrow"
+    data-caption="Borrowing: peek at a buffer without consuming it"
+    data-label="lst:borrow"><code>fn peek(buf: ref Buffer) -&gt; Byte =
+  Buffer.get(buf, 0)
+
+fn process(buf: Owned[Buffer]) -&gt; (Owned[Buffer], Byte) with Io =
+  let byte = peek(ref buf)  -- borrow for read-only access
+  (buf, byte)               -- buf is still owned here</code></pre>
+    <p>The key constraint is that borrows cannot <em>outlive</em> the
+    owner: the borrowed reference <span
+    class="math inline">\(\mathsf{ref}\; T\)</span> is valid only within
+    the scope where it is created. This is enforced statically by the
+    compiler.</p>
+    <h2 data-number="5.4" id="sec:region-inference"><span
+    class="header-section-number">5.4</span> Region-Based Inference</h2>
+    <p><span class="smallcaps">Japl</span> uses region-based
+    inference <span class="citation"
+    data-cites="tofte1997region"></span> to automatically determine
+    resource lifetimes and insert release operations.</p>
+    <div id="def:region" class="definition">
+    <p><strong>Definition 18</strong> (Region). <em>A <em>region</em>
+    <span class="math inline">\(r\)</span> is an abstract lifetime
+    associated with a lexical scope. Every resource allocation is
+    assigned a region, and the resource is released when the region
+    ends. Regions form a partial order: if scope <span
+    class="math inline">\(r_1\)</span> is nested inside scope <span
+    class="math inline">\(r_2\)</span>, then <span
+    class="math inline">\(r_1 \sqsubseteq r_2\)</span> (i.e., <span
+    class="math inline">\(r_1\)</span> ends before <span
+    class="math inline">\(r_2\)</span>).</em></p>
+    </div>
+    <p>The compiler’s region inference pass operates in three
+    phases:</p>
+    <ol>
+    <li><p><strong>Constraint generation</strong>: For each resource
+    allocation, generate a region variable. For each use, generate a
+    constraint that the resource’s region must contain the use site. For
+    each ownership transfer, propagate the region.</p></li>
+    <li><p><strong>Constraint solving</strong>: Solve the region
+    constraints to find the minimal region for each resource.</p></li>
+    <li><p><strong>Insertion</strong>: Insert release operations at
+    region boundaries where resources go out of scope.</p></li>
+    </ol>
+    <div id="ex:auto-release" class="example">
+    <p><strong>Example 19</strong> (Automatic release). <em>In the
+    following code, the compiler infers that <code>conn</code> must live
+    at least as long as the scope of
+    <code>process_query</code>:</em></p>
+    <pre id="lst:region"
+    data-caption="Region inference inserts Db.close automatically"
+    data-label="lst:region"><code>fn process_query(url: String, sql: String)
+    -&gt; Result[Rows, DbError] with Io =
+  use conn = Db.connect(url)?
+  let result = Db.query(ref conn, sql)?
+  -- compiler inserts: Db.close(conn) here
+  Ok(result)</code></pre>
+    <p><em>The <code>use</code> binding signals that <code>conn</code>
+    is a linear resource; the compiler ensures it is released at the end
+    of its region.</em></p>
+    </div>
+    <h2 data-number="5.5" id="sec:uniqueness-inference"><span
+    class="header-section-number">5.5</span> Uniqueness Inference</h2>
+    <p>Beyond region inference, <span class="smallcaps">Japl</span>
+    performs <em>uniqueness inference</em> to determine when a value has
+    a single reference, enabling in-place mutation optimizations.</p>
+    <div id="def:uniqueness" class="definition">
+    <p><strong>Definition 20</strong> (Uniqueness). <em>A value is
+    <em>unique</em> if it has exactly one reference in the program
+    state. A unique immutable value can be safely updated in-place
+    (destructive update), because no other reference can observe the
+    change.</em></p>
+    </div>
+    <div id="prop:uniqueness-opt" class="proposition">
+    <p><strong>Proposition 21</strong> (Uniqueness optimization). <em>If
+    a pure value <span class="math inline">\(v\)</span> is unique at a
+    record-update site <span class="math inline">\(\{ v \mid \ell = e
+    \}\)</span>, the compiler may perform the update in-place, avoiding
+    allocation. This is semantically equivalent to creating a fresh copy
+    with the field changed.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> Since <span class="math inline">\(v\)</span> has
+    a single reference, no other expression can observe the difference
+    between in-place update and copy-on-write. By parametricity, the
+    program cannot distinguish the two implementations. ◻</p>
+    </div>
+    <p>This optimization is particularly important for the common
+    pattern of threading state through recursive functions:</p>
+    <pre id="lst:uniqueness"
+    data-caption="Uniqueness inference enables in-place update"
+    data-label="lst:uniqueness"><code>fn server_loop(state: ServerState) -&gt; Never with Process[Msg] =
+  let msg = Process.receive()
+  -- If state is unique (no other references), the update
+  -- { state | count = state.count + 1 } is performed in-place.
+  let new_state = { state | count = state.count + 1 }
+  server_loop(new_state)</code></pre>
+    <h1 data-number="6" id="sec:resource-types"><span
+    class="header-section-number">6</span> Resource Types</h1>
+    <h2 data-number="6.1" id="declaring-resource-types"><span
+    class="header-section-number">6.1</span> Declaring Resource
+    Types</h2>
+    <p>Resource types are declared with the <code>resource</code>
+    keyword:</p>
+    <pre id="lst:resource-decl"
+    data-caption="Resource type declarations"
+    data-label="lst:resource-decl"><code>resource File
+resource Socket
+resource DbConnection
+resource GpuBuffer
+resource MutableArray[a]</code></pre>
+    <p>The <code>resource</code> keyword instructs the compiler to apply
+    linear typing rules to values of this type. A resource cannot be
+    silently dropped, duplicated, or aliased.</p>
+    <h2 data-number="6.2" id="sec:lifecycle"><span
+    class="header-section-number">6.2</span> Resource Lifecycle</h2>
+    <p>Every resource follows a lifecycle:</p>
+    <ol>
+    <li><p><strong>Acquisition</strong>: A resource is created via a
+    constructor (e.g., <code>File.open</code>,
+    <code>Tcp.connect</code>). The constructor returns <span
+    class="math inline">\(\mathsf{Owned}\langle R
+    \rangle\)</span>.</p></li>
+    <li><p><strong>Use</strong>: The resource is operated on via
+    functions that take <span
+    class="math inline">\(\mathsf{Owned}\langle R \rangle\)</span> or
+    <span class="math inline">\(\mathsf{ref}\; R\)</span>. Functions
+    that take <span class="math inline">\(\mathsf{Owned}\langle R
+    \rangle\)</span> must return it (threaded pattern) or consume it
+    (terminal pattern).</p></li>
+    <li><p><strong>Release</strong>: The resource is released via a
+    destructor (e.g., <code>File.close</code>,
+    <code>Tcp.disconnect</code>). The destructor consumes <span
+    class="math inline">\(\mathsf{Owned}\langle R \rangle\)</span> and
+    returns no resource.</p></li>
+    </ol>
+    <div id="def:resource-safety" class="definition">
+    <p><strong>Definition 22</strong> (Resource safety). <em>A program
+    is <em>resource-safe</em> if, for every resource acquired during
+    execution, the resource is eventually released exactly
+    once.</em></p>
+    </div>
+    <div id="thm:resource-safety" class="theorem">
+    <p><strong>Theorem 23</strong> (Well-typed programs are
+    resource-safe). <em>If <span class="math inline">\(\Gamma; \cdot
+    \vdash_\varepsilon e : \tau\)</span> (i.e., the program type-checks
+    with an empty linear context), then execution of <span
+    class="math inline">\(e\)</span> is resource-safe.</em></p>
+    </div>
+    <p>We defer the proof to <a href="#sec:proofs"
+    data-reference-type="ref+Label"
+    data-reference="sec:proofs">10</a>.</p>
+    <h2 data-number="6.3" id="sec:use-binding"><span
+    class="header-section-number">6.3</span> The <code>use</code>
+    Binding</h2>
+    <p>The <code>use</code> keyword introduces a linear binding with
+    automatic release semantics:</p>
+    <pre id="lst:use-binding" data-caption="The use binding"
+    data-label="lst:use-binding"><code>fn read_entire_file(path: String) -&gt; Result[String, IoError] with Io =
+  use file = File.open(path, Read)?
+  let contents = File.read_all(file)?
+  -- File.close(file) is automatically inserted by the compiler
+  -- at the end of the `use` scope
+  Ok(contents)</code></pre>
+    <p>The <code>use</code> binding desugars to a try-finally pattern:
+    even if the body raises an error (via the <code>?</code> operator or
+    a crash), the resource is released.</p>
+    <div id="def:use-desugar" class="definition">
+    <p><strong>Definition 24</strong> (<code>use</code> desugaring).
+    <em>The binding <span class="math inline">\(\texttt{use}\; x = e_1\;
+    \texttt{in}\; e_2\)</span> desugars to: <span
+    class="math display">\[\mathbf{let}\; x = e_1\; \mathbf{in}\;
+      \mathbf{try}\; e_2\; \mathbf{finally}\;
+    \mathit{release}(x)\]</span> where <span
+    class="math inline">\(\mathit{release}\)</span> is the destructor
+    associated with the resource type of <span
+    class="math inline">\(x\)</span>.</em></p>
+    </div>
+    <h2 data-number="6.4" id="parametric-resource-types"><span
+    class="header-section-number">6.4</span> Parametric Resource
+    Types</h2>
+    <p>Resources can be parametric:</p>
+    <pre id="lst:parametric-resource"
+    data-caption="Parametric resource types"
+    data-label="lst:parametric-resource"><code>resource MutableArray[a]
+
+fn sort_in_place(arr: own MutableArray[Int])
+    -&gt; own MutableArray[Int] =
+  let len = MutableArray.length(arr)
+  loop i = 0, arr = arr while i &lt; len do
+    loop j = i + 1, arr = arr while j &lt; len do
+      if MutableArray.get(arr, j) &lt; MutableArray.get(arr, i) then
+        let arr = MutableArray.swap(arr, i, j)
+        continue(j + 1, arr)
+      else
+        continue(j + 1, arr)
+    continue(i + 1, arr)
+  arr</code></pre>
+    <p>The linearity constraint applies to the outer resource container,
+    not to its type parameter. The elements of a
+    <code>MutableArray[Int]</code> are pure <code>Int</code> values and
+    can be freely copied.</p>
+    <h2 data-number="6.5" id="sec:freezing"><span
+    class="header-section-number">6.5</span> Freezing: Resource to Value
+    Conversion</h2>
+    <p>A resource can be <em>frozen</em> to produce an immutable value,
+    transferring data from the resource layer to the pure layer:</p>
+    <pre id="lst:freeze"
+    data-caption="Freezing a buffer into immutable bytes"
+    data-label="lst:freeze"><code>fn build_message() -&gt; Bytes with Io =
+  let buf = Buffer.alloc(1024)          -- resource layer
+  let buf = Buffer.write(buf, 0, header)
+  let buf = Buffer.write(buf, 64, payload)
+  Buffer.freeze(buf)                    -- pure layer: immutable Bytes
+  -- buf is consumed; only the frozen Bytes value remains</code></pre>
+    <div id="def:freeze" class="definition">
+    <p><strong>Definition 25</strong> (Freeze). <em>A <em>freeze</em>
+    operation has type <span class="math inline">\(\mathsf{Owned}\langle
+    R \rangle \multimap\tau\)</span>, consuming the resource and
+    producing a pure value. After freezing, the resource is released and
+    the returned value lives in the pure layer (managed by GC).</em></p>
+    </div>
+    <p>Freezing corresponds to the functor <span class="math inline">\(G
+    : \mathcal{L} \to \mathcal{C}\)</span> in the LNL model (<a
+    href="#def:lnl" data-reference-type="ref+Label"
+    data-reference="def:lnl">7</a>): it maps a linear resource to an
+    unrestricted pure value.</p>
+    <h1 data-number="7" id="sec:interaction"><span
+    class="header-section-number">7</span> Interaction Between
+    Layers</h1>
+    <h2 data-number="7.1" id="pure-functions-using-resources"><span
+    class="header-section-number">7.1</span> Pure Functions Using
+    Resources</h2>
+    <p>Pure functions cannot <em>own</em> resources, but they can
+    <em>borrow</em> them. A function that borrows a resource via <span
+    class="math inline">\(\mathsf{ref}\; T\)</span> does not participate
+    in the ownership protocol; it simply reads the resource’s current
+    state.</p>
+    <pre id="lst:pure-borrow"
+    data-caption="Pure function borrowing a resource"
+    data-label="lst:pure-borrow"><code>-- This function is pure except for the borrow
+fn buffer_checksum(buf: ref Buffer) -&gt; Int =
+  let bytes = Buffer.to_bytes_view(buf)  -- read-only view
+  Bytes.fold(bytes, 0, fn acc, b -&gt; acc + b)
+
+fn validate_and_send(buf: Owned[Buffer], sock: Owned[Socket])
+    -&gt; (Owned[Buffer], Owned[Socket]) with Io =
+  let sum = buffer_checksum(ref buf)  -- borrow for pure computation
+  if sum &gt; 0 then
+    let (sock, _) = Socket.send(sock, Buffer.to_bytes(ref buf))
+    (buf, sock)
+  else
+    (buf, sock)</code></pre>
+    <h2 data-number="7.2"
+    id="ownership-transfer-between-processes"><span
+    class="header-section-number">7.2</span> Ownership Transfer Between
+    Processes</h2>
+    <p>When a resource is sent to another process, ownership
+    transfers:</p>
+    <pre id="lst:process-transfer"
+    data-caption="Ownership transfer between processes"
+    data-label="lst:process-transfer"><code>fn producer() -&gt; Unit with Io, Process[ProducerMsg] =
+  let buf = Buffer.alloc(4096)
+  let buf = Buffer.write(buf, 0, generate_data())
+  -- Ownership transfers to the consumer process
+  Process.send(consumer_pid, ProcessBuffer(buf))
+  -- buf is consumed; using it here is a compile error
+
+fn consumer() -&gt; Never with Io, Process[ConsumerMsg] =
+  match Process.receive() with
+  | ProcessBuffer(buf) -&gt;
+      -- We now own buf
+      let data = Buffer.freeze(buf)
+      process_data(data)
+      consumer()</code></pre>
+    <h2 data-number="7.3" id="sec:escape-hatch"><span
+    class="header-section-number">7.3</span> The Escape Hatch</h2>
+    <p>For interoperability with C libraries and low-level systems code,
+    <span class="smallcaps">Japl</span> provides an <code>unsafe</code>
+    escape hatch that allows bypassing linearity checks:</p>
+    <pre id="lst:unsafe" data-caption="The unsafe escape hatch"
+    data-label="lst:unsafe"><code>-- unsafe block: linearity is not checked
+fn raw_mmap(fd: Owned[File], size: Int) -&gt; Owned[MappedRegion] with Io =
+  unsafe {
+    let ptr = foreign_mmap(File.raw_fd(ref fd), size)
+    MappedRegion.from_raw(ptr, size)
+  }
+  -- Outside unsafe: normal linearity rules apply</code></pre>
+    <p>The <code>unsafe</code> keyword has several properties:</p>
+    <ol>
+    <li><p>It must appear explicitly in the source code, making it
+    searchable and auditable.</p></li>
+    <li><p>It does not propagate: a function containing
+    <code>unsafe</code> can still present a safe interface to its
+    callers.</p></li>
+    <li><p>It is tracked by the effect system: <code>unsafe</code>
+    blocks require the <code>Unsafe</code> effect, which cannot be
+    silently introduced.</p></li>
+    </ol>
+    <h2 data-number="7.4" id="effect-system-interaction"><span
+    class="header-section-number">7.4</span> Effect System
+    Interaction</h2>
+    <p>Resource operations are effectful: they carry the <code>Io</code>
+    effect. The effect system and the ownership system cooperate:</p>
+    <div id="def:effect-ownership" class="definition">
+    <p><strong>Definition 26</strong> (Effect-ownership interaction).
+    <em>The following invariants hold:</em></p>
+    <ol>
+    <li><p><em>Resource acquisition requires an effect (typically <span
+    class="math inline">\(\mathsf{Io}\)</span>).</em></p></li>
+    <li><p><em>Resource release requires the same effect as
+    acquisition.</em></p></li>
+    <li><p><em>Pure functions (<span class="math inline">\(\varepsilon =
+    \mathsf{Pure}\)</span>) cannot acquire or release resources; they
+    can only borrow.</em></p></li>
+    <li><p><em>Effect handlers cannot duplicate or discard resources:
+    the handler’s continuation must preserve the linear
+    context.</em></p></li>
+    </ol>
+    </div>
+    <div id="prop:effect-linear" class="proposition">
+    <p><strong>Proposition 27</strong> (Effect handlers preserve
+    linearity). <em>If an effect handler <span
+    class="math inline">\(h\)</span> transforms computation <span
+    class="math inline">\(\Gamma; \Delta \vdash_\varepsilon e :
+    \tau\)</span> into <span class="math inline">\(\Gamma; \Delta&#39;
+    \vdash_{\varepsilon&#39;} e&#39; : \tau&#39;\)</span>, then <span
+    class="math inline">\(\Delta&#39; = \Delta\)</span> (the linear
+    context is unchanged).</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By induction on the structure of the effect
+    handler. The handler provides implementations for effect operations,
+    but each operation implementation must preserve the linear context:
+    it receives a continuation that expects the same linear resources,
+    and it must pass exactly those resources to the continuation. Since
+    the handler cannot forge or destroy linear resources (this is
+    enforced by the <span class="math inline">\({\mathop{!}}\)</span>-I
+    rule, which prevents linear resources from appearing in unrestricted
+    positions), the linear context is preserved. ◻</p>
+    </div>
+    <h1 data-number="8" id="sec:comparison"><span
+    class="header-section-number">8</span> Comparison with Related
+    Languages</h1>
+    <h2 data-number="8.1" id="overview"><span
+    class="header-section-number">8.1</span> Overview</h2>
+    <div id="tab:comparison">
+    <table>
+    <caption>Comparison of mutation control strategies across
+    languages</caption>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Language</strong></th>
+    <th style="text-align: left;"><strong>Mutation model</strong></th>
+    <th style="text-align: left;"><strong>Resource mgmt</strong></th>
+    <th style="text-align: left;"><strong>Annotation</strong></th>
+    <th style="text-align: left;"><strong>GC</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><span
+    class="smallcaps">Japl</span></td>
+    <td style="text-align: left;">Dual-layer</td>
+    <td style="text-align: left;">Linear ownership</td>
+    <td style="text-align: left;">Low (pure layer)</td>
+    <td style="text-align: left;">Hybrid</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Rust</td>
+    <td style="text-align: left;">Ownership+borrow</td>
+    <td style="text-align: left;">Ownership+RAII</td>
+    <td style="text-align: left;">High (everywhere)</td>
+    <td style="text-align: left;">None</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Go</td>
+    <td style="text-align: left;">Unrestricted</td>
+    <td style="text-align: left;">GC + <code>defer</code></td>
+    <td style="text-align: left;">None</td>
+    <td style="text-align: left;">Full GC</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Haskell</td>
+    <td style="text-align: left;">IO monad</td>
+    <td style="text-align: left;">GC + finalizers</td>
+    <td style="text-align: left;">Medium (monadic)</td>
+    <td style="text-align: left;">Full GC</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Erlang</td>
+    <td style="text-align: left;">Copy everything</td>
+    <td style="text-align: left;">Per-process GC</td>
+    <td style="text-align: left;">None</td>
+    <td style="text-align: left;">Per-proc GC</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">OCaml</td>
+    <td style="text-align: left;">Mutable refs</td>
+    <td style="text-align: left;">GC</td>
+    <td style="text-align: left;">Low</td>
+    <td style="text-align: left;">Full GC</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Clean</td>
+    <td style="text-align: left;">Uniqueness types</td>
+    <td style="text-align: left;">Uniqueness</td>
+    <td style="text-align: left;">Medium</td>
+    <td style="text-align: left;">GC</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <h2 data-number="8.2" id="sec:cmp-rust"><span
+    class="header-section-number">8.2</span> Rust: Full Borrow
+    Checker</h2>
+    <p>Rust applies its ownership and borrowing discipline to
+    <em>every</em> value, including purely functional data. This
+    provides strong guarantees—no GC is needed, and memory safety is
+    ensured at compile time—but imposes a significant annotation
+    burden.</p>
+    <p>Consider a simple data transformation in Rust:</p>
+    <pre><code>fn transform(data: Vec&lt;i32&gt;) -&gt; Vec&lt;i32&gt; {
+    data.into_iter().map(|x| x * 2).collect()
+}</code></pre>
+    <p>The programmer must choose between <code>Vec&lt;i32&gt;</code>
+    (ownership transfer), <code>&amp;Vec&lt;i32&gt;</code> (immutable
+    borrow), and <code>&amp;mut Vec&lt;i32&gt;</code> (mutable borrow).
+    For a pure transformation, this choice is an unnecessary cognitive
+    burden.</p>
+    <p>In <span class="smallcaps">Japl</span>, the same function
+    requires no ownership annotations:</p>
+    <pre
+    data-caption="\textsc{Japl}{} vs.\ Rust: pure data transformation"><code>fn transform(data: List[Int]) -&gt; List[Int] =
+  List.map(data, fn x -&gt; x * 2)</code></pre>
+    <p>The trade-off is that <span class="smallcaps">Japl</span>’s pure
+    layer requires a garbage collector, while Rust avoids GC entirely.
+    We argue that this trade-off is worthwhile for application-level
+    code, where GC pauses are negligible relative to I/O latency.</p>
+    <h2 data-number="8.3" id="sec:cmp-go"><span
+    class="header-section-number">8.3</span> Go: GC Everything</h2>
+    <p>Go takes the opposite extreme: all memory is garbage-collected,
+    and there is no ownership system. Resources are managed by
+    convention (<code>defer</code> and the <code>io.Closer</code>
+    interface) rather than by the type system.</p>
+    <p>The consequence is that resource leaks are possible:</p>
+    <pre><code>func processFile(path string) error {
+    f, err := os.Open(path)
+    if err != nil { return err }
+    // Easy to forget: defer f.Close()
+    data, err := io.ReadAll(f)
+    // If we return here, f is leaked
+    ...
+}</code></pre>
+    <p><span class="smallcaps">Japl</span>’s linear types make this
+    class of bug impossible: the compiler rejects any program that fails
+    to consume a resource.</p>
+    <h2 data-number="8.4" id="sec:cmp-haskell"><span
+    class="header-section-number">8.4</span> Haskell: The IO Monad</h2>
+    <p>Haskell confines side effects to the <code>IO</code> monad,
+    ensuring that pure functions are referentially transparent. However,
+    the monadic style has several drawbacks:</p>
+    <ol>
+    <li><p>Monadic binding (<code>&gt;&gt;=</code>) is syntactically
+    heavier than direct-style code.</p></li>
+    <li><p>Composing different effects (state, error, IO) requires monad
+    transformers, which are notoriously difficult to use.</p></li>
+    <li><p>Resources within <code>IO</code> are not linearly tracked;
+    finalizers and <code>bracket</code> provide safety but not
+    compile-time guarantees.</p></li>
+    </ol>
+    <p><span class="smallcaps">Japl</span>’s effect system provides
+    effect tracking without monadic syntax: effects are listed after
+    <code>with</code> in function signatures, and composition is
+    automatic (effects form a commutative monoid). The resource layer
+    adds linear tracking that Haskell’s <code>IO</code> lacks.</p>
+    <h2 data-number="8.5" id="sec:cmp-erlang"><span
+    class="header-section-number">8.5</span> Erlang: Copy
+    Everything</h2>
+    <p>Erlang achieves concurrency safety by making all values immutable
+    and copying data between processes. This eliminates shared mutable
+    state entirely but has performance implications for large data
+    transfers.</p>
+    <p><span class="smallcaps">Japl</span> inherits Erlang’s process
+    isolation model for pure values but extends it with ownership
+    transfer for resources: a resource can be moved between processes
+    without copying, while maintaining the invariant that only one
+    process owns it at a time.</p>
+    <h2 data-number="8.6" id="sec:cmp-ocaml"><span
+    class="header-section-number">8.6</span> OCaml: Mutable Refs</h2>
+    <p>OCaml allows mutation through mutable record fields and
+    <code>ref</code> cells. The type system does not distinguish pure
+    and impure code; any function may have side effects.</p>
+    <p>This pragmatic approach simplifies the type system but sacrifices
+    the ability to reason about purity. <span
+    class="smallcaps">Japl</span>’s effect annotations
+    (<code>with Io</code>, <code>with State[s]</code>) restore this
+    reasoning while keeping the annotation burden low (effects are
+    inferred within function bodies).</p>
+    <h2 data-number="8.7" id="sec:cmp-clean"><span
+    class="header-section-number">8.7</span> Clean: Uniqueness
+    Types</h2>
+    <p>Clean’s uniqueness types <span class="citation"
+    data-cites="barendsen1996uniqueness"></span> are the closest
+    relative of <span class="smallcaps">Japl</span>’s resource layer.
+    Clean uses a <code>*</code> attribute to mark unique values; the
+    compiler ensures that unique values are not aliased.</p>
+    <p><span class="smallcaps">Japl</span> extends Clean’s approach in
+    several ways:</p>
+    <ol>
+    <li><p><strong>Explicit layer separation</strong>: <span
+    class="smallcaps">Japl</span> does not apply uniqueness to all
+    types; only declared <code>resource</code> types are subject to
+    linear discipline.</p></li>
+    <li><p><strong>Borrowing</strong>: Clean does not have a borrowing
+    mechanism; in Clean, any use of a unique value consumes it. <span
+    class="smallcaps">Japl</span>’s <code>ref</code> qualifier allows
+    non-consuming reads.</p></li>
+    <li><p><strong>Effect integration</strong>: <span
+    class="smallcaps">Japl</span>’s resource operations are annotated
+    with effects, providing an additional layer of safety.</p></li>
+    <li><p><strong>Process integration</strong>: <span
+    class="smallcaps">Japl</span> supports ownership transfer between
+    processes, which Clean (not being an actor-based language) does not
+    address.</p></li>
+    </ol>
+    <h2 data-number="8.8" id="summary-of-trade-offs"><span
+    class="header-section-number">8.8</span> Summary of Trade-offs</h2>
+    <div id="tab:tradeoffs">
+    <table>
+    <caption>Trade-off analysis: safety guarantees vs. programmer
+    burden</caption>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><span
+    class="smallcaps">Japl</span></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Rust</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Go</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Haskell</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Erlang</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">OCaml</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Clean</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p><span class="smallcaps">Japl</span> is the only language in this
+    comparison that simultaneously provides data-race freedom,
+    compile-time resource safety, low annotation burden (for the
+    majority of code), and effect tracking. The cost is a garbage
+    collector for the pure layer; we argue in <a href="#sec:discussion"
+    data-reference-type="ref+Label"
+    data-reference="sec:discussion">11</a> that this is an acceptable
+    trade-off.</p>
+    <h1 data-number="9" id="sec:implementation"><span
+    class="header-section-number">9</span> Implementation</h1>
+    <h2 data-number="9.1" id="architecture-overview"><span
+    class="header-section-number">9.1</span> Architecture Overview</h2>
+    <p>The <span class="smallcaps">Japl</span> compiler and runtime
+    implement the dual-layer model as follows:</p>
+    <ol>
+    <li><p><strong>Parser</strong>: Produces an AST with explicit
+    <code>use</code>, <code>own</code>, and <code>ref</code>
+    annotations.</p></li>
+    <li><p><strong>Type checker</strong>: Performs bidirectional type
+    checking with local inference. Maintains separate unrestricted
+    (<span class="math inline">\(\Gamma\)</span>) and linear (<span
+    class="math inline">\(\Delta\)</span>) contexts.</p></li>
+    <li><p><strong>Linearity checker</strong>: Verifies that all linear
+    variables are consumed exactly once on every execution
+    path.</p></li>
+    <li><p><strong>Region inference</strong>: Assigns regions to
+    resource allocations and inserts release operations.</p></li>
+    <li><p><strong>Uniqueness analysis</strong>: Identifies pure values
+    with a single reference for in-place update optimization.</p></li>
+    <li><p><strong>Code generation</strong>: Compiles to native code via
+    LLVM or Cranelift.</p></li>
+    <li><p><strong>Runtime</strong>: Manages the dual-layer memory model
+    at execution time.</p></li>
+    </ol>
+    <h2 data-number="9.2" id="sec:impl-tc"><span
+    class="header-section-number">9.2</span> Type Checker
+    Implementation</h2>
+    <p>The type checker uses a <em>splitting</em> judgment to partition
+    the linear context among subexpressions <span class="citation"
+    data-cites="walker2005substructural"></span>:</p>
+    <div id="def:splitting" class="definition">
+    <p><strong>Definition 28</strong> (Context splitting). <em>A
+    <em>split</em> of linear context <span
+    class="math inline">\(\Delta\)</span> into <span
+    class="math inline">\(\Delta_1\)</span> and <span
+    class="math inline">\(\Delta_2\)</span> (written <span
+    class="math inline">\(\Delta = \Delta_1 \uplus \Delta_2\)</span>)
+    assigns each variable in <span class="math inline">\(\Delta\)</span>
+    to exactly one of <span class="math inline">\(\Delta_1\)</span> or
+    <span class="math inline">\(\Delta_2\)</span>.</em></p>
+    </div>
+    <p>For function application <span class="math inline">\(e_1\;
+    e_2\)</span>, the type checker:</p>
+    <ol>
+    <li><p>Generates a fresh split of the current linear
+    context.</p></li>
+    <li><p>Checks <span class="math inline">\(e_1\)</span> against <span
+    class="math inline">\(\Delta_1\)</span>.</p></li>
+    <li><p>Checks <span class="math inline">\(e_2\)</span> against <span
+    class="math inline">\(\Delta_2\)</span>.</p></li>
+    <li><p>Verifies that <span class="math inline">\(\Delta_1\)</span>
+    and <span class="math inline">\(\Delta_2\)</span> are both fully
+    consumed.</p></li>
+    </ol>
+    <p>For conditionals and pattern matching, the type checker verifies
+    that all branches consume the <em>same</em> set of linear
+    variables:</p>
+    <div class="mathpar">
+    <p><span>; _0, _1 <strong>match</strong> e <strong>with</strong>
+    {p_i e_i} : </span></p>
+    </div>
+    <h2 data-number="9.3" id="sec:impl-linearity"><span
+    class="header-section-number">9.3</span> Linearity Checking
+    Algorithm</h2>
+    <p>The linearity checker runs as a separate pass after type
+    checking. It traverses the typed AST and maintains a set of “live”
+    linear variables. The algorithm is:</p>
+    <ol>
+    <li><p>At a <code>let</code> binding of a resource type: add the
+    variable to the live set.</p></li>
+    <li><p>At a use of a linear variable: remove it from the live set.
+    If already removed, report a “use after move” error.</p></li>
+    <li><p>At a branch point (if/match): check each branch
+    independently; verify that all branches have the same live set at
+    exit.</p></li>
+    <li><p>At function exit: verify that the live set matches the
+    function’s return type (i.e., any linear variable still live must be
+    returned).</p></li>
+    <li><p>At scope exit for <code>use</code> bindings: if the variable
+    is still live, insert a release call.</p></li>
+    </ol>
+    <h2 data-number="9.4" id="sec:impl-runtime"><span
+    class="header-section-number">9.4</span> Runtime Memory Model</h2>
+    <p>The runtime maintains two memory regions per process:</p>
+    <h4 data-number="9.4.0.1" id="immutable-heap-gc-managed."><span
+    class="header-section-number">9.4.0.1</span> Immutable heap
+    (GC-managed).</h4>
+    <p>All pure values reside here. The garbage collector is
+    generational and per-process:</p>
+    <ul>
+    <li><p><strong>Nursery</strong>: Small, per-process bump allocator.
+    Most values die young and are collected cheaply.</p></li>
+    <li><p><strong>Old generation</strong>: Surviving values are
+    promoted to a shared old generation, collected
+    concurrently.</p></li>
+    <li><p><strong>No write barriers</strong>: Since data is immutable,
+    there are no pointer mutations to track. This significantly
+    simplifies the GC.</p></li>
+    <li><p><strong>Process death</strong>: When a process terminates,
+    its entire nursery is reclaimed instantly.</p></li>
+    </ul>
+    <h4 data-number="9.4.0.2"
+    id="resource-arena-ownership-managed."><span
+    class="header-section-number">9.4.0.2</span> Resource arena
+    (ownership-managed).</h4>
+    <p>All linear resources reside here. There is no garbage collection;
+    resources are freed deterministically when consumed:</p>
+    <ul>
+    <li><p><strong>Allocation</strong>: Resources are allocated in a
+    per-process arena.</p></li>
+    <li><p><strong>Deallocation</strong>: When a resource is consumed
+    (released), its memory is immediately freed.</p></li>
+    <li><p><strong>Transfer</strong>: When ownership is transferred to
+    another process, the resource is moved from one process’s arena to
+    another’s.</p></li>
+    <li><p><strong>No fragmentation</strong>: Arena allocation avoids
+    the fragmentation problems of general-purpose allocators.</p></li>
+    </ul>
+    <h2 data-number="9.5" id="sec:impl-verify"><span
+    class="header-section-number">9.5</span> Compile-Time Ownership
+    Verification</h2>
+    <p>The compiler performs ownership verification as a fixed-point
+    computation over the control-flow graph (CFG):</p>
+    <ol>
+    <li><p>Build the CFG for each function.</p></li>
+    <li><p>At each CFG node, compute the set of live linear
+    variables.</p></li>
+    <li><p>At each join point, check that the live sets from all
+    predecessors are identical.</p></li>
+    <li><p>At the function exit node, check that the live set matches
+    the expected output (linear variables that appear in the return
+    type).</p></li>
+    <li><p>If any check fails, emit a diagnostic with the offending
+    variable and the point where it was consumed or escaped.</p></li>
+    </ol>
+    <p>This analysis is similar to liveness analysis in traditional
+    compilers but with the additional constraint that each linear
+    variable must be consumed <em>exactly once</em>, not “at least once”
+    or “at most once.”</p>
+    <h2 data-number="9.6" id="performance-characteristics"><span
+    class="header-section-number">9.6</span> Performance
+    Characteristics</h2>
+    <p>The dual-layer design has favorable performance
+    characteristics:</p>
+    <ul>
+    <li><p><strong>Pure-layer overhead</strong>: GC pauses are bounded
+    by the nursery size and are per-process (no global stop-the-world).
+    Uniqueness inference eliminates unnecessary copies.</p></li>
+    <li><p><strong>Resource-layer overhead</strong>: Zero runtime
+    overhead beyond the actual resource operations; ownership is
+    verified entirely at compile time.</p></li>
+    <li><p><strong>Combined</strong>: The compiler can optimize across
+    layers. For example, a buffer that is allocated, filled, and frozen
+    within a single function can be stack-allocated if uniqueness
+    analysis proves it does not escape.</p></li>
+    </ul>
+    <h1 data-number="10" id="sec:proofs"><span
+    class="header-section-number">10</span> Formal Proofs</h1>
+    <p>This section proves type safety and resource safety for <span
+    class="smallcaps">Japl</span>’s dual-layer system. We work with a
+    core calculus <span
+    class="math inline">\(\lambda^{\mathsf{JR}}\)</span> (JAPL
+    Resources) that captures the essential features.</p>
+    <h2 data-number="10.1" id="syntax-of-lambdamathsfjr"><span
+    class="header-section-number">10.1</span> Syntax of <span
+    class="math inline">\(\lambda^{\mathsf{JR}}\)</span></h2>
+    <div id="def:core-calculus" class="definition">
+    <p><strong>Definition 29</strong> (Core calculus <span
+    class="math inline">\(\lambda^{\mathsf{JR}}\)</span>). <em><span
+    class="math display">\[\begin{align*}
+      \text{Types}\quad \tau &amp;::= B \mid \tau_1 \to \tau_2 \mid
+    \tau_1 \times \tau_2
+        \mid R \mid \mathsf{Owned}\langle R \rangle \\
+      \text{Expressions}\quad e &amp;::= x \mid \lambda x.\, e \mid
+    e_1\; e_2
+        \mid (e_1, e_2) \mid \pi_i(e) \\
+        &amp;\phantom{::=} \mid \mathsf{new}_R \mid \mathsf{use}(e_1,
+    e_2) \mid
+          \mathsf{release}(e) \mid \mathsf{borrow}(e_1, e_2) \\
+        &amp;\phantom{::=} \mid \mathsf{freeze}(e) \mid v \\
+      \text{Values}\quad v &amp;::= \lambda x.\, e \mid (v_1, v_2) \mid
+    c \mid r \\
+      \text{Resources}\quad r &amp;::= \mathsf{res}(a)
+    \quad\text{(resource at address $a$)}
+    \end{align*}\]</span> where <span class="math inline">\(B\)</span>
+    ranges over base types and <span class="math inline">\(R\)</span>
+    ranges over resource type names.</em></p>
+    </div>
+    <div id="rem:effects-orthogonal" class="remark">
+    <p><strong>Remark 30</strong> (Effects in <span
+    class="math inline">\(\lambda^{\mathsf{JR}}\)</span>). <em>The core
+    calculus <span class="math inline">\(\lambda^{\mathsf{JR}}\)</span>
+    deliberately omits effect tracking (<span
+    class="math inline">\(\mathsf{Io}\)</span>, <span
+    class="math inline">\(\mathsf{State}[s]\)</span>, etc.) to isolate
+    the contribution of linear ownership. Effect annotations appear in
+    the surface-language typing rules (<a href="#def:dual-judgment"
+    data-reference-type="ref+Label"
+    data-reference="def:dual-judgment">14</a>) and in the
+    resource-specific rules (T-New, T-Release, T-Freeze), but a full
+    formalization of the effect system—including effect rows, handler
+    semantics, and the interaction between effect polymorphism and
+    linearity—is the subject of a companion paper on <span
+    class="smallcaps">Japl</span>’s algebraic effect system. The two
+    systems compose orthogonally: linearity governs <em>how many
+    times</em> a resource is used, while effects govern <em>what
+    operations</em> may be performed. <a href="#prop:effect-linear"
+    data-reference-type="ref+Label"
+    data-reference="prop:effect-linear">27</a> states the key
+    compatibility property between the two.</em></p>
+    </div>
+    <div id="def:store" class="definition">
+    <p><strong>Definition 31</strong> (Store). <em>A <em>store</em>
+    <span class="math inline">\(\sigma\)</span> is a partial function
+    from addresses to resource states: <span
+    class="math display">\[\sigma : \mathsf{Addr} \rightharpoonup
+    \mathsf{ResourceState}\]</span> where <span
+    class="math inline">\(\mathsf{ResourceState} ::= \mathsf{Live}(v)
+    \mid \mathsf{Released}\)</span>.</em></p>
+    </div>
+    <h2 data-number="10.2" id="operational-semantics"><span
+    class="header-section-number">10.2</span> Operational Semantics</h2>
+    <p>We write <span class="math inline">\(\bot_R\)</span> for the
+    <em>default initial state</em> of resource type <span
+    class="math inline">\(R\)</span>: the distinguished value that a
+    freshly allocated resource holds before any operations have been
+    performed on it. Each resource type declaration implicitly defines
+    its <span class="math inline">\(\bot_R\)</span> (e.g., an empty
+    buffer, an unconnected socket descriptor).</p>
+    <div id="def:reduction" class="definition">
+    <p><strong>Definition 32</strong> (Small-step reduction). <em>The
+    reduction relation <span class="math inline">\(\langle e, \sigma
+    \rangle \longrightarrow
+    \langle e&#39;, \sigma&#39; \rangle\)</span> is defined by:</em></p>
+    <div class="mathpar">
+    <p><em><span>(x.  e) v, e, </span></em></p>
+    <p><em><span>_R, (a), </span></em></p>
+    <p><em><span>((a)), (), </span></em></p>
+    <p><em><span>((a)), v, </span></em></p>
+    <p><em><span>((a), f), (f v, (a)), </span></em></p>
+    </div>
+    </div>
+    <h2 data-number="10.3" id="type-safety"><span
+    class="header-section-number">10.3</span> Type Safety</h2>
+    <div id="def:store-typing" class="definition">
+    <p><strong>Definition 33</strong> (Store typing). <em>A store typing
+    <span class="math inline">\(\Sigma\)</span> is a partial function
+    from addresses to resource types: <span
+    class="math display">\[\Sigma : \mathsf{Addr} \rightharpoonup
+    \{\mathsf{Live}(R) \mid
+        \mathsf{Released}\}\]</span> We write <span
+    class="math inline">\(\sigma : \Sigma\)</span> when for every <span
+    class="math inline">\(a \in \mathrm{dom}(\Sigma)\)</span>:</em></p>
+    <ul>
+    <li><p><em>If <span class="math inline">\(\Sigma(a) =
+    \mathsf{Live}(R)\)</span>, then <span
+    class="math inline">\(\sigma(a) = \mathsf{Live}(v)\)</span> for some
+    <span class="math inline">\(v\)</span> of type <span
+    class="math inline">\(R\)</span>.</em></p></li>
+    <li><p><em>If <span class="math inline">\(\Sigma(a) =
+    \mathsf{Released}\)</span>, then <span
+    class="math inline">\(\sigma(a) =
+    \mathsf{Released}\)</span>.</em></p></li>
+    </ul>
+    </div>
+    <div id="thm:progress" class="theorem">
+    <p><strong>Theorem 34</strong> (Progress). <em>If <span
+    class="math inline">\(\Gamma; \Delta \vdash_\varepsilon e :
+    \tau\)</span> and <span class="math inline">\(\sigma :
+    \Sigma\)</span>, then either:</em></p>
+    <ol>
+    <li><p><em><span class="math inline">\(e\)</span> is a value,
+    or</em></p></li>
+    <li><p><em>there exist <span class="math inline">\(e&#39;\)</span>,
+    <span class="math inline">\(\sigma&#39;\)</span> such that <span
+    class="math inline">\(\langle e, \sigma \rangle \longrightarrow
+            \langle e&#39;, \sigma&#39; \rangle\)</span>.</em></p></li>
+    </ol>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By induction on the typing derivation <span
+    class="math inline">\(\Gamma; \Delta \vdash_\varepsilon
+    e : \tau\)</span>.</p>
+    <p><strong>Case</strong> Var-Lin: <span class="math inline">\(e =
+    x\)</span> and <span class="math inline">\(x : \mathsf{Owned}\langle
+    R \rangle \in \Delta\)</span>. Then <span
+    class="math inline">\(x\)</span> is bound to a value (a resource
+    reference <span class="math inline">\(\mathsf{res}(a)\)</span>), so
+    <span class="math inline">\(e\)</span> is a value.</p>
+    <p><strong>Case</strong> Var-Un: Similar.</p>
+    <p><strong>Case</strong> <span
+    class="math inline">\(\multimap\)</span>-I: <span
+    class="math inline">\(e = \lambda x.\, e&#39;\)</span>, which is a
+    value.</p>
+    <p><strong>Case</strong> <span
+    class="math inline">\(\multimap\)</span>-E: <span
+    class="math inline">\(e = e_1\; e_2\)</span>. By induction, either
+    <span class="math inline">\(e_1\)</span> is a value or it can step.
+    If <span class="math inline">\(e_1\)</span> can step, so can <span
+    class="math inline">\(e\)</span>. If <span
+    class="math inline">\(e_1\)</span> is a value, it has type <span
+    class="math inline">\(A \multimap B\)</span>, so it is a lambda
+    <span class="math inline">\(\lambda x.\, e&#39;\)</span>. By
+    induction, either <span class="math inline">\(e_2\)</span> is a
+    value or it can step. If <span class="math inline">\(e_2\)</span>
+    can step, so can <span class="math inline">\(e\)</span>. If <span
+    class="math inline">\(e_2\)</span> is a value <span
+    class="math inline">\(v\)</span>, then <span
+    class="math inline">\(e\)</span> can step by the App rule.</p>
+    <p><strong>Case</strong> New: <span class="math inline">\(e =
+    \mathsf{new}_R\)</span>. We can always find a fresh address <span
+    class="math inline">\(a \notin \mathrm{dom}(\sigma)\)</span>
+    (addresses are unbounded), so the New rule applies.</p>
+    <p><strong>Case</strong> Release: <span class="math inline">\(e =
+    \mathsf{release}(\mathsf{res}(a))\)</span>. By the typing rule,
+    <span class="math inline">\(\mathsf{res}(a) : \mathsf{Owned}\langle
+    R \rangle\)</span>, so <span class="math inline">\(a \in
+    \mathrm{dom}(\Sigma)\)</span> with <span
+    class="math inline">\(\Sigma(a) = \mathsf{Live}(R)\)</span>. Since
+    <span class="math inline">\(\sigma : \Sigma\)</span>, we have <span
+    class="math inline">\(\sigma(a) = \mathsf{Live}(v)\)</span>, so the
+    Release rule applies.</p>
+    <p>The remaining cases (Freeze, Borrow, pairs, projections) follow
+    similarly. ◻</p>
+    </div>
+    <div id="thm:preservation" class="theorem">
+    <p><strong>Theorem 35</strong> (Preservation). <em>If <span
+    class="math inline">\(\Gamma; \Delta \vdash_\varepsilon e :
+    \tau\)</span> and <span class="math inline">\(\sigma :
+    \Sigma\)</span> and <span class="math inline">\(\langle e, \sigma
+    \rangle \longrightarrow \langle e&#39;, \sigma&#39;
+    \rangle\)</span>, then there exist <span
+    class="math inline">\(\Gamma&#39;\)</span>, <span
+    class="math inline">\(\Delta&#39;\)</span>, <span
+    class="math inline">\(\Sigma&#39;\)</span> such that:</em></p>
+    <ol>
+    <li><p><em><span class="math inline">\(\Gamma&#39;; \Delta&#39;
+    \vdash_\varepsilon e&#39; : \tau\)</span></em></p></li>
+    <li><p><em><span class="math inline">\(\sigma&#39; :
+    \Sigma&#39;\)</span></em></p></li>
+    <li><p><em><span class="math inline">\(\Sigma \subseteq
+    \Sigma&#39;\)</span> (the store typing only grows or transitions
+    <span class="math inline">\(\mathsf{Live}\)</span> entries to <span
+    class="math inline">\(\mathsf{Released}\)</span>)</em></p></li>
+    </ol>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By induction on the typing derivation, with case
+    analysis on the reduction rule applied.</p>
+    <p><strong>Case</strong> App: <span class="math inline">\(e =
+    (\lambda x.\, e&#39;)\; v\)</span> steps to <span
+    class="math inline">\([v/x]e&#39;\)</span>. By the T-App rule, the
+    linear context is split as <span class="math inline">\(\Delta =
+    \Delta_1 \uplus \Delta_2\)</span> with <span
+    class="math inline">\(\Gamma; \Delta_1 \vdash (\lambda x.\, e&#39;)
+    : \tau_1 \multimap\tau\)</span> and <span
+    class="math inline">\(\Gamma; \Delta_2 \vdash v : \tau_1\)</span>.
+    By the substitution lemma for the dual-layer system (<a
+    href="#lem:substitution" data-reference-type="ref+Label"
+    data-reference="lem:substitution">36</a>), <span
+    class="math inline">\(\Gamma; \Delta&#39; \vdash [v/x]e&#39; :
+    \tau\)</span> where <span class="math inline">\(\Delta&#39; =
+    \Delta_1 \uplus (\Delta_2 \setminus \{x : \tau_1\})\)</span>, i.e.,
+    <span class="math inline">\(\Delta\)</span> with <span
+    class="math inline">\(x\)</span>’s binding consumed. The store is
+    unchanged.</p>
+    <p><strong>Case</strong> New: <span class="math inline">\(e =
+    \mathsf{new}_R\)</span> steps to <span
+    class="math inline">\(\mathsf{res}(a)\)</span> with <span
+    class="math inline">\(\sigma&#39; = \sigma[a \mapsto
+    \mathsf{Live}(\bot_R)]\)</span>. Set <span
+    class="math inline">\(\Sigma&#39; = \Sigma[a \mapsto
+    \mathsf{Live}(R)]\)</span>. Then <span
+    class="math inline">\(\mathsf{res}(a) : \mathsf{Owned}\langle R
+    \rangle\)</span> under <span class="math inline">\(\Delta&#39; =
+    \Delta, a : \mathsf{Owned}\langle R \rangle\)</span>, and <span
+    class="math inline">\(\sigma&#39; : \Sigma&#39;\)</span>.</p>
+    <p><strong>Case</strong> Release: <span class="math inline">\(e =
+    \mathsf{release}(\mathsf{res}(a))\)</span> steps to <span
+    class="math inline">\(()\)</span> with <span
+    class="math inline">\(\sigma&#39; = \sigma[a \mapsto
+    \mathsf{Released}]\)</span>. Set <span
+    class="math inline">\(\Sigma&#39; = \Sigma[a \mapsto
+    \mathsf{Released}]\)</span>. The result <span
+    class="math inline">\(()\)</span> has type <span
+    class="math inline">\(\texttt{Unit}\)</span>. The linear context
+    <span class="math inline">\(\Delta&#39; = \Delta \setminus
+    \{a : \mathsf{Owned}\langle R \rangle\}\)</span>: the binding is
+    consumed.</p>
+    <p><strong>Case</strong> Freeze: Similar to Release, but the result
+    is the value <span class="math inline">\(v\)</span> stored in the
+    resource, which has a pure type.</p>
+    <p><strong>Case</strong> Borrow: <span class="math inline">\(e =
+    \mathsf{borrow}(\mathsf{res}(a), f)\)</span> steps to <span
+    class="math inline">\((f\; v, \mathsf{res}(a))\)</span>. The
+    resource remains live; the linear binding is preserved. The result
+    is a pair of the function application result and the resource.</p>
+    <p>The remaining cases are standard. ◻</p>
+    </div>
+    <div id="lem:substitution" class="lemma">
+    <p><strong>Lemma 36</strong> (Substitution). <em>If <span
+    class="math inline">\(\Gamma; \Delta, x : A \vdash_\varepsilon e :
+    B\)</span> and <span class="math inline">\(\Gamma; \cdot \vdash v :
+    A\)</span> (if <span class="math inline">\(A\)</span> is
+    unrestricted) or <span class="math inline">\(v =
+    \mathsf{res}(a)\)</span> with <span class="math inline">\(a :
+    \mathsf{Owned}\langle R \rangle\)</span> (if <span
+    class="math inline">\(A\)</span> is linear), then <span
+    class="math inline">\(\Gamma; \Delta&#39; \vdash_\varepsilon [v/x]e
+    : B\)</span> where:</em></p>
+    <ul>
+    <li><p><em><span class="math inline">\(\Delta&#39; = \Delta\)</span>
+    if <span class="math inline">\(A\)</span> is
+    unrestricted.</em></p></li>
+    <li><p><em><span class="math inline">\(\Delta&#39; = \Delta\)</span>
+    if <span class="math inline">\(A\)</span> is linear and <span
+    class="math inline">\(x\)</span> is consumed exactly once in <span
+    class="math inline">\(e\)</span>.</em></p></li>
+    </ul>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By induction on the typing derivation, tracking
+    the number of occurrences of <span class="math inline">\(x\)</span>
+    in <span class="math inline">\(e\)</span>. The linearity checker
+    ensures exactly one occurrence for linear variables. ◻</p>
+    </div>
+    <h2 data-number="10.4" id="resource-safety"><span
+    class="header-section-number">10.4</span> Resource Safety</h2>
+    <div id="thm:resource-safety-proof" class="theorem">
+    <p><strong>Theorem 37</strong> (Resource safety). <em>If <span
+    class="math inline">\(\Gamma; \cdot \vdash_\varepsilon e :
+    \tau\)</span> (the program type-checks with an empty linear context)
+    and <span class="math inline">\(\langle e, \emptyset \rangle
+    \longrightarrow^* \langle v, \sigma \rangle\)</span> (the program
+    terminates with value <span class="math inline">\(v\)</span> and
+    final store <span class="math inline">\(\sigma\)</span>), then for
+    every <span class="math inline">\(a \in
+    \mathrm{dom}(\sigma)\)</span>: <span
+    class="math display">\[\sigma(a) = \mathsf{Released}\]</span> That
+    is, every resource acquired during execution has been
+    released.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> We establish the invariant: at every step of
+    reduction, the number of <span
+    class="math inline">\(\mathsf{Live}\)</span> entries in <span
+    class="math inline">\(\sigma\)</span> equals the size of the linear
+    context <span class="math inline">\(\Delta\)</span>.</p>
+    <p><strong>Base case</strong>: Initially, <span
+    class="math inline">\(\sigma = \emptyset\)</span> and <span
+    class="math inline">\(\Delta =
+    \cdot\)</span>, so the invariant holds trivially.</p>
+    <p><strong>Inductive step</strong>: By preservation (<a
+    href="#thm:preservation" data-reference-type="ref+Label"
+    data-reference="thm:preservation">35</a>), each reduction step
+    preserves the correspondence between <span
+    class="math inline">\(\Delta\)</span> and <span
+    class="math inline">\(\Sigma\)</span>. Specifically:</p>
+    <ul>
+    <li><p>New: adds one entry to both <span
+    class="math inline">\(\sigma\)</span> (<span
+    class="math inline">\(\mathsf{Live}\)</span>) and <span
+    class="math inline">\(\Delta\)</span>, preserving the
+    count.</p></li>
+    <li><p>Release/Freeze: transitions one entry in <span
+    class="math inline">\(\sigma\)</span> from <span
+    class="math inline">\(\mathsf{Live}\)</span> to <span
+    class="math inline">\(\mathsf{Released}\)</span> and removes one
+    entry from <span class="math inline">\(\Delta\)</span>, preserving
+    the count.</p></li>
+    <li><p>All other rules: preserve both <span
+    class="math inline">\(\sigma\)</span> and the size of <span
+    class="math inline">\(\Delta\)</span>.</p></li>
+    </ul>
+    <p><strong>Conclusion</strong>: When the program terminates with
+    <span class="math inline">\(\Gamma; \cdot \vdash v : \tau\)</span>
+    (empty linear context), the number of <span
+    class="math inline">\(\mathsf{Live}\)</span> entries in <span
+    class="math inline">\(\sigma\)</span> is zero. Therefore every entry
+    is <span class="math inline">\(\mathsf{Released}\)</span>. ◻</p>
+    </div>
+    <div id="cor:no-leaks" class="corollary">
+    <p><strong>Corollary 38</strong> (No resource leaks). <em>Well-typed
+    <span class="smallcaps">Japl</span> programs (without
+    <code>unsafe</code>) cannot leak resources: every file is closed,
+    every socket is disconnected, every buffer is freed.</em></p>
+    </div>
+    <div id="cor:no-uaf" class="corollary">
+    <p><strong>Corollary 39</strong> (No use-after-free). <em>Well-typed
+    <span class="smallcaps">Japl</span> programs cannot use a resource
+    after it has been released: the linear type system ensures that the
+    binding is consumed by the release operation and cannot be used
+    again.</em></p>
+    </div>
+    <div id="cor:no-double-free" class="corollary">
+    <p><strong>Corollary 40</strong> (No double-free). <em>Well-typed
+    <span class="smallcaps">Japl</span> programs cannot release a
+    resource twice: the linear type system ensures exactly-once
+    consumption.</em></p>
+    </div>
+    <h1 data-number="11" id="sec:discussion"><span
+    class="header-section-number">11</span> Discussion</h1>
+    <h2 data-number="11.1" id="when-ownership-pressure-leaks"><span
+    class="header-section-number">11.1</span> When Ownership Pressure
+    Leaks</h2>
+    <p>The dual-layer design succeeds when the boundary between pure and
+    resource code is clean. In practice, however, there are cases where
+    ownership concerns propagate into otherwise-pure code:</p>
+    <h4 data-number="11.1.0.1"
+    id="resource-carrying-data-structures."><span
+    class="header-section-number">11.1.0.1</span> Resource-carrying data
+    structures.</h4>
+    <p>If a data structure contains a resource (e.g., a list of open
+    file handles), the entire structure becomes linear. This forces the
+    programmer to manage ownership for the container, even if the
+    business logic only cares about the data inside.</p>
+    <h4 data-number="11.1.0.2" id="callbacks-with-resources."><span
+    class="header-section-number">11.1.0.2</span> Callbacks with
+    resources.</h4>
+    <p>A higher-order function that accepts a callback may need to
+    thread resources through the callback, complicating the
+    interface.</p>
+    <h4 data-number="11.1.0.3" id="long-lived-resources."><span
+    class="header-section-number">11.1.0.3</span> Long-lived
+    resources.</h4>
+    <p>A database connection pool manages resources with lifetimes that
+    span many function calls. The pool itself becomes a resource, and
+    every function that uses the pool must participate in the ownership
+    protocol.</p>
+    <h2 data-number="11.2" id="mitigations"><span
+    class="header-section-number">11.2</span> Mitigations</h2>
+    <p><span class="smallcaps">Japl</span> provides several mechanisms
+    to reduce ownership pressure:</p>
+    <h4 data-number="11.2.0.1" id="borrowing-ref."><span
+    class="header-section-number">11.2.0.1</span> Borrowing
+    (<code>ref</code>).</h4>
+    <p>Most pure functions that need to read a resource can take a
+    borrowed reference, avoiding ownership transfer entirely.</p>
+    <h4 data-number="11.2.0.2" id="scoped-resources-use."><span
+    class="header-section-number">11.2.0.2</span> Scoped resources
+    (<code>use</code>).</h4>
+    <p>The <code>use</code> binding automatically manages resource
+    lifetimes within a scope, reducing boilerplate.</p>
+    <h4 data-number="11.2.0.3" id="process-encapsulation."><span
+    class="header-section-number">11.2.0.3</span> Process
+    encapsulation.</h4>
+    <p>Long-lived resources can be owned by a dedicated process, which
+    exposes a pure message-passing interface. Other processes interact
+    with the resource through messages, never seeing the ownership:</p>
+    <pre id="lst:encapsulation"
+    data-caption="Process encapsulation hides ownership"
+    data-label="lst:encapsulation"><code>-- The database process owns the connection
+fn db_process(conn: Owned[DbConnection])
+    -&gt; Never with Io, Process[DbMsg] =
+  match Process.receive() with
+  | Query(sql, reply) -&gt;
+      let (conn, result) = Db.query(conn, sql)
+      Reply.send(reply, result)
+      db_process(conn)
+  | Shutdown -&gt;
+      Db.close(conn)
+      Process.exit(Normal)
+
+-- Callers never see Owned[DbConnection]
+fn get_user(db: Pid[DbMsg], id: UserId)
+    -&gt; Result[User, DbError] with Process =
+  let result = Process.call(db, fn reply -&gt; Query(user_sql(id), reply))
+  parse_user_row(result)</code></pre>
+    <p>This pattern is the recommended way to manage long-lived
+    resources in <span class="smallcaps">Japl</span>: the process
+    boundary naturally encapsulates the ownership, and the caller’s
+    interface is pure message-passing.</p>
+    <h4 data-number="11.2.0.4" id="region-based-grouping."><span
+    class="header-section-number">11.2.0.4</span> Region-based
+    grouping.</h4>
+    <p>Multiple resources acquired in the same scope can be grouped into
+    a single region, reducing the number of individual ownership
+    threads.</p>
+    <h2 data-number="11.3" id="the-8020-of-resource-management"><span
+    class="header-section-number">11.3</span> The 80/20 of Resource
+    Management</h2>
+    <p>Our experience with prototype <span class="smallcaps">Japl</span>
+    applications suggests the following distribution:</p>
+    <ul>
+    <li><p><strong>80%</strong> of code is pure: data transformations,
+    business logic, protocol handling, serialization. No ownership
+    annotations needed.</p></li>
+    <li><p><strong>15%</strong> of code uses scoped resources
+    (<code>use</code>): open file, read, close; connect, query,
+    disconnect. Ownership is automatic via the <code>use</code>
+    binding.</p></li>
+    <li><p><strong>5%</strong> of code requires explicit ownership
+    management: long-lived resources, cross-process transfers, complex
+    resource graphs. This is where the linear type system provides its
+    greatest value.</p></li>
+    </ul>
+    <p>The dual-layer design ensures that the 80% majority pays no
+    annotation cost, while the 5% minority gets strong compile-time
+    guarantees.</p>
+    <h2 data-number="11.4" id="effect-system-synergy"><span
+    class="header-section-number">11.4</span> Effect System Synergy</h2>
+    <p>The effect system and the ownership system reinforce each other.
+    The effect system ensures that resource operations are visible in
+    function signatures (<code>with Io</code>), preventing hidden side
+    effects. The ownership system ensures that resources are properly
+    managed even when effects are composed.</p>
+    <p>Together, they provide a stronger guarantee than either alone: a
+    function with signature <code>fn(x: Int) -&gt; Int</code> is
+    guaranteed to be pure—it cannot secretly open a file, allocate a
+    buffer, or access the network.</p>
+    <h2 data-number="11.5" id="comparison-with-monadic-io"><span
+    class="header-section-number">11.5</span> Comparison with Monadic
+    IO</h2>
+    <p>The Haskell approach confines <em>all</em> effects to the
+    <code>IO</code> monad, including both resource management and
+    general side effects. This conflates two concerns:</p>
+    <ol>
+    <li><p><strong>Effect tracking</strong>: Knowing that a function
+    performs IO.</p></li>
+    <li><p><strong>Resource management</strong>: Ensuring that resources
+    are properly released.</p></li>
+    </ol>
+    <p><span class="smallcaps">Japl</span> separates these concerns: the
+    effect system handles (1), and the ownership system handles (2).
+    This separation allows finer-grained reasoning: two functions may
+    both have effect <code>Io</code>, but one manages resources (visible
+    in its type via <code>Owned</code>) while the other merely reads a
+    file.</p>
+    <h2 data-number="11.6" id="limitations"><span
+    class="header-section-number">11.6</span> Limitations</h2>
+    <p>The dual-layer approach has several limitations:</p>
+    <ol>
+    <li><p><strong>GC dependency</strong>: The pure layer requires a
+    garbage collector, making <span class="smallcaps">Japl</span>
+    unsuitable for environments where GC is unacceptable (embedded
+    systems, real-time audio).</p></li>
+    <li><p><strong>Layer crossing cost</strong>: Moving data between
+    layers (freezing a buffer into immutable bytes) may involve a copy
+    if the resource is not uniquely held.</p></li>
+    <li><p><strong>Learning curve</strong>: Programmers must understand
+    the distinction between pure and resource types, even if the pure
+    layer requires no annotations.</p></li>
+    <li><p><strong>Expressiveness</strong>: Some patterns that are
+    natural in Rust (e.g., self-referential structures with lifetimes)
+    are more difficult to express in <span
+    class="smallcaps">Japl</span>’s simpler ownership model.</p></li>
+    </ol>
+    <h2 data-number="11.7" id="future-work"><span
+    class="header-section-number">11.7</span> Future Work</h2>
+    <p>Several directions remain for future investigation:</p>
+    <ol>
+    <li><p><strong>Graded linearity</strong>: Allowing resources to be
+    used exactly <span class="math inline">\(n\)</span> times (useful
+    for connection pools with bounded concurrency).</p></li>
+    <li><p><strong>Session types</strong>: Extending resource types with
+    session type protocols, ensuring that resources are used in the
+    correct order (e.g., connect, authenticate, query,
+    disconnect).</p></li>
+    <li><p><strong>Dependent resource types</strong>: Allowing resource
+    types to depend on values, enabling richer invariants (e.g., a file
+    handle that tracks whether it is open for reading, writing, or
+    both).</p></li>
+    <li><p><strong>Formal verification</strong>: Connecting <span
+    class="smallcaps">Japl</span>’s type system to separation logic via
+    the LNL model, enabling machine-checked proofs of resource
+    safety.</p></li>
+    </ol>
+    <h1 data-number="12" id="sec:conclusion"><span
+    class="header-section-number">12</span> Conclusion</h1>
+    <p>We have presented <span class="smallcaps">Japl</span>’s second
+    core principle: <strong>mutation is local and explicit</strong>. The
+    dual-layer type system—pure values managed by GC, linear resources
+    managed by ownership—achieves a design point that has not been
+    explored by prior languages:</p>
+    <ol>
+    <li><p><strong>Safety without pervasive annotation</strong>: The
+    majority of code lives in the pure layer and requires no ownership
+    annotations, lifetime parameters, or borrow-checker
+    reasoning.</p></li>
+    <li><p><strong>Resource safety by construction</strong>: Every
+    resource acquired by a well-typed program is released exactly once,
+    as proven by our type safety and resource safety theorems.</p></li>
+    <li><p><strong>Effect visibility</strong>: The effect system makes
+    mutation visible in function signatures, enabling equational
+    reasoning for pure code and local reasoning for effectful
+    code.</p></li>
+    <li><p><strong>Process integration</strong>: Ownership transfer
+    between processes extends the linear discipline to concurrent
+    settings, while process encapsulation hides ownership behind pure
+    message-passing interfaces.</p></li>
+    </ol>
+    <p>The formal framework—rooted in Girard’s linear logic, Benton’s
+    LNL adjunction model, and the theory of substructural type
+    systems—provides a rigorous foundation for the design. The
+    categorical interpretation (<a href="#sec:categorical"
+    data-reference-type="ref+Label"
+    data-reference="sec:categorical">3.3</a>) shows that <span
+    class="smallcaps">Japl</span>’s dual-layer system is not an <em>ad
+    hoc</em> engineering compromise but a principled instantiation of
+    the well-studied relationship between linear and Cartesian closed
+    categories.</p>
+    <p>We believe that the dual-layer approach represents a practical
+    sweet spot for language design: it gives systems programmers the
+    control they need over resources, while giving application
+    programmers the simplicity they want for everyday code. The
+    principle that mutation should be local and explicit—not absent, not
+    pervasive, but <em>controlled</em>—is central to <span
+    class="smallcaps">Japl</span>’s mission of being “pure by default,
+    concurrent by design, resource-safe by construction, distributed
+    without apology.”</p>
+    <div class="thebibliography">
+    <p><span>50</span></p>
+    <p>Jean-Yves Girard. Linear logic. <em>Theoretical Computer
+    Science</em>, 50(1):1–102, 1987.</p>
+    <p>Philip Wadler. Linear types can change the world! In
+    <em>Programming Concepts and Methods</em>, pages 561–581.
+    North-Holland, 1990.</p>
+    <p>Philip Wadler. A taste of linear logic. In <em>Mathematical
+    Foundations of Computer Science</em>, volume 711 of LNCS, pages
+    185–210. Springer, 1993.</p>
+    <p>Philip Wadler. Propositions as sessions. In <em>Proceedings of
+    the 17th ACM SIGPLAN International Conference on Functional
+    Programming (ICFP)</em>, pages 273–286, 2012.</p>
+    <p>David Walker. Substructural type systems. In Benjamin C. Pierce,
+    editor, <em>Advanced Topics in Types and Programming Languages</em>,
+    chapter 1, pages 3–43. MIT Press, 2005.</p>
+    <p>Benjamin C. Pierce. <em>Types and Programming Languages</em>. MIT
+    Press, 2002.</p>
+    <p>Benjamin C. Pierce, editor. <em>Advanced Topics in Types and
+    Programming Languages</em>. MIT Press, 2004.</p>
+    <p>P. Nick Benton. A mixed linear and non-linear logic: Proofs,
+    terms and models. In <em>Computer Science Logic (CSL)</em>, volume
+    933 of LNCS, pages 121–135. Springer, 1995.</p>
+    <p>Michael Barr. -Autonomous categories and linear logic.
+    <em>Mathematical Structures in Computer Science</em>, 1(2):159–178,
+    1991.</p>
+    <p>Jean-Philippe Bernardy, Mathieu Boespflug, Ryan R. Newton, Simon
+    Peyton Jones, and Arnaud Spiwack. Linear <span>H</span>askell:
+    Practical linearity in a higher-order polymorphic language.
+    <em>Proceedings of the ACM on Programming Languages</em>,
+    2(POPL):1–29, 2018.</p>
+    <p>The Rust Team. <em>The Rust Programming Language</em>. No Starch
+    Press, 2021. <a href="https://doc.rust-lang.org/book/"
+    class="uri">https://doc.rust-lang.org/book/</a>.</p>
+    <p>Ralf Jung, Jacques-Henri Jourdan, Robbert Krebbers, and Derek
+    Dreyer. : Securing the foundations of the <span>R</span>ust
+    programming language. <em>Proceedings of the ACM on Programming
+    Languages</em>, 2(POPL):1–34, 2017.</p>
+    <p>Erik Barendsen and Sjaak Smetsers. Uniqueness typing for
+    functional languages with graph rewriting semantics.
+    <em>Mathematical Structures in Computer Science</em>, 6(6):579–612,
+    1996.</p>
+    <p>Rinus Plasmeijer and Marko van Eekelen. <em>Clean Language
+    Report, version 2.1</em>. University of Nijmegen, 2001.</p>
+    <p>Mads Tofte and Jean-Pierre Talpin. Region-based memory
+    management. <em>Information and Computation</em>, 132(2):109–176,
+    1997.</p>
+    <p>Trevor Jim, J. Gregory Morrisett, Dan Grossman, Michael W. Hicks,
+    James Cheney, and Yanling Wang. yclone: A safe dialect of
+    <span>C</span>. In <em>USENIX Annual Technical Conference</em>,
+    pages 275–288, 2002.</p>
+    <p>Dan Grossman, Greg Morrisett, Trevor Jim, Michael Hicks, Yanling
+    Wang, and James Cheney. Region-based memory management in
+    <span>C</span>yclone. In <em>Proceedings of the ACM SIGPLAN
+    Conference on Programming Language Design and Implementation
+    (PLDI)</em>, pages 282–293, 2002.</p>
+    <p>Jack B. Dennis and Earl C. Van Horn. Programming semantics for
+    multiprogrammed computations. <em>Communications of the ACM</em>,
+    9(3):143–155, 1966.</p>
+    <p>Mark S. Miller. <em>Robust Composition: Towards a Unified
+    Approach to Access Control and Concurrency Control</em>. PhD thesis,
+    Johns Hopkins University, 2006.</p>
+    <p>Gordon Plotkin and Matija Pretnar. Handlers of algebraic effects.
+    In <em>Programming Languages and Systems (ESOP)</em>, volume 5502 of
+    LNCS, pages 80–94. Springer, 2009.</p>
+    <p>Andrej Bauer and Matija Pretnar. Programming with algebraic
+    effects and handlers. <em>Journal of Logical and Algebraic Methods
+    in Programming</em>, 84(1):108–123, 2015.</p>
+    <p>Ohad Kammar, Sam Lindley, and Nicolas Oury. Handlers in action.
+    In <em>Proceedings of the 18th ACM SIGPLAN International Conference
+    on Functional Programming (ICFP)</em>, pages 145–158, 2013.</p>
+    <p>Andrew K. Wright and Matthias Felleisen. A syntactic approach to
+    type soundness. <em>Information and Computation</em>, 115(1):38–94,
+    1994.</p>
+    <p>Joe Armstrong. <em>Programming Erlang: Software for a Concurrent
+    World</em>. Pragmatic Bookshelf, 2003.</p>
+    <p>Simon Peyton Jones. <em>Haskell 98 Language and Libraries: The
+    Revised Report</em>. Cambridge University Press, 2003.</p>
+    <p>Xavier Leroy. <em>The <span>OCaml</span> System: Documentation
+    and User’s Manual</em>. INRIA, 2000.</p>
+    <p>Alan A. A. Donovan and Brian W. Kernighan. <em>The Go Programming
+    Language</em>. Addison-Wesley, 2015.</p>
+    <p>Sylvan Clebsch, Sophia Drossopoulou, Sebastian Blessing, and Andy
+    McNeil. Deny capabilities for safe, fast actors. In <em>Proceedings
+    of the 5th International Workshop on Programming Based on Actors,
+    Agents, and Decentralized Control</em>, pages 1–12, 2015.</p>
+    <p>Jesse A. Tov and Riccardo Pucella. Practical affine types. In
+    <em>Proceedings of the 38th ACM SIGPLAN-SIGACT Symposium on
+    Principles of Programming Languages (POPL)</em>, pages 447–458,
+    2011.</p>
+    <p>Daan Leijen. Type directed compilation of row-typed algebraic
+    effects. In <em>Proceedings of the 44th ACM SIGPLAN Symposium on
+    Principles of Programming Languages (POPL)</em>, pages 486–499,
+    2017.</p>
+    <p>Karl Mazurak, Jianzhou Zhao, and Steve Zdancewic. Lightweight
+    linear types in <span>S</span>ystem <span>F</span><span
+    class="math inline">\(^\circ\)</span>. In <em>Proceedings of the 5th
+    ACM SIGPLAN Workshop on Types in Language Design and Implementation
+    (TLDI)</em>, pages 77–88, 2010.</p>
+    <p>Neel Krishnaswami, Pierre Pradic, and Nick Benton. Integrating
+    linear and dependent types. In <em>Proceedings of the ACM on
+    Programming Languages</em>, 3(POPL):1–28, 2019.</p>
+    <p>Peter Sewell, Francesco Zappa Nardelli, Scott Owens, Gilles
+    Peskine, Thomas Ridge, Susmit Sarkar, and Rok Strniša. Ott:
+    Effective tool support for the working semanticist. <em>Journal of
+    Functional Programming</em>, 20(1):71–122, 2010.</p>
+    <p>Robin Milner. A theory of type polymorphism in programming.
+    <em>Journal of Computer and System Sciences</em>, 17(3):348–375,
+    1978.</p>
+    <p>John C. Reynolds. Types, abstraction and parametric polymorphism.
+    In <em>Information Processing 83</em>, pages 513–523. Elsevier,
+    1983.</p>
+    <p>Eugenio Moggi. Notions of computation and monads. <em>Information
+    and Computation</em>, 93(1):55–92, 1991.</p>
+    <p>Fernando Borretti. The <span>A</span>ustral programming language.
+    <a href="https://austral-lang.org/"
+    class="uri">https://austral-lang.org/</a>, 2023.</p>
+    <p>Samson Abramsky. Computational interpretations of linear logic.
+    <em>Theoretical Computer Science</em>, 111(1–2):3–57, 1993.</p>
+    <p>Marco Gaboardi, Shin-ya Katsumata, Dominic Orchard, Flavien
+    Breuvart, and Tarmo Uustalu. Combining effects and coeffects via
+    grading. In <em>Proceedings of the 21st ACM SIGPLAN International
+    Conference on Functional Programming (ICFP)</em>, pages 476–489,
+    2016.</p>
+    </div>
+    <h1 data-number="13" id="app:rules"><span
+    class="header-section-number">13</span> Complete Typing Rules for
+    <span class="math inline">\(\lambda^{\mathsf{JR}}\)</span></h1>
+    <p>For reference, we present the complete set of typing rules for
+    the core calculus.</p>
+    <div id="def:full-rules" class="definition">
+    <p><strong>Definition 41</strong> (Full typing rules).
+    <em> </em></p>
+    <div class="mathpar">
+    <p><em><span>; x : </span></em></p>
+    <p><em><span>; x : x : </span></em></p>
+    <p><em><span>; x.  e : _1 _2</span></em></p>
+    <p><em><span>; x.  e : _1 _2</span></em></p>
+    <p><em><span>; _1, _2 e_1 e_2 : _2</span></em></p>
+    <p><em><span>; _1, _2 e_1 e_2 : _2</span></em></p>
+    <p><em><span>; _1, _2 (e_1, e_2) : _1 _2</span></em></p>
+    <p><em><span>; _1, _2 (x, y) = e_1 e_2 : </span></em></p>
+    <p><em><span>; _ _R : R </span></em></p>
+    <p><em><span>; _ (e) : </span></em></p>
+    <p><em><span>; _ (e) : </span></em></p>
+    <p><em><span>; , x : R (x y, e_2) : R </span></em></p>
+    <p><em><span>; _0, e e_1 e_2 : </span></em></p>
+    </div>
+    <p><em>Note that T-Abs-Un requires the linear context to be empty
+    (<span class="math inline">\(\cdot\)</span>): an unrestricted
+    function <span class="math inline">\(\tau_1 \to \tau_2\)</span> may
+    be duplicated, so it must not close over linear resources—otherwise,
+    applying the closure twice would duplicate those resources,
+    violating linearity.</em></p>
+    <p><em>Note that T-If requires both branches to consume the
+    <em>same</em> linear context <span
+    class="math inline">\(\Delta\)</span>. This is the key rule that
+    prevents conditional resource leaks.</em></p>
+    </div>
+    <h1 data-number="14" id="app:examples"><span
+    class="header-section-number">14</span> Extended Examples</h1>
+    <h2 data-number="14.1" id="database-connection-pool"><span
+    class="header-section-number">14.1</span> Database Connection
+    Pool</h2>
+    <pre id="lst:pool" data-caption="A resource-safe connection pool"
+    data-label="lst:pool"><code>resource DbConnection
+
+type PoolMsg =
+  | Checkout(Reply[Owned[DbConnection]])
+  | Return(Owned[DbConnection])
+  | Shutdown
+
+fn pool_process(conns: List[Owned[DbConnection]],
+                waiting: List[Reply[Owned[DbConnection]]])
+    -&gt; Never with Io, Process[PoolMsg] =
+  match Process.receive() with
+  | Checkout(reply) -&gt;
+      match conns with
+      | [conn, ..rest] -&gt;
+          Reply.send(reply, conn)
+          pool_process(rest, waiting)
+      | [] -&gt;
+          pool_process(conns, List.append(waiting, [reply]))
+  | Return(conn) -&gt;
+      match waiting with
+      | [waiter, ..rest] -&gt;
+          Reply.send(waiter, conn)
+          pool_process(conns, rest)
+      | [] -&gt;
+          pool_process([conn, ..conns], waiting)
+  | Shutdown -&gt;
+      List.each(conns, fn conn -&gt; Db.close(conn))
+      Process.exit(Normal)</code></pre>
+    <h2 data-number="14.2" id="state-effect-with-linear-resources"><span
+    class="header-section-number">14.2</span> State Effect with Linear
+    Resources</h2>
+    <pre id="lst:effect-compose"
+    data-caption="Composing effects with linear resources"
+    data-label="lst:effect-compose"><code>-- Explicit mutable state via effect
+fn accumulate(items: List[Int]) -&gt; Int with State[Int] =
+  List.each(items, fn x -&gt; State.modify(fn acc -&gt; acc + x))
+  State.get()
+
+-- Resource layer: mutable buffer (ownership tracked)
+fn fill_buffer(data: Bytes) -&gt; Bytes with Io =
+  let buf = Buffer.alloc(1024)
+  let buf = Buffer.write(buf, 0, data)
+  Buffer.freeze(buf)
+
+-- Combining pure, state, and resource layers
+fn process_and_store(items: List[Int], path: Path)
+    -&gt; Result[Unit, IoError] with Io =
+  let total = State.run(0, fn -&gt; accumulate(items))
+  let file = File.open(path, Write)?
+  File.write(file, Int.to_string(total))
+  File.close(file)
+  Ok(())</code></pre>
+    <h2 data-number="14.3" id="safe-ffi-wrapping"><span
+    class="header-section-number">14.3</span> Safe FFI Wrapping</h2>
+    <pre id="lst:ffi-wrap"
+    data-caption="Safe wrapper around a C FFI resource"
+    data-label="lst:ffi-wrap"><code>-- Foreign resource: a C library handle
+resource CHandle
+
+foreign &quot;C&quot; fn c_lib_open(config: CString) -&gt; Ptr[CHandle]
+foreign &quot;C&quot; fn c_lib_process(h: Ptr[CHandle], data: Ptr[Byte], len: CInt) -&gt; CInt
+foreign &quot;C&quot; fn c_lib_close(h: Ptr[CHandle]) -&gt; Unit
+
+-- Safe JAPL wrapper: all ownership is explicit
+fn open_handle(config: String) -&gt; Result[Owned[CHandle], Error] with Io =
+  use cstr = CString.from(config)
+  let ptr = unsafe c_lib_open(cstr)
+  if Ptr.is_null(ptr) then Err(OpenFailed)
+  else Ok(CHandle.from_raw(ptr))
+
+fn process_data(handle: Owned[CHandle], data: Bytes)
+    -&gt; (Owned[CHandle], Result[Int, Error]) with Io =
+  let result = unsafe c_lib_process(
+    CHandle.as_ptr(ref handle),
+    Bytes.as_ptr(data),
+    Bytes.length(data)
+  )
+  if result &lt; 0 then (handle, Err(ProcessFailed(result)))
+  else (handle, Ok(result))
+
+fn close_handle(handle: Owned[CHandle]) -&gt; Unit with Io =
+  unsafe c_lib_close(CHandle.into_raw(handle))</code></pre>
+    <section id="footnotes" class="footnotes footnotes-end-of-document"
+    role="doc-endnotes">
+    <hr />
+    <ol>
+    <li id="fn1"><p>The seven principles are: (1) Values are primary,
+    (2) Mutation is local and explicit, (3) Concurrency is
+    process-based, (4) Failures are normal and typed, (5) Distribution
+    is a native concern, (6) Functions are the unit of composition,
+    (7) Runtime simplicity matters as much as type power.<a
+    href="#fnref1" class="footnote-back"
+    role="doc-backlink">↩︎</a></p></li>
+    </ol>
+    </section>
+
+    <div class="paper-footer">
+      <p>JAPL Research Series — YonedaAI Research Collective</p>
+      <p><a href="../index.html">japl-nine.vercel.app</a></p>
+    </div>
+  </main>
+</div>
+
+<script>
+// Auto-generate sidebar TOC from h2/h3 headings
+const toc = document.getElementById('toc');
+const headings = document.querySelectorAll('.content h2, .content h3');
+headings.forEach((h, i) => {
+  if (!h.id) h.id = 'section-' + i;
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.href = '#' + h.id;
+  a.textContent = h.textContent;
+  if (h.tagName === 'H3') a.className = 'toc-h3';
+  li.appendChild(a);
+  toc.appendChild(li);
+});
+</script>
+
+</body>
+</html>

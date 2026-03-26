@@ -1,0 +1,3528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Failures Are Normal and Typed: A Unified Theory of Error Handling in JAPL — JAPL Research</title>
+  <meta name="description" content="Failures Are Normal and Typed: A Unified Theory of Error Handling in JAPL — Part of the JAPL programming language research series.">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Failures Are Normal and Typed: A Unified Theory of Error Handling in JAPL — JAPL Research">
+  <meta property="og:description" content="Part of the JAPL programming language research series. Just Another Programming Language.">
+  <meta property="og:url" content="https://japl-nine.vercel.app/papers/typed-failures.html">
+  <meta property="og:image" content="https://japl-nine.vercel.app/og-image.png">
+  <meta property="og:site_name" content="JAPL">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Failures Are Normal and Typed: A Unified Theory of Error Handling in JAPL — JAPL Research">
+  <meta name="twitter:description" content="Part of the JAPL programming language research series.">
+  <meta name="twitter:image" content="https://japl-nine.vercel.app/og-image.png">
+
+  <!-- KaTeX for math -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      if (typeof renderMathInElement !== "undefined") {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: "\\[", right: "\\]", display: true},
+            {left: "\\(", right: "\\)", display: false}
+          ]
+        });
+      }
+    });
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e17;
+      --surface: #141922;
+      --surface-2: #1a1f2e;
+      --accent: #7c5cfc;
+      --accent-dim: rgba(124, 92, 252, 0.15);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --dim: #64748b;
+      --code-bg: #1a1f2e;
+      --border: #1e293b;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 17px;
+    }
+
+    /* Top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 14, 23, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    .topbar a:hover { color: var(--accent); }
+    .topbar .logo { color: var(--text); font-weight: 700; font-size: 1.1rem; }
+    .topbar .logo span { color: var(--accent); }
+    .topbar-links { display: flex; gap: 1.5rem; }
+
+    /* Layout */
+    .wrapper {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Sidebar TOC */
+    .sidebar {
+      position: sticky;
+      top: 60px;
+      width: 260px;
+      min-width: 260px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+      padding: 2rem 1rem 2rem 2rem;
+      border-right: 1px solid var(--border);
+    }
+    .sidebar h4 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--dim);
+      margin-bottom: 1rem;
+    }
+    .sidebar ul { list-style: none; }
+    .sidebar li { margin-bottom: 0.4rem; }
+    .sidebar a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      display: block;
+      padding: 0.2rem 0;
+      transition: color 0.2s;
+    }
+    .sidebar a:hover { color: var(--accent); }
+    .sidebar .toc-h3 { padding-left: 1rem; font-size: 0.8rem; }
+
+    /* Main content */
+    .content {
+      flex: 1;
+      min-width: 0;
+      padding: 2.5rem 3rem 4rem;
+      max-width: 800px;
+    }
+
+    /* Paper header */
+    .paper-header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .paper-part {
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+    .paper-header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 1rem;
+    }
+    .paper-author {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .paper-links-bar {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+    }
+    .paper-links-bar a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .paper-links-bar a:hover {
+      background: var(--accent-dim);
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--text);
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+      line-height: 1.3;
+    }
+    h2 { font-size: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h3 { font-size: 1.2rem; color: var(--muted); }
+    h4 { font-size: 1.05rem; }
+    p { margin-bottom: 1rem; }
+    a { color: var(--accent); }
+
+    /* Abstract */
+    .abstract {
+      background: var(--surface);
+      border-left: 3px solid var(--accent);
+      padding: 1.5rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 2rem;
+    }
+    .abstract p { margin-bottom: 0; }
+
+    /* Code */
+    pre, code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.92rem;
+    }
+    th, td {
+      padding: 0.6rem 0.8rem;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      background: var(--surface);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:nth-child(even) { background: rgba(20, 25, 34, 0.5); }
+
+    /* Small caps */
+    .smallcaps { font-variant: small-caps; }
+
+    /* Lists */
+    ul, ol { margin: 1rem 0; padding-left: 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+
+    /* Blockquote */
+    blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 1rem;
+      color: var(--muted);
+      margin: 1.5rem 0;
+    }
+
+    /* Figures */
+    figure { margin: 2rem 0; text-align: center; }
+    figcaption { color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* Math */
+    .math.display { overflow-x: auto; padding: 0.5rem 0; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .content { padding: 1.5rem; }
+      .topbar { padding: 0.75rem 1rem; }
+    }
+
+    /* Footer */
+    .paper-footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--dim);
+      font-size: 0.85rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="../index.html" class="logo">JAPL<span>.</span></a>
+  <div class="topbar-links">
+    <a href="../index.html#papers">All Papers</a>
+    <a href="pdf/typed-failures.pdf">Download PDF</a>
+    <a href="https://github.com/YonedaAI/japl" target="_blank">GitHub</a>
+  </div>
+</div>
+
+<div class="wrapper">
+  <nav class="sidebar" id="sidebar">
+    <h4>Contents</h4>
+    <ul id="toc"></ul>
+  </nav>
+
+  <main class="content">
+    <div class="paper-header">
+      <div class="paper-part">Part IV</div>
+      <h1><strong>Failures Are Normal and Typed:</strong><br />
+A Unified Theory of Error Handling Combining<br />
+Typed Recoverable Errors with Crash-and-Restart Semantics</h1>
+      <div class="paper-author">Matthew Long — The JAPL Research Collaboration<br>YonedaAI Research Collective, Chicago, IL</div>
+      <div class="paper-links-bar">
+        <a href="pdf/typed-failures.pdf">PDF</a>
+        <a href="latex/typed-failures.tex">LaTeX Source</a>
+        <a href="../index.html#papers">Series Index</a>
+      </div>
+    </div>
+
+    <h1 data-number="1" id="sec:intro"><span
+    class="header-section-number">1</span> Introduction</h1>
+    <p>Every program encounters failure. Files go missing, networks drop
+    packets, users submit malformed input, hardware degrades, and bugs
+    escape testing. How a programming language handles these failures
+    shapes the reliability, readability, and maintainability of the
+    software written in it.</p>
+    <p>The history of error handling in programming languages is a
+    history of trade-offs. Each approach optimizes for certain failure
+    modes while leaving others poorly served:</p>
+    <h4 data-number="1.0.0.1" id="exceptions-java-python-c."><span
+    class="header-section-number">1.0.0.1</span> Exceptions (Java,
+    Python, C++).</h4>
+    <p>Exceptions provide a mechanism for non-local control flow
+    transfer, allowing functions deep in the call stack to signal
+    failures to distant callers. Java’s checked exceptions <span
+    class="citation" data-cites="gosling2014java"></span> attempt to
+    bring static typing to this mechanism, requiring callers to either
+    handle or propagate declared exception types. In practice, checked
+    exceptions have been widely criticized <span class="citation"
+    data-cites="eckel2003thinking bloch2008effective"></span>: they
+    create coupling between implementation details and interface
+    signatures, encourage catching overly broad exception types, and
+    scale poorly in the presence of higher-order functions and
+    generics.</p>
+    <h4 data-number="1.0.0.2" id="error-codes-and-values-c-go."><span
+    class="header-section-number">1.0.0.2</span> Error codes and values
+    (C, Go).</h4>
+    <p>C’s convention of returning integer error codes and Go’s explicit
+    <code>error</code> return values <span class="citation"
+    data-cites="pike2012go"></span> keep failure in the value domain,
+    making it visible at every call site. However, neither language
+    enforces that errors are inspected. In C, a forgotten
+    <code>errno</code> check is a silent bug. In Go, the
+    <code>if err != nil</code> pattern introduces substantial syntactic
+    noise and, lacking sum types, cannot express the <em>type</em> of
+    the error with the same precision as an algebraic data type.</p>
+    <h4 data-number="1.0.0.3" id="result-types-rust-haskell."><span
+    class="header-section-number">1.0.0.3</span> Result types (Rust,
+    Haskell).</h4>
+    <p>Rust’s <code>Result&lt;T, E&gt;</code> <span class="citation"
+    data-cites="matsakis2014rust"></span> and Haskell’s
+    <code>Either a b</code> <span class="citation"
+    data-cites="marlow2010haskell"></span> embed failure in the type
+    system as sum types. The compiler enforces that callers handle both
+    success and failure cases. Rust’s <code>?</code> operator provides
+    syntactic sugar for propagation. This approach is compositionally
+    elegant but can be onerous: converting between error types, chaining
+    fallible operations, and handling errors at appropriate levels of
+    abstraction all require careful design. More fundamentally, Rust
+    lacks a clean answer for truly unexpected
+    failures—<code>panic!</code> exists but is designed as a last
+    resort, not a systematic recovery mechanism.</p>
+    <h4 data-number="1.0.0.4"
+    id="crash-and-restart-semantics-erlangotp."><span
+    class="header-section-number">1.0.0.4</span> Crash-and-restart
+    semantics (Erlang/OTP).</h4>
+    <p>Erlang takes a radically different approach: rather than
+    preventing or carefully handling every failure, it embraces failure
+    as normal <span class="citation"
+    data-cites="armstrong2003thesis"></span>. Processes are lightweight
+    and isolated. When a process encounters an unexpected condition, it
+    crashes. A <em>supervisor</em> process detects the crash and
+    restarts the failed process with fresh state. This “let it crash”
+    philosophy <span class="citation"
+    data-cites="armstrong2007history"></span> has proven remarkably
+    effective for building fault-tolerant telecommunications and
+    distributed systems. However, Erlang’s dynamic typing means that
+    error types are not checked at compile time, and the boundary
+    between errors that should be handled locally and errors that should
+    trigger a crash is left to programmer convention.</p>
+    <h4 data-number="1.0.0.5" id="the-gap."><span
+    class="header-section-number">1.0.0.5</span> The gap.</h4>
+    <p>No existing language satisfactorily unifies these approaches.
+    Rust handles domain errors beautifully but has no process-level
+    crash recovery. Erlang handles unexpected failures gracefully but
+    provides no compile-time error typing. Go has neither sum types nor
+    supervision. Java’s checked exceptions were the right
+    instinct—making failure visible in types—executed with the wrong
+    mechanism.</p>
+    <p><span class="smallcaps">Japl</span> addresses this gap with a
+    <em>dual error model</em> that cleanly separates two fundamentally
+    different kinds of failure:</p>
+    <ol>
+    <li><p><strong>Domain errors</strong> (<code>Result</code> types +
+    <code>Fail</code> effect): Expected, recoverable failures such as
+    parse errors, validation failures, and not-found conditions. These
+    are values, tracked by the type system and the effect system, that
+    must be handled by the caller.</p></li>
+    <li><p><strong>Process failures</strong> (crash + supervision):
+    Unexpected failures such as invariant violations, corrupted state,
+    and unrecoverable resource loss. These terminate the enclosing
+    process, and a supervisor restarts it with fresh state.</p></li>
+    </ol>
+    <p>This paper formalizes the dual model, proves its key safety and
+    liveness properties, and demonstrates its practical advantages
+    through comparison and case study.</p>
+    <h4 data-number="1.0.0.6" id="contributions."><span
+    class="header-section-number">1.0.0.6</span> Contributions.</h4>
+    <ul>
+    <li><p>A formal framework for dual-mode error handling combining sum
+    types, algebraic effects, and process algebra (<a href="#sec:formal"
+    data-reference-type="ref+Label"
+    data-reference="sec:formal">3</a>).</p></li>
+    <li><p>The design and specification of <span
+    class="smallcaps">Japl</span>’s dual error model, including the
+    <code>Fail</code> effect and its integration with supervision (<a
+    href="#sec:dual,sec:boundary,sec:effects,sec:supervision"
+    data-reference-type="ref+Label"
+    data-reference="sec:dual,sec:boundary,sec:effects,sec:supervision">[sec:dual,sec:boundary,sec:effects,sec:supervision]</a>).</p></li>
+    <li><p>Proofs of error safety, crash containment, and supervision
+    liveness (<a href="#sec:formal-properties"
+    data-reference-type="ref+Label"
+    data-reference="sec:formal-properties">11</a>).</p></li>
+    <li><p>Comprehensive comparison with five major error handling
+    paradigms (<a href="#sec:comparison" data-reference-type="ref+Label"
+    data-reference="sec:comparison">8</a>).</p></li>
+    <li><p>Implementation strategies and performance analysis (<a
+    href="#sec:implementation" data-reference-type="ref+Label"
+    data-reference="sec:implementation">9</a>).</p></li>
+    <li><p>Three detailed case studies demonstrating the model in
+    practice (<a href="#sec:case-studies"
+    data-reference-type="ref+Label"
+    data-reference="sec:case-studies">10</a>).</p></li>
+    </ul>
+    <h1 data-number="2" id="sec:background"><span
+    class="header-section-number">2</span> Background and Related
+    Work</h1>
+    <h2 data-number="2.1" id="exception-safety-and-the-c-legacy"><span
+    class="header-section-number">2.1</span> Exception Safety and the
+    C++ Legacy</h2>
+    <p>Stroustrup introduced exceptions to C++ as a mechanism for
+    signaling errors across abstraction boundaries <span
+    class="citation" data-cites="stroustrup1994design"></span>. The
+    subsequent development of <em>exception safety</em>
+    guarantees—basic, strong, and no-throw—by Abrahams <span
+    class="citation" data-cites="abrahams2000exception"></span> and
+    Sutter <span class="citation"
+    data-cites="sutter1999exceptional"></span> revealed the deep
+    interaction between exceptions and resource management. The RAII
+    (Resource Acquisition Is Initialization) pattern emerged as the C++
+    community’s solution to ensuring resource cleanup in the presence of
+    exceptions, a concern that <span class="smallcaps">Japl</span>
+    addresses through ownership types and linear resource
+    management.</p>
+    <h2 data-number="2.2" id="monadic-error-handling"><span
+    class="header-section-number">2.2</span> Monadic Error Handling</h2>
+    <p>Moggi’s seminal work on monads as a structuring mechanism for
+    computational effects <span class="citation"
+    data-cites="moggi1991notions"></span> provided the theoretical
+    foundation for treating errors as first-class values. Wadler <span
+    class="citation"
+    data-cites="wadler1992essence wadler1995monads"></span> popularized
+    the application of monads in functional programming, showing how the
+    <em>exception monad</em> <span class="math inline">\(T(A) = A +
+    E\)</span> (for a fixed error type <span
+    class="math inline">\(E\)</span>) could structure error-handling
+    code. Haskell’s <code>Either</code> monad and its
+    <code>MonadError</code> typeclass <span class="citation"
+    data-cites="jones1995functional"></span> realize this approach,
+    enabling compositional error handling through
+    <code>do</code>-notation.</p>
+    <p>However, the monadic approach in Haskell suffers from practical
+    limitations. The “monad transformer” stack needed to combine
+    multiple effects (errors, state, IO) introduces complexity and
+    performance overhead <span class="citation"
+    data-cites="kiselyov2013extensible"></span>. More fundamentally,
+    Haskell also has a separate, dynamically-typed exception system for
+    IO errors <span class="citation"
+    data-cites="marlow2001asynchronous"></span>, creating a dualism that
+    is acknowledged but not cleanly resolved.</p>
+    <h2 data-number="2.3" id="rusts-result-and-panic"><span
+    class="header-section-number">2.3</span> Rust’s Result and
+    Panic</h2>
+    <p>Rust <span class="citation"
+    data-cites="matsakis2014rust klabnik2019rust"></span> made the
+    deliberate decision to separate <em>recoverable</em> errors
+    (represented by <code>Result&lt;T, E&gt;</code>) from
+    <em>unrecoverable</em> errors (represented by <code>panic!</code>).
+    The <code>?</code> operator provides ergonomic error propagation.
+    The <code>From</code> trait enables automatic error type conversion
+    during propagation.</p>
+    <p>Rust’s approach is the closest antecedent to <span
+    class="smallcaps">Japl</span>’s dual model. However, Rust lacks
+    several features that <span class="smallcaps">Japl</span> provides:
+    (1) Rust has no built-in lightweight process model, so
+    <code>panic!</code> typically aborts the entire program or unwinds a
+    single thread—there is no supervision. Libraries such as
+    <code>tokio</code> (asynchronous task runtime) and
+    <code>rayon</code> (data-parallel work-stealing) provide lightweight
+    tasks, but these are library abstractions that lack the isolation
+    and crash-containment primitives of a language runtime: a panic in a
+    <code>tokio</code> task can poison shared state, and neither library
+    provides supervision trees or typed crash reasons; (2) Rust’s error
+    handling is not integrated with an effect system, so the compiler
+    does not track which functions can fail with which error types as a
+    composable annotation; (3) Rust’s <code>panic!</code> is designed as
+    a last resort, not as a deliberate recovery strategy.</p>
+    <h2 data-number="2.4" id="gos-error-values"><span
+    class="header-section-number">2.4</span> Go’s Error Values</h2>
+    <p>Go <span class="citation"
+    data-cites="pike2012go donovan2015go"></span> represents errors as
+    values implementing the <code>error</code> interface. Functions
+    return <code>(T, error)</code> tuples. This approach is explicit but
+    lacks algebraic structure: Go has no sum types, so error handling
+    cannot benefit from exhaustive pattern matching. The
+    <code>if err != nil</code> pattern is pervasive and syntactically
+    heavy. Go’s <code>panic</code>/<code>recover</code> mechanism exists
+    but is discouraged for normal error handling.</p>
+    <p>Recent additions to Go’s error handling—<code>errors.Is</code>,
+    <code>errors.As</code>, and error wrapping with
+    <code>fmt.Errorf("%w", err)</code>—are runtime-typed approximations
+    of what algebraic data types provide at compile time.</p>
+    <h2 data-number="2.5" id="erlangs-let-it-crash-philosophy"><span
+    class="header-section-number">2.5</span> Erlang’s “Let It Crash”
+    Philosophy</h2>
+    <p>Armstrong’s doctoral thesis <span class="citation"
+    data-cites="armstrong2003thesis"></span> formalized the philosophy
+    that has made Erlang/OTP the gold standard for fault-tolerant
+    systems. The key insights are:</p>
+    <ol>
+    <li><p><strong>Process isolation</strong>: Processes share no
+    memory. A bug in one process cannot corrupt another.</p></li>
+    <li><p><strong>Crash as recovery</strong>: Rather than attempting to
+    handle every conceivable failure, a process that encounters
+    unexpected state simply terminates. A supervisor detects this and
+    restarts the process with known-good initial state.</p></li>
+    <li><p><strong>Error kernel pattern</strong>: The system is
+    structured so that a small, well-tested “error kernel” of supervisor
+    processes manages the lifecycle of a larger population of worker
+    processes that may fail <span class="citation"
+    data-cites="armstrong2007history"></span>.</p></li>
+    <li><p><strong>Supervision trees</strong>: Supervisors are organized
+    hierarchically, with strategies (one-for-one, all-for-one,
+    rest-for-one) governing how failures propagate and how restarts
+    occur <span class="citation"
+    data-cites="logan2010erlang"></span>.</p></li>
+    </ol>
+    <p>Erlang’s limitation is the absence of static typing for errors. A
+    process may crash with any term as the “reason,” and supervisors
+    make restart decisions based on runtime pattern matching against
+    crash reasons. This works in practice but leaves significant
+    error-handling logic invisible to static analysis.</p>
+    <h2 data-number="2.6" id="algebraic-effects-and-handlers"><span
+    class="header-section-number">2.6</span> Algebraic Effects and
+    Handlers</h2>
+    <p>Plotkin and Pretnar’s algebraic effects and handlers <span
+    class="citation"
+    data-cites="plotkin2009handlers plotkin2013handling"></span> provide
+    a principled framework for structuring computational effects. An
+    algebraic effect declares a set of operations; a handler provides
+    interpretations for those operations. Leijen <span class="citation"
+    data-cites="leijen2017type"></span> demonstrated practical effect
+    systems with row-polymorphic effect typing in the Koka language.</p>
+    <p><span class="smallcaps">Japl</span>’s <code>Fail</code> effect is
+    an instance of the exception effect in this framework. The algebraic
+    effects perspective is crucial because it makes error-handling
+    capability <em>compositional</em>: functions declare which error
+    effects they require, and handlers can interpret these effects at
+    appropriate boundaries.</p>
+    <h2 data-number="2.7" id="failure-detectors"><span
+    class="header-section-number">2.7</span> Failure Detectors</h2>
+    <p>Chandra and Toueg <span class="citation"
+    data-cites="chandra1996unreliable"></span> formalized the notion of
+    failure detectors in distributed systems, classifying them by
+    completeness and accuracy properties. This work is relevant to <span
+    class="smallcaps">Japl</span>’s supervision model: a supervisor acts
+    as a local failure detector for its children, and the completeness
+    guarantee (every crashed process is eventually detected) is
+    essential for the supervision liveness property we prove in <a
+    href="#sec:formal-properties" data-reference-type="ref+Label"
+    data-reference="sec:formal-properties">11</a>.</p>
+    <h2 data-number="2.8" id="process-algebras"><span
+    class="header-section-number">2.8</span> Process Algebras</h2>
+    <p>The <span class="math inline">\(\pi\)</span>-calculus <span
+    class="citation" data-cites="milner1999communicating"></span> and
+    CSP <span class="citation"
+    data-cites="hoare1985communicating"></span> provide formal
+    foundations for reasoning about concurrent processes and message
+    passing. We extend these frameworks with explicit crash and restart
+    actions to model <span class="smallcaps">Japl</span>’s supervision
+    semantics.</p>
+    <h1 data-number="3" id="sec:formal"><span
+    class="header-section-number">3</span> Formal Framework</h1>
+    <p>We develop a formal framework that unifies typed error handling
+    with crash semantics. The framework has three components: (1) an
+    algebraic treatment of error types as sum types, (2) categorical
+    semantics of failure using Kleisli categories, and (3) a process
+    algebra extended with crash actions.</p>
+    <h2 data-number="3.1" id="error-types-as-sum-types"><span
+    class="header-section-number">3.1</span> Error Types as Sum
+    Types</h2>
+    <div class="definition">
+    <p><strong>Definition 1</strong> (Error type). <em>An <em>error
+    type</em> <span class="math inline">\(E\)</span> is an algebraic
+    data type (sum type) whose constructors represent distinct failure
+    modes: <span class="math display">\[E = C_1(\tau_1) \mid C_2(\tau_2)
+    \mid \cdots \mid C_n(\tau_n)\]</span> where each <span
+    class="math inline">\(C_i\)</span> is a constructor carrying data of
+    type <span class="math inline">\(\tau_i\)</span>.</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 2</strong> (Result type). <em>The <em>result
+    type</em> <span class="math inline">\(\texttt{Result}\langle A,
+    E\rangle\)</span> is a binary sum type: <span
+    class="math display">\[\texttt{Result}\langle A, E\rangle =
+    \ensuremath{\mathsf{Ok}}(A) +
+    \ensuremath{\mathsf{Err}}(E)\]</span></em></p>
+    </div>
+    <p>The result type forms a <em>monad</em>, which we call the
+    exception monad for error type <span
+    class="math inline">\(E\)</span>.</p>
+    <div class="definition">
+    <p><strong>Definition 3</strong> (Exception monad). <em>For a fixed
+    error type <span class="math inline">\(E\)</span>, the exception
+    monad <span class="math inline">\(T_E\)</span> is defined by: <span
+    class="math display">\[\begin{align*}
+      T_E(A) &amp;= A + E \\
+      \eta_A(a) &amp;= \ensuremath{\mathsf{Ok}}(a) \\
+      \mu_A(\ensuremath{\mathsf{Ok}}(\ensuremath{\mathsf{Ok}}(a)))
+    &amp;= \ensuremath{\mathsf{Ok}}(a) \\
+      \mu_A(\ensuremath{\mathsf{Ok}}(\ensuremath{\mathsf{Err}}(e)))
+    &amp;= \ensuremath{\mathsf{Err}}(e) \\
+      \mu_A(\ensuremath{\mathsf{Err}}(e)) &amp;=
+    \ensuremath{\mathsf{Err}}(e)
+    \end{align*}\]</span> The monadic bind (Kleisli composition) is:
+    <span class="math display">\[m \mathbin{&gt;\!\!&gt;\!\!=} f =
+    \begin{cases}
+        f(a) &amp; \text{if } m = \ensuremath{\mathsf{Ok}}(a) \\
+        \ensuremath{\mathsf{Err}}(e) &amp; \text{if } m =
+    \ensuremath{\mathsf{Err}}(e)
+      \end{cases}\]</span></em></p>
+    </div>
+    <div class="proposition">
+    <p><strong>Proposition 4</strong> (Monad laws). <em><span
+    class="math inline">\(T_E\)</span> satisfies the monad
+    laws:</em></p>
+    <ol>
+    <li><p><em>Left identity: <span class="math inline">\(\eta(a)
+    \mathbin{&gt;\!\!&gt;\!\!=} f = f(a)\)</span></em></p></li>
+    <li><p><em>Right identity: <span class="math inline">\(m
+    \mathbin{&gt;\!\!&gt;\!\!=} \eta = m\)</span></em></p></li>
+    <li><p><em>Associativity: <span class="math inline">\((m
+    \mathbin{&gt;\!\!&gt;\!\!=} f) \mathbin{&gt;\!\!&gt;\!\!=} g = m
+    \mathbin{&gt;\!\!&gt;\!\!=} (\lambda a.\, f(a)
+    \mathbin{&gt;\!\!&gt;\!\!=} g)\)</span></em></p></li>
+    </ol>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By case analysis on the structure of <span
+    class="math inline">\(m\)</span>. For (1): <span
+    class="math inline">\(\eta(a) \mathbin{&gt;\!\!&gt;\!\!=} f =
+    \ensuremath{\mathsf{Ok}}(a) \mathbin{&gt;\!\!&gt;\!\!=} f =
+    f(a)\)</span>. For (2): if <span class="math inline">\(m =
+    \ensuremath{\mathsf{Ok}}(a)\)</span>, then <span
+    class="math inline">\(m \mathbin{&gt;\!\!&gt;\!\!=} \eta = \eta(a) =
+    \ensuremath{\mathsf{Ok}}(a) = m\)</span>; if <span
+    class="math inline">\(m = \ensuremath{\mathsf{Err}}(e)\)</span>,
+    then <span class="math inline">\(m \mathbin{&gt;\!\!&gt;\!\!=} \eta
+    = \ensuremath{\mathsf{Err}}(e) = m\)</span>. For (3): the proof
+    proceeds by case analysis on <span class="math inline">\(m\)</span>:
+    if <span class="math inline">\(m =
+    \ensuremath{\mathsf{Err}}(e)\)</span>, both sides reduce to <span
+    class="math inline">\(\ensuremath{\mathsf{Err}}(e)\)</span>; if
+    <span class="math inline">\(m =
+    \ensuremath{\mathsf{Ok}}(a)\)</span>, both sides reduce to <span
+    class="math inline">\(f(a) \mathbin{&gt;\!\!&gt;\!\!=}
+    g\)</span>. ◻</p>
+    </div>
+    <h2 data-number="3.2"
+    id="kleisli-categories-and-partial-functions"><span
+    class="header-section-number">3.2</span> Kleisli Categories and
+    Partial Functions</h2>
+    <p>The categorical semantics of error handling can be understood
+    through the Kleisli category of the exception monad.</p>
+    <div class="definition">
+    <p><strong>Definition 5</strong> (Kleisli category). <em>The Kleisli
+    category <span class="math inline">\(\mathbf{Kl}(T_E)\)</span> for
+    the exception monad <span class="math inline">\(T_E\)</span>
+    has:</em></p>
+    <ul>
+    <li><p><em>Objects: types <span class="math inline">\(A, B, C,
+    \ldots\)</span></em></p></li>
+    <li><p><em>Morphisms <span class="math inline">\(A \to B\)</span>:
+    functions <span class="math inline">\(A \to T_E(B) = A \to (B +
+    E)\)</span></em></p></li>
+    <li><p><em>Identity: <span class="math inline">\(\eta_A : A \to A +
+    E\)</span></em></p></li>
+    <li><p><em>Composition: <span class="math inline">\(g \circ_K f =
+    \lambda a.\, f(a) \mathbin{&gt;\!\!&gt;\!\!=}
+    g\)</span></em></p></li>
+    </ul>
+    </div>
+    <p>The Kleisli category <span
+    class="math inline">\(\mathbf{Kl}(T_E)\)</span> is isomorphic to a
+    category of <em>partial functions</em> with typed partiality. A
+    morphism <span class="math inline">\(f : A \to B + E\)</span> in
+    <span class="math inline">\(\mathbf{Kl}(T_E)\)</span> is a function
+    that either produces a <span class="math inline">\(B\)</span> or
+    fails with a reason from <span class="math inline">\(E\)</span>.
+    This gives us a precise categorical characterization of <span
+    class="smallcaps">Japl</span>’s fallible functions.</p>
+    <div class="proposition">
+    <p><strong>Proposition 6</strong>. <em>Kleisli composition of
+    fallible functions is associative and preserves error propagation:
+    if <span class="math inline">\(f : A \to B + E\)</span> fails, then
+    <span class="math inline">\(g \circ_K f\)</span> fails with the same
+    error, regardless of <span
+    class="math inline">\(g\)</span>.</em></p>
+    </div>
+    <p>This property corresponds directly to <span
+    class="smallcaps">Japl</span>’s <code>?</code> operator semantics:
+    error propagation is short-circuiting.</p>
+    <h2 data-number="3.3" id="algebraic-effects-for-errors"><span
+    class="header-section-number">3.3</span> Algebraic Effects for
+    Errors</h2>
+    <p>We model <span class="smallcaps">Japl</span>’s <code>Fail</code>
+    effect using the framework of algebraic effects and handlers <span
+    class="citation" data-cites="plotkin2009handlers"></span>.</p>
+    <div class="definition">
+    <p><strong>Definition 7</strong> (Fail effect). <em>The <span
+    class="math inline">\(\texttt{Fail}\langle E\rangle\)</span> effect
+    is an algebraic effect with a single operation: <span
+    class="math display">\[\mathsf{fail} : E \to \bot\]</span> The
+    operation <span class="math inline">\(\mathsf{fail}(e)\)</span>
+    signals a failure with reason <span class="math inline">\(e :
+    E\)</span> and does not return (indicated by the return type <span
+    class="math inline">\(\bot\)</span>).</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 8</strong> (Fail handler). <em>A handler for
+    <span class="math inline">\(\texttt{Fail}\langle E\rangle\)</span>
+    interprets the effect, converting an effectful computation into a
+    <code>Result</code> value: <span
+    class="math display">\[\mathsf{catch} : (\forall \alpha.\,
+    (\texttt{Fail}\langle E\rangle \Rightarrow \alpha) \to
+    \texttt{Result}\langle \alpha, E\rangle)\]</span> Specifically:
+    <span class="math display">\[\begin{align*}
+      \mathsf{catch}(\mathsf{return}\;v) &amp;=
+    \ensuremath{\mathsf{Ok}}(v) \\
+      \mathsf{catch}(\mathsf{fail}\;e\;k) &amp;=
+    \ensuremath{\mathsf{Err}}(e)
+    \end{align*}\]</span> where <span class="math inline">\(k\)</span>
+    is the (discarded) continuation.</em></p>
+    </div>
+    <p>The algebraic effects framework provides several advantages over
+    the monadic approach:</p>
+    <ol>
+    <li><p><strong>Composition</strong>: Multiple <code>Fail</code>
+    effects with different error types compose naturally via
+    row-polymorphic effect rows, without the need for monad
+    transformers.</p></li>
+    <li><p><strong>Separation of concern</strong>: The code that
+    <em>raises</em> an error and the code that <em>handles</em> it are
+    decoupled; the handler can be installed at any point in the call
+    chain.</p></li>
+    <li><p><strong>Compiler tracking</strong>: The effect system tracks
+    which functions may fail and with which error types, enabling static
+    analysis.</p></li>
+    </ol>
+    <h2 data-number="3.4" id="process-algebra-with-crash-actions"><span
+    class="header-section-number">3.4</span> Process Algebra with Crash
+    Actions</h2>
+    <p>To model process failures and supervision, we extend a process
+    algebra with explicit crash and restart actions.</p>
+    <div class="definition">
+    <p><strong>Definition 9</strong> (Extended process algebra). <em>A
+    process <span class="math inline">\(P\)</span> is defined by the
+    grammar: <span class="math display">\[\begin{align*}
+      P ::=\; &amp; \mathbf{0} &amp;&amp; \text{(terminated)} \\
+      \mid\; &amp; \alpha.P &amp;&amp; \text{(action prefix)} \\
+      \mid\; &amp; P_1 \parallel P_2 &amp;&amp; \text{(parallel
+    composition)} \\
+      \mid\; &amp; P_1 + P_2 &amp;&amp; \text{(choice)} \\
+      \mid\; &amp; \mathsf{crash}(r) &amp;&amp; \text{(crash with reason
+    } r\text{)} \\
+      \mid\; &amp; \mathsf{sup}(S, [P_1, \ldots, P_n]) &amp;&amp;
+    \text{(supervision)} \\
+      \mid\; &amp; !P &amp;&amp; \text{(replication)}
+    \end{align*}\]</span> where <span
+    class="math inline">\(\alpha\)</span> ranges over actions (send,
+    receive, internal), <span class="math inline">\(r\)</span> is a
+    crash reason, and <span class="math inline">\(S\)</span> is a
+    supervision strategy.</em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 10</strong> (Crash transition). <em>A process
+    may transition to a crashed state: <span
+    class="math display">\[\frac{}{\mathsf{crash}(r)
+    \xrightarrow{\mathsf{crash}(r)} \mathbf{0}}\]</span></em></p>
+    </div>
+    <div class="definition">
+    <p><strong>Definition 11</strong> (Supervision transition). <em>A
+    supervisor observes a child crash and restarts it: <span
+    class="math display">\[\frac{P_i \xrightarrow{\mathsf{crash}(r)}
+    \mathbf{0} \quad S(i, r) = \mathsf{restart}}
+           {\mathsf{sup}(S, [\ldots, P_i, \ldots]) \xrightarrow{\tau}
+    \mathsf{sup}(S, [\ldots, P_i^0, \ldots])}\]</span> where <span
+    class="math inline">\(P_i^0\)</span> is the initial state of process
+    <span class="math inline">\(i\)</span>.</em></p>
+    </div>
+    <p>The supervision strategy <span class="math inline">\(S\)</span>
+    determines the restart behavior:</p>
+    <div class="definition">
+    <p><strong>Definition 12</strong> (Supervision strategies).
+    <em><span class="math display">\[\begin{align*}
+      \mathsf{OneForOne}(i, r) &amp;= \mathsf{restart}(i) \\
+      \mathsf{AllForOne}(i, r) &amp;= \mathsf{restart}(1), \ldots,
+    \mathsf{restart}(n) \\
+      \mathsf{RestForOne}(i, r) &amp;= \mathsf{restart}(i),
+    \mathsf{restart}(i+1), \ldots, \mathsf{restart}(n)
+    \end{align*}\]</span></em></p>
+    </div>
+    <h2 data-number="3.5" id="connecting-the-two-layers"><span
+    class="header-section-number">3.5</span> Connecting the Two
+    Layers</h2>
+    <p>The key insight of <span class="smallcaps">Japl</span>’s dual
+    model is that the two formalisms—Kleisli categories for domain
+    errors and process algebra for crashes—operate at different levels
+    of abstraction with a well-defined boundary between them.</p>
+    <div class="definition">
+    <p><strong>Definition 13</strong> (Error/crash boundary). <em>A
+    <em>boundary function</em> <span
+    class="math inline">\(\beta\)</span> maps from the domain error
+    level to the process level: <span class="math display">\[\beta :
+    \texttt{Result}\langle A, E\rangle \to \mathsf{Proc}\]</span> such
+    that: <span class="math display">\[\begin{align*}
+      \beta(\ensuremath{\mathsf{Ok}}(a)) &amp;= \text{continue with } a
+    \\
+      \beta(\ensuremath{\mathsf{Err}}(e)) &amp;= \text{continue with
+    error handling for } e \\
+      \text{(invariant violation)} &amp;\to \mathsf{crash}(r)
+    \end{align*}\]</span></em></p>
+    </div>
+    <p>The boundary is asymmetric: domain errors can always be converted
+    to process actions (either handling the error or choosing to crash),
+    but crashes cannot be converted back to domain errors within the
+    crashed process. Recovery from crashes happens at the
+    <em>supervisor</em> level, not within the failed process itself.</p>
+    <h1 data-number="4" id="sec:dual"><span
+    class="header-section-number">4</span> JAPL’s Dual Error Model</h1>
+    <p><span class="smallcaps">Japl</span> provides two complementary
+    mechanisms for handling failure, each appropriate for a different
+    class of errors.</p>
+    <h2 data-number="4.1"
+    id="recoverable-domain-errors-result-types"><span
+    class="header-section-number">4.1</span> Recoverable Domain Errors:
+    Result Types</h2>
+    <p>Domain errors represent expected failure modes—conditions that
+    are part of the normal operation of a system. A database query may
+    not find a matching row. A JSON parser may encounter malformed
+    input. A user may submit an invalid form. These are not bugs; they
+    are anticipated outcomes that the program must handle.</p>
+    <p>In <span class="smallcaps">Japl</span>, domain errors are
+    represented as typed sum types and propagated through the
+    <code>Fail</code> effect:</p>
+    <pre><code>type AppError =
+  | NotFound
+  | Unauthorized
+  | InvalidInput(String)
+  | DbError(String)
+
+fn get_user(id: UserId) -&gt; User
+    with Io, Fail[AppError] =
+  let row = db_find_user(id)?
+  decode_user(row)?</code></pre>
+    <p>Several design properties are notable:</p>
+    <h4 data-number="4.1.0.1" id="exhaustive-handling."><span
+    class="header-section-number">4.1.0.1</span> Exhaustive
+    handling.</h4>
+    <p>Because error types are algebraic data types, pattern matching on
+    errors is checked for exhaustiveness by the compiler:</p>
+    <pre><code>fn handle_error(err: AppError) -&gt; Response =
+  match err with
+  | NotFound -&gt; response(404, &quot;not found&quot;)
+  | Unauthorized -&gt; response(401, &quot;unauthorized&quot;)
+  | InvalidInput(msg) -&gt;
+      response(400, &quot;bad input: &quot; ++ msg)
+  | DbError(msg) -&gt;
+      log_error(msg)
+      response(500, &quot;internal error&quot;)</code></pre>
+    <p>If a new variant is added to <code>AppError</code>, every match
+    expression is flagged as incomplete until updated. This is the same
+    exhaustiveness checking that Rust and Haskell provide, applied to
+    error handling.</p>
+    <h4 data-number="4.1.0.2" id="compositional-propagation."><span
+    class="header-section-number">4.1.0.2</span> Compositional
+    propagation.</h4>
+    <p>The <code>?</code> operator propagates errors through the call
+    chain:</p>
+    <pre><code>fn process_order(req: Request) -&gt; OrderResult
+    with Io, Net, Fail[OrderError] =
+  let user = get_user(req.user_id)?
+  let items = validate_items(req.items)?
+  let payment = charge_payment(user, items)?
+  create_order(user, items, payment)?</code></pre>
+    <p>Each <code>?</code> invocation is syntactic sugar for pattern
+    matching on the result: if <span
+    class="math inline">\(\mathsf{Ok}\)</span>, unwrap; if <span
+    class="math inline">\(\mathsf{Err}\)</span>, propagate immediately.
+    The type system ensures that the propagated error type is compatible
+    with the function’s declared <code>Fail</code> effect.</p>
+    <h4 data-number="4.1.0.3" id="error-type-composition."><span
+    class="header-section-number">4.1.0.3</span> Error type
+    composition.</h4>
+    <p>When a function calls subfunctions with different error types,
+    conversion is required. The idiomatic <span
+    class="smallcaps">Japl</span> approach uses a <code>handle</code>
+    block, which leverages the effect system to intercept and re-raise
+    with a different error type:</p>
+    <pre><code>fn get_user_profile(id: UserId) -&gt; Profile
+    with Io, Fail[AppError] =
+  let user = get_user(id)?
+  let prefs = handle get_preferences(id) with
+    | Fail(e) -&gt; Fail.raise(DbError(show(e)))
+  { user, preferences = prefs }</code></pre>
+    <p>The <code>handle</code> block intercepts the <code>Fail</code>
+    effect from <code>get_preferences</code> and re-raises it as an
+    <code>AppError</code>, keeping the conversion visible and explicit.
+    For simple cases, the pipeline form
+    <code>|&gt; map_err(fn e -&gt; DbError(show(e)))?</code> is also
+    available and resembles Rust’s <code>From</code> trait. In both
+    cases, <span class="smallcaps">Japl</span>’s effect system tracks
+    the error type as part of the function’s signature.</p>
+    <h2 data-number="4.2" id="process-failures-crash-and-restart"><span
+    class="header-section-number">4.2</span> Process Failures: Crash and
+    Restart</h2>
+    <p>Process failures represent unexpected conditions—situations where
+    the process’s internal state may be corrupted, where an invariant
+    has been violated, or where a resource has been irreparably lost.
+    The appropriate response is not to attempt recovery within the
+    process, but to terminate the process and let a supervisor start a
+    fresh instance.</p>
+    <pre><code>fn critical_worker(state: State)
+    -&gt; Never with Process[WorkerMsg] =
+  match Process.receive() with
+  | ProcessTask(task) -&gt;
+      -- If the invariant is violated, the
+      -- process crashes. The supervisor
+      -- restarts it with fresh state.
+      assert valid_invariant(state)
+      let new_state = handle_task(state, task)
+      critical_worker(new_state)
+  | Shutdown -&gt;
+      cleanup(state)
+      Process.exit(Normal)</code></pre>
+    <p>Key properties of crash semantics in <span
+    class="smallcaps">Japl</span>:</p>
+    <h4 data-number="4.2.0.1" id="process-isolation."><span
+    class="header-section-number">4.2.0.1</span> Process isolation.</h4>
+    <p>Processes do not share mutable state. A crash in one process
+    cannot corrupt the memory of another. This is enforced by the
+    language’s type system: values sent between processes must be
+    immutable (and therefore safely shareable) or ownership must be
+    explicitly transferred.</p>
+    <h4 data-number="4.2.0.2" id="typed-crash-reasons."><span
+    class="header-section-number">4.2.0.2</span> Typed crash
+    reasons.</h4>
+    <p>Unlike Erlang, where a process can crash with any term, <span
+    class="smallcaps">Japl</span> provides structured crash reasons:</p>
+    <pre><code>type CrashReason =
+  | Normal
+  | AssertionFailed(String, Location)
+  | ResourceExhausted(String)
+  | InvariantViolation(String)
+  | Timeout
+  | Custom(String)</code></pre>
+    <p>This allows supervisors to make informed restart decisions based
+    on the crash reason’s type, not just runtime string matching.</p>
+    <h4 data-number="4.2.0.3" id="deterministic-cleanup."><span
+    class="header-section-number">4.2.0.3</span> Deterministic
+    cleanup.</h4>
+    <p>When a process crashes, all its owned resources (file handles,
+    network connections, etc.) are deterministically released through
+    <span class="smallcaps">Japl</span>’s ownership system. The linear
+    type system guarantees that every resource is consumed exactly once,
+    even on the crash path.</p>
+    <h2 data-number="4.3" id="the-complementarity-principle"><span
+    class="header-section-number">4.3</span> The Complementarity
+    Principle</h2>
+    <p>The two error modes are complementary, not overlapping. They
+    address different questions:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"></th>
+    <th style="text-align: left;"><strong>Domain Errors</strong></th>
+    <th style="text-align: left;"><strong>Process Failures</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><strong>Nature</strong></td>
+    <td style="text-align: left;">Expected</td>
+    <td style="text-align: left;">Unexpected</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong>Mechanism</strong></td>
+    <td style="text-align: left;"><code>Result</code> +
+    <code>Fail</code></td>
+    <td style="text-align: left;"><code>crash</code> + supervision</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong>Scope</strong></td>
+    <td style="text-align: left;">Function/call chain</td>
+    <td style="text-align: left;">Process</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong>Recovery</strong></td>
+    <td style="text-align: left;">Caller handles</td>
+    <td style="text-align: left;">Supervisor restarts</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong>State</strong></td>
+    <td style="text-align: left;">Preserved</td>
+    <td style="text-align: left;">Discarded</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong>Examples</strong></td>
+    <td style="text-align: left;">Not found, invalid</td>
+    <td style="text-align: left;">Corrupted state,</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"></td>
+    <td style="text-align: left;">input, timeout</td>
+    <td style="text-align: left;">hardware fault, bug</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>A well-designed <span class="smallcaps">Japl</span> application
+    uses domain errors for all anticipated failure modes and reserves
+    crashes for conditions where the process’s state can no longer be
+    trusted.</p>
+    <h1 data-number="5" id="sec:boundary"><span
+    class="header-section-number">5</span> The Error/Crash Boundary</h1>
+    <p>The most important design decision in <span
+    class="smallcaps">Japl</span>’s error model is determining when to
+    use <code>Result</code> types and when to crash. This section
+    provides principled guidance.</p>
+    <h2 data-number="5.1" id="the-decision-criterion"><span
+    class="header-section-number">5.1</span> The Decision Criterion</h2>
+    <div class="definition">
+    <p><strong>Definition 14</strong> (Error/Crash Criterion). <em>A
+    failure should be handled as a domain error (<code>Result</code>) if
+    and only if:</em></p>
+    <ol>
+    <li><p><em>The failure is <em>anticipated</em>: it represents a
+    known failure mode of the operation.</em></p></li>
+    <li><p><em>The caller can <em>meaningfully respond</em>: there
+    exists a sensible action the caller can take.</em></p></li>
+    <li><p><em>The process state remains <em>consistent</em>: the
+    failure does not indicate state corruption.</em></p></li>
+    </ol>
+    <p><em>If any of these conditions is not met, the failure should
+    trigger a process crash.</em></p>
+    </div>
+    <p>The following decision table summarizes the criterion for common
+    failure scenarios:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Failure scenario</strong></th>
+    <th style="text-align: center;"><strong>Anticipated?</strong></th>
+    <th style="text-align: center;"><strong>Actionable?</strong></th>
+    <th style="text-align: center;"><strong>State OK?</strong></th>
+    <th style="text-align: left;"><strong>Mode</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Not-found query</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: left;"><code>Result</code></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Parse error</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: left;"><code>Result</code></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Auth rejected</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: left;"><code>Result</code></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Network timeout</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: left;"><code>Result</code></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Invalid user input</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: left;"><code>Result</code></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Assertion failure</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: left;">Crash</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Corrupted state</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: left;">Crash</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Unrecoverable resource</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: left;">Crash</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Index out of bounds</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: left;">Crash</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">DB conn lost mid-txn</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\sim\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\sim\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: left;">Crash</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">OOM in subsystem</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\sim\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: left;">Crash</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p><strong>Decision rule (informal).</strong> Ask: “Can the caller
+    do something sensible with this failure, and is my state still
+    trustworthy?” If yes, return a <code>Result</code>. If no, crash and
+    let the supervisor restore a known-good state.</p>
+    <div class="example">
+    <p><strong>Example 15</strong> (Database query). <em>A “not found”
+    result from a database query satisfies all three criteria: it is
+    anticipated (queries may not match), the caller can respond (return
+    a 404, use a default value, etc.), and the state is consistent (the
+    database connection is fine). This is a domain error.</em></p>
+    <p><em>A database <em>connection loss</em> during a transaction may
+    violate condition (3): if the process was tracking transaction
+    state, that state is now inconsistent with the database. The
+    appropriate response is to crash and let the supervisor restart with
+    a fresh connection.</em></p>
+    </div>
+    <h2 data-number="5.2" id="the-error-kernel-pattern"><span
+    class="header-section-number">5.2</span> The Error Kernel
+    Pattern</h2>
+    <p>Armstrong’s <em>error kernel</em> pattern <span class="citation"
+    data-cites="armstrong2003thesis"></span> structures a system so that
+    a small, well-tested core manages the lifecycle of larger, more
+    complex subsystems:</p>
+    <pre><code>-- The error kernel: simple, well-tested,
+-- rarely crashes
+fn app_supervisor() -&gt; Never
+    with Process[SupervisorMsg] =
+  Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = 10,
+    max_seconds = 60,
+    children = [
+      { id = &quot;db_pool&quot;
+      , start = fn -&gt; db_pool_supervisor()
+      , restart = Permanent
+      , shutdown = Timeout(5000)
+      },
+      { id = &quot;web&quot;
+      , start = fn -&gt; web_supervisor()
+      , restart = Permanent
+      , shutdown = Timeout(10000)
+      },
+    ]
+  )
+
+-- Worker processes: may crash, will be
+-- restarted by supervisors
+fn request_handler(conn: TcpConn) -&gt; Never
+    with Process[HttpMsg], Io =
+  let req = Http.parse_request(conn)
+  let resp = match route(req) with
+    | Ok(handler) -&gt;
+        match handler(req) with
+        | Ok(resp) -&gt; resp
+        | Err(e) -&gt; error_response(e)
+    | Err(_) -&gt; response(404, &quot;not found&quot;)
+  Http.send_response(conn, resp)
+  request_handler(conn)</code></pre>
+    <p>In this architecture:</p>
+    <ul>
+    <li><p>The <code>app_supervisor</code> and
+    <code>db_pool_supervisor</code> form the error kernel. They are
+    simple, well-tested, and their only job is to supervise
+    children.</p></li>
+    <li><p>The <code>request_handler</code> processes do the complex
+    work. If one crashes (due to a bug, a malformed request that
+    bypasses validation, or a resource issue), the supervisor restarts
+    it.</p></li>
+    <li><p>Within each request handler, <em>domain errors</em> are
+    handled with <code>Result</code> types: routing failures return 404,
+    handler errors return appropriate HTTP status codes.</p></li>
+    </ul>
+    <h2 data-number="5.3" id="design-principles-for-the-boundary"><span
+    class="header-section-number">5.3</span> Design Principles for the
+    Boundary</h2>
+    <p>We articulate five principles for managing the error/crash
+    boundary:</p>
+    <ol>
+    <li><p><strong>Domain errors at API boundaries.</strong>
+    Public-facing APIs (HTTP endpoints, library functions, message
+    handlers) should return <code>Result</code> types so callers can
+    respond appropriately.</p></li>
+    <li><p><strong>Crashes for invariant violations.</strong> If a
+    condition is reached that “should never happen” according to the
+    system’s design, crash. An <code>assert</code> that fails indicates
+    a bug, not a user error.</p></li>
+    <li><p><strong>Convert at boundaries.</strong> When calling a
+    subsystem that may crash, wrap the call at the boundary: spawn a
+    process, send the request, and handle the possible
+    <code>ProcessDown</code> message as a domain error.</p></li>
+    <li><p><strong>Narrow the error kernel.</strong> Keep the
+    supervision hierarchy simple and the supervisor code minimal.
+    Complexity belongs in worker processes, which can crash
+    safely.</p></li>
+    <li><p><strong>Escalate when uncertain.</strong> If a process
+    encounters a condition it does not know how to handle, crashing is
+    safer than continuing with potentially corrupted state. The
+    supervisor has a broader view and can make a better recovery
+    decision.</p></li>
+    </ol>
+    <pre><code>-- Principle 3: Converting crashes to
+-- domain errors at a boundary
+fn safe_compute(input: Data) -&gt; Result[Output, ComputeError]
+    with Process, Io =
+  let worker = Process.spawn(fn -&gt;
+    let result = dangerous_computation(input)
+    Process.send(Process.self_parent(), Done(result))
+  )
+  Process.monitor(worker)
+  match Process.receive_with_timeout(5000) with
+  | Done(result) -&gt; Ok(result)
+  | ProcessDown(^worker, reason) -&gt;
+      Err(ComputeFailed(show(reason)))
+  | _ -&gt; Err(ComputeTimeout)</code></pre>
+    <h1 data-number="6" id="sec:effects"><span
+    class="header-section-number">6</span> Effect System
+    Integration</h1>
+    <p><span class="smallcaps">Japl</span>’s effect system is central to
+    its error handling model. The <code>Fail</code> effect makes failure
+    a tracked, composable property of function signatures.</p>
+    <h2 data-number="6.1" id="the-fail-effect"><span
+    class="header-section-number">6.1</span> The Fail Effect</h2>
+    <p>The <code>Fail[E]</code> effect indicates that a function may
+    fail with an error of type <span class="math inline">\(E\)</span>.
+    It is one of <span class="smallcaps">Japl</span>’s built-in
+    effects:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Effect</strong></th>
+    <th style="text-align: left;"><strong>Meaning</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><code>Pure</code></td>
+    <td style="text-align: left;">No effects (identity)</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Io</code></td>
+    <td style="text-align: left;">File system, console, clock</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Net</code></td>
+    <td style="text-align: left;">Network access</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>State[s]</code></td>
+    <td style="text-align: left;">Mutable state of type <span
+    class="math inline">\(s\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Process</code></td>
+    <td style="text-align: left;">Process operations</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Fail[e]</code></td>
+    <td style="text-align: left;">May fail with error type <span
+    class="math inline">\(e\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Async</code></td>
+    <td style="text-align: left;">Asynchronous operations</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>The <code>Fail[E]</code> effect is parameterized by the error
+    type <span class="math inline">\(E\)</span>, enabling the compiler
+    to track not just <em>that</em> a function can fail, but
+    <em>how</em> it can fail.</p>
+    <h2 data-number="6.2" id="effect-composition"><span
+    class="header-section-number">6.2</span> Effect Composition</h2>
+    <p>Effects in <span class="smallcaps">Japl</span> form a
+    commutative, idempotent monoid under union: <span
+    class="math display">\[\begin{align*}
+      \mathcal{E}_1 \cup \mathcal{E}_2 &amp;= \mathcal{E}_2 \cup
+    \mathcal{E}_1 &amp;&amp; \text{(commutativity)} \\
+      \mathcal{E}\cup \mathcal{E}&amp;= \mathcal{E}&amp;&amp;
+    \text{(idempotency)} \\
+      \mathcal{E}\cup \mathtt{Pure} &amp;= \mathcal{E}&amp;&amp;
+    \text{(identity)}
+    \end{align*}\]</span></p>
+    <p>When a function calls subfunctions, its effect set is the union
+    of all callee effects:</p>
+    <pre><code>-- Effect inference: the compiler computes
+-- the union of all effects in the body
+fn process_request(req: Request) -&gt; Response
+    with Io, Net, Fail[AppError] =
+  -- read_config: Io, Fail[ConfigError]
+  let config = read_config(&quot;/etc/app.conf&quot;)
+    |&gt; map_err(to_app_error)?
+  -- http_fetch: Net
+  let data = Http.get(config.api_url)?
+  -- parse_response: Fail[ParseError]
+  let parsed = parse_response(data)
+    |&gt; map_err(to_app_error)?
+  to_response(parsed)</code></pre>
+    <p>The declared effects <code>Io, Net, Fail[AppError]</code> must be
+    a superset of the inferred effects. If the programmer omits a
+    required effect, the compiler reports an error.</p>
+    <h2 data-number="6.3" id="multiple-fail-effects"><span
+    class="header-section-number">6.3</span> Multiple Fail Effects</h2>
+    <p>A function may have multiple <code>Fail</code> effects with
+    different error types. This is supported through effect row
+    polymorphism:</p>
+    <pre><code>fn validate_and_store(input: RawInput)
+    -&gt; StoredData
+    with Io, Fail[ValidationError],
+         Fail[StorageError] =
+  let validated = validate(input)?
+    -- raises Fail[ValidationError]
+  store(validated)?
+    -- raises Fail[StorageError]</code></pre>
+    <p>The caller must handle (or propagate) both error types. This is
+    more precise than a single unified error type, enabling callers to
+    handle different failure modes differently:</p>
+    <pre><code>fn handle_input(input: RawInput)
+    -&gt; Response with Io =
+  match Fail.catch(fn -&gt;
+    Fail.catch(fn -&gt;
+      validate_and_store(input)
+    )
+  ) with
+  | Ok(Ok(data)) -&gt; json(200, data)
+  | Ok(Err(storage_err)) -&gt;
+      log_error(storage_err)
+      response(503, &quot;storage unavailable&quot;)
+  | Err(validation_err) -&gt;
+      response(400, show(validation_err))</code></pre>
+    <p>Alternatively, the caller can unify the error types:</p>
+    <pre><code>type InputError =
+  | Validation(ValidationError)
+  | Storage(StorageError)
+
+fn handle_input_unified(input: RawInput)
+    -&gt; Response with Io =
+  let result = Fail.catch(fn -&gt;
+    validate_and_store(input)
+      |&gt; map_fail(Validation)
+      |&gt; map_fail(Storage)
+  )
+  match result with
+  | Ok(data) -&gt; json(200, data)
+  | Err(Validation(e)) -&gt; response(400, show(e))
+  | Err(Storage(e)) -&gt; response(503, show(e))</code></pre>
+    <h2 data-number="6.4" id="effect-handlers-as-error-boundaries"><span
+    class="header-section-number">6.4</span> Effect Handlers as Error
+    Boundaries</h2>
+    <p>The <code>Fail.catch</code> handler serves as an error boundary,
+    converting an effectful computation into a pure <code>Result</code>
+    value. This is the primary mechanism for discharging the
+    <code>Fail</code> effect:</p>
+    <pre><code>-- Type: Fail.catch :
+--   (fn() -&gt; a with Fail[e]) -&gt; Result[a, e]
+fn main() -&gt; Unit with Io =
+  let result = Fail.catch(fn -&gt;
+    complex_fallible_computation()
+  )
+  match result with
+  | Ok(value) -&gt;
+      Io.println(&quot;Success: &quot; ++ show(value))
+  | Err(e) -&gt;
+      Io.println(&quot;Error: &quot; ++ show(e))</code></pre>
+    <p>The handler eliminates the <code>Fail</code> effect from the
+    computation’s effect set, converting it into a <code>Result</code>
+    value in a context with strictly fewer effects. This gives precise
+    control over where in the call chain errors are handled.</p>
+    <h2 data-number="6.5" id="compiler-tracking"><span
+    class="header-section-number">6.5</span> Compiler Tracking</h2>
+    <p>The <code>Fail</code> effect enables several static analyses:</p>
+    <ol>
+    <li><p><strong>Unhandled errors</strong>: If a function’s effect set
+    includes <code>Fail[E]</code> but no handler discharges it, the
+    compiler requires the caller to either handle or propagate the
+    effect.</p></li>
+    <li><p><strong>Dead error branches</strong>: If an error variant is
+    never constructed by any reachable code path, the compiler can warn
+    that a match branch is unreachable.</p></li>
+    <li><p><strong>Error documentation</strong>: The effect signature
+    serves as machine-checked documentation of all failure modes,
+    visible in IDEs, generated documentation, and type
+    signatures.</p></li>
+    <li><p><strong>Error compatibility</strong>: When composing modules,
+    the compiler checks that error types are compatible across module
+    boundaries.</p></li>
+    </ol>
+    <h1 data-number="7" id="sec:supervision"><span
+    class="header-section-number">7</span> Supervision as Error
+    Recovery</h1>
+    <p>While domain errors are handled within function call chains,
+    process failures are handled by the supervision hierarchy.
+    Supervision is <span class="smallcaps">Japl</span>’s mechanism for
+    systematic recovery from unexpected failures.</p>
+    <h2 data-number="7.1" id="supervision-trees"><span
+    class="header-section-number">7.1</span> Supervision Trees</h2>
+    <p>A supervision tree is a hierarchical organization of processes
+    where each non-leaf node is a supervisor that monitors and manages
+    its children:</p>
+    <pre><code>fn start_application() -&gt; Pid[SupervisorMsg]
+    with Process =
+  Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = 5,
+    max_seconds = 60,
+    children = [
+      { id = &quot;db_pool&quot;
+      , start = fn -&gt; DbPool.start(db_config)
+      , restart = Permanent
+      , shutdown = Timeout(5000)
+      },
+      { id = &quot;cache&quot;
+      , start = fn -&gt; Cache.start(cache_config)
+      , restart = Permanent
+      , shutdown = Timeout(3000)
+      },
+      { id = &quot;web_server&quot;
+      , start = fn -&gt; WebServer.start(web_config)
+      , restart = Permanent
+      , shutdown = Timeout(10000)
+      },
+    ]
+  )</code></pre>
+    <h2 data-number="7.2" id="restart-strategies"><span
+    class="header-section-number">7.2</span> Restart Strategies</h2>
+    <p><span class="smallcaps">Japl</span> provides three restart
+    strategies, following Erlang/OTP:</p>
+    <h4 data-number="7.2.0.1" id="oneforone."><span
+    class="header-section-number">7.2.0.1</span> OneForOne.</h4>
+    <p>Only the failed child is restarted. This is appropriate when
+    children are independent.</p>
+    <h4 data-number="7.2.0.2" id="allforone."><span
+    class="header-section-number">7.2.0.2</span> AllForOne.</h4>
+    <p>All children are restarted when any one fails. This is
+    appropriate when children are interdependent and their states must
+    be consistent.</p>
+    <h4 data-number="7.2.0.3" id="restforone."><span
+    class="header-section-number">7.2.0.3</span> RestForOne.</h4>
+    <p>The failed child and all children started after it are restarted.
+    This is appropriate when later children depend on earlier ones.</p>
+    <h2 data-number="7.3" id="typed-crash-reasons"><span
+    class="header-section-number">7.3</span> Typed Crash Reasons</h2>
+    <p><span class="smallcaps">Japl</span>’s typed crash reasons enable
+    supervisors to make informed decisions:</p>
+    <pre><code>fn custom_supervisor(children: List[ChildSpec])
+    -&gt; Never with Process[SupervisorMsg] =
+  match Process.receive() with
+  | ChildCrashed(child_id, reason) -&gt;
+      match reason with
+      | Normal -&gt;
+          -- Normal exit, do not restart
+          custom_supervisor(
+            remove_child(children, child_id))
+      | AssertionFailed(_, _) -&gt;
+          -- Bug detected, restart with
+          -- fresh state
+          restart_child(children, child_id)
+          custom_supervisor(children)
+      | ResourceExhausted(_) -&gt;
+          -- Resource issue, wait before
+          -- restarting
+          Process.sleep(1000)
+          restart_child(children, child_id)
+          custom_supervisor(children)
+      | InvariantViolation(_) -&gt;
+          -- Serious issue, escalate
+          log_critical(child_id, reason)
+          Process.exit(reason)</code></pre>
+    <p>This is a significant improvement over Erlang, where crash
+    reasons are untyped terms. The compiler ensures that the supervisor
+    handles all crash reason variants.</p>
+    <h2 data-number="7.4" id="restart-limits"><span
+    class="header-section-number">7.4</span> Restart Limits</h2>
+    <p>Supervisors enforce restart limits to prevent infinite restart
+    loops:</p>
+    <pre><code>-- If more than max_restarts occur within
+-- max_seconds, the supervisor itself crashes,
+-- escalating to its parent supervisor.
+Supervisor.start(
+  strategy = OneForOne,
+  max_restarts = 5,
+  max_seconds = 60,
+  children = [...]
+)</code></pre>
+    <p>This creates a natural escalation mechanism: if a subsystem
+    cannot recover by restarting, the failure propagates upward through
+    the supervision tree until a higher-level supervisor can respond
+    (perhaps by restarting the entire subsystem with different
+    configuration, or by shutting down gracefully).</p>
+    <h2 data-number="7.5" id="child-specifications"><span
+    class="header-section-number">7.5</span> Child Specifications</h2>
+    <p>Each child process is described by a specification that governs
+    its lifecycle:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Restart type</strong></th>
+    <th style="text-align: left;"><strong>Meaning</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><code>Permanent</code></td>
+    <td style="text-align: left;">Always restarted</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Transient</code></td>
+    <td style="text-align: left;">Restarted only on abnormal exit</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Temporary</code></td>
+    <td style="text-align: left;">Never restarted</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Shutdown type</strong></th>
+    <th style="text-align: left;"><strong>Meaning</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><code>Timeout(ms)</code></td>
+    <td style="text-align: left;">Send shutdown signal, wait up to <span
+    class="math inline">\(ms\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>Brutal</code></td>
+    <td style="text-align: left;">Terminate immediately</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>The combination of restart type, shutdown type, and crash reason
+    gives supervisors fine-grained control over the recovery
+    process.</p>
+    <h2 data-number="7.6" id="supervision-and-the-effect-system"><span
+    class="header-section-number">7.6</span> Supervision and the Effect
+    System</h2>
+    <p>Supervision interacts with the effect system through the
+    <code>Process</code> effect. Functions that spawn, monitor, or
+    communicate with processes must declare the <code>Process</code>
+    effect. This makes the presence of concurrent, potentially-failing
+    subcomputations visible in the type signature:</p>
+    <pre><code>-- The Process effect signals that this
+-- function participates in the process model
+fn start_worker_pool(config: PoolConfig)
+    -&gt; WorkerPool
+    with Process, Io =
+  let sup = Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = config.max_restarts,
+    max_seconds = config.max_seconds,
+    children = List.map(
+      List.range(1, config.pool_size),
+      fn i -&gt; {
+        id = &quot;worker-&quot; ++ Int.to_string(i),
+        start = fn -&gt; worker(config.worker_config),
+        restart = Permanent,
+        shutdown = Timeout(5000),
+      }
+    )
+  )
+  { supervisor = sup, config }</code></pre>
+    <h1 data-number="8" id="sec:comparison"><span
+    class="header-section-number">8</span> Comparison with Existing
+    Approaches</h1>
+    <p>We now compare <span class="smallcaps">Japl</span>’s dual error
+    model with the error handling approaches of five major
+    languages.</p>
+    <h2 data-number="8.1" id="rust-result-without-supervision"><span
+    class="header-section-number">8.1</span> Rust: Result Without
+    Supervision</h2>
+    <p>Rust’s <code>Result&lt;T, E&gt;</code> is the direct inspiration
+    for <span class="smallcaps">Japl</span>’s domain error handling. The
+    comparison reveals what Rust lacks:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Feature</strong></th>
+    <th style="text-align: center;"><strong>Rust</strong></th>
+    <th style="text-align: center;"><strong><span
+    class="smallcaps">Japl</span></strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Typed recoverable errors</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>?</code> propagation</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Exhaustive matching</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Effect tracking for errors</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Lightweight processes</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Supervision trees</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Typed crash reasons</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Crash <span
+    class="math inline">\(\to\)</span> restart recovery</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>Rust’s <code>panic!</code> unwinds the thread stack and either
+    aborts the program or is caught by
+    <code>std::panic::catch_unwind</code>, which is explicitly
+    documented as not a general-purpose error recovery mechanism. There
+    is no equivalent of supervision—a panicked thread is simply
+    gone.</p>
+    <p>In <span class="smallcaps">Japl</span>, the equivalent of Rust’s
+    <code>Result</code> handles the same domain errors with equal type
+    safety. The difference is that <span class="smallcaps">Japl</span>
+    also provides a systematic answer for Rust’s <code>panic!</code>
+    cases: crash the process, let the supervisor restart it.</p>
+    <h2 data-number="8.2" id="go-error-values-without-structure"><span
+    class="header-section-number">8.2</span> Go: Error Values Without
+    Structure</h2>
+    <p>Go’s approach is characterized by simplicity and explicitness,
+    but lacks algebraic structure:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Feature</strong></th>
+    <th style="text-align: center;"><strong>Go</strong></th>
+    <th style="text-align: center;"><strong><span
+    class="smallcaps">Japl</span></strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Errors as values</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Sum types for errors</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Exhaustive matching</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Propagation operator</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Effect tracking</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Error type composition</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Process supervision</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>Go’s error handling suffers from two key weaknesses that <span
+    class="smallcaps">Japl</span> addresses: (1) the
+    <code>if err != nil</code> boilerplate, which <span
+    class="smallcaps">Japl</span> eliminates with the <code>?</code>
+    operator, and (2) the inability to express error types precisely,
+    which <span class="smallcaps">Japl</span> solves with algebraic data
+    types and the <code>Fail</code> effect.</p>
+    <p>Go does have <code>goroutines</code>, which are lightweight like
+    <span class="smallcaps">Japl</span> processes, but Go provides no
+    built-in supervision mechanism. A crashed goroutine is simply lost,
+    and any <code>panic</code> in a goroutine that is not recovered will
+    crash the entire program.</p>
+    <h2 data-number="8.3"
+    id="erlang-crash-semantics-without-typed-errors"><span
+    class="header-section-number">8.3</span> Erlang: Crash Semantics
+    Without Typed Errors</h2>
+    <p>Erlang is the inspiration for <span
+    class="smallcaps">Japl</span>’s process model and supervision. The
+    comparison highlights what static typing adds:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Feature</strong></th>
+    <th style="text-align: center;"><strong>Erlang</strong></th>
+    <th style="text-align: center;"><strong><span
+    class="smallcaps">Japl</span></strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Lightweight processes</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Process isolation</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Supervision trees</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">“Let it crash”</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Typed error values</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Exhaustive error matching</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Typed crash reasons</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Compile-time error tracking</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>Erlang’s dynamic typing means that error handling relies on
+    runtime conventions. Common patterns like <code>{ok, Value}</code>
+    and <code>{error, Reason}</code> are not enforced by the type
+    system. Dialyzer <span class="citation"
+    data-cites="lindahl2006practical"></span> provides some static
+    analysis but cannot match the guarantees of <span
+    class="smallcaps">Japl</span>’s type system.</p>
+    <p><span class="smallcaps">Japl</span> preserves Erlang’s
+    supervision model while adding compile-time guarantees about error
+    types, crash reasons, and error handling completeness.</p>
+    <h2 data-number="8.4"
+    id="java-checked-exceptionsright-idea-wrong-mechanism"><span
+    class="header-section-number">8.4</span> Java: Checked
+    Exceptions—Right Idea, Wrong Mechanism</h2>
+    <p>Java’s checked exceptions <span class="citation"
+    data-cites="gosling2014java"></span> share <span
+    class="smallcaps">Japl</span>’s goal of making failure visible in
+    function signatures. The execution was flawed:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Feature</strong></th>
+    <th style="text-align: center;"><strong>Java</strong></th>
+    <th style="text-align: center;"><strong><span
+    class="smallcaps">Japl</span></strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Failure in type signature</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Non-local control flow</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span><sup>*</sup></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Composable error types</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">No hidden exceptions</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Works with generics</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Works with lambdas</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Process supervision</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p><sup>*</sup><span class="smallcaps">Japl</span>’s
+    <code>Fail</code> effect uses early return, not stack unwinding.</p>
+    <p>Java’s checked exceptions fail with higher-order functions
+    because Java’s type system cannot express “this lambda may throw
+    <code>IOException</code>.” The result is pervasive
+    <code>try-catch</code> blocks inside lambdas, or the use of
+    unchecked (runtime) exceptions that bypass the checking system
+    entirely. <span class="smallcaps">Japl</span>’s effect system
+    integrates naturally with higher-order functions and generics: a
+    function parameter can carry a <code>Fail</code> effect, and the
+    compiler propagates it correctly.</p>
+    <h2 data-number="8.5" id="haskell-pure-but-complex"><span
+    class="header-section-number">8.5</span> Haskell: Pure but
+    Complex</h2>
+    <p>Haskell’s approach is the most theoretically principled but also
+    the most complex:</p>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Feature</strong></th>
+    <th style="text-align: center;"><strong>Haskell</strong></th>
+    <th style="text-align: center;"><strong><span
+    class="smallcaps">Japl</span></strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;">Typed error values</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Monadic composition</td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Effect tracking</td>
+    <td style="text-align: center;">Partial<sup>*</sup></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Simple error propagation</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">No hidden IO exceptions</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Process supervision</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span><sup><span
+    class="math inline">\(\dagger\)</span></sup></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Reduced syntactic ceremony</td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p><sup>*</sup>Haskell’s <code>IO</code> type bundles all effects,
+    including exceptions, into a single opaque monad. Libraries like
+    <code>polysemy</code> <span class="citation"
+    data-cites="king2019polysemy"></span> and
+    <code>fused-effects</code> <span class="citation"
+    data-cites="wu2019effect"></span> provide finer-grained tracking but
+    are not part of the standard language.</p>
+    <p><sup><span class="math inline">\(\dagger\)</span></sup>Cloud
+    Haskell <span class="citation"
+    data-cites="epstein2011towards"></span> provides Erlang-style
+    distribution and supervision, but it is a library, not a language
+    feature.</p>
+    <p>Haskell’s primary weakness for error handling is the coexistence
+    of multiple, incompatible error mechanisms: <code>Either</code>,
+    <code>Maybe</code>, <code>ExceptT</code>, IO exceptions
+    (<code>throwIO</code>/<code>catch</code>), pure exceptions
+    (<code>error</code>/<code>undefined</code>), and asynchronous
+    exceptions. A Haskell programmer must understand all of these and
+    choose appropriately. <span class="smallcaps">Japl</span> provides
+    exactly two mechanisms—<code>Result</code> and crash—with clear
+    guidance on when to use each.</p>
+    <h2 data-number="8.6" id="summary"><span
+    class="header-section-number">8.6</span> Summary</h2>
+    <div class="center">
+    <table>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><strong>Rust</strong></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong>Go</strong></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\sim\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong>Erlang</strong></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong>Java</strong></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\sim\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong>Haskell</strong></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\sim\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    <td style="text-align: center;"><span
+    class="math inline">\(\times\)</span></td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><strong><span
+    class="smallcaps">Japl</span></strong></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    <td style="text-align: center;"></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p><span class="smallcaps">Japl</span> is the only language that
+    achieves all five properties: typed errors, exhaustive matching,
+    effect-tracked failures, supervision trees, and typed crash
+    reasons.</p>
+    <h1 data-number="9" id="sec:implementation"><span
+    class="header-section-number">9</span> Implementation</h1>
+    <p>Implementing the dual error model requires careful runtime
+    design. This section discusses the key implementation
+    considerations.</p>
+    <h2 data-number="9.1" id="domain-error-implementation"><span
+    class="header-section-number">9.1</span> Domain Error
+    Implementation</h2>
+    <p>Domain errors (<code>Result</code> types) are implemented as
+    tagged unions in memory. A <code>Result[A, E]</code> value occupies
+    <span class="math inline">\(1 + \max(|A|, |E|)\)</span> words: one
+    tag word plus space for the larger of the two payloads. This is the
+    standard algebraic data type representation, identical to Rust’s
+    approach.</p>
+    <p>The <code>?</code> operator compiles to a conditional branch:</p>
+    <pre><code>-- Source
+let x = fallible_call()?
+
+-- Desugared (conceptual)
+let x = match fallible_call() with
+  | Ok(v) -&gt; v
+  | Err(e) -&gt; return Err(e)</code></pre>
+    <p>This is a local transformation with no runtime overhead beyond
+    the branch. There is no stack unwinding, no exception table lookup,
+    and no dynamic dispatch. The cost of error propagation is exactly
+    one conditional branch per <code>?</code> invocation.</p>
+    <h2 data-number="9.2" id="process-failure-implementation"><span
+    class="header-section-number">9.2</span> Process Failure
+    Implementation</h2>
+    <p>Process crashes are implemented through a combination of
+    mechanisms:</p>
+    <h4 data-number="9.2.0.1" id="assertion-failures-and-panics."><span
+    class="header-section-number">9.2.0.1</span> Assertion failures and
+    panics.</h4>
+    <p>When an <code>assert</code> fails or a <code>panic</code> is
+    invoked, the runtime:</p>
+    <ol>
+    <li><p>Captures the crash reason (a structured
+    <code>CrashReason</code> value).</p></li>
+    <li><p>Unwinds the process’s call stack, running cleanup for any
+    owned resources (similar to C++ RAII or Rust drop).</p></li>
+    <li><p>Marks the process as terminated with the given crash
+    reason.</p></li>
+    <li><p>Notifies all monitors and linked processes.</p></li>
+    </ol>
+    <h4 data-number="9.2.0.2"
+    id="stack-unwinding-vs.-process-termination."><span
+    class="header-section-number">9.2.0.2</span> Stack unwinding
+    vs. process termination.</h4>
+    <p>Unlike C++ or Rust, where stack unwinding is the mechanism for
+    both resource cleanup and non-local control flow, <span
+    class="smallcaps">Japl</span> uses unwinding <em>only</em> for
+    resource cleanup on the crash path. Domain errors never unwind the
+    stack; they use normal return-value propagation. This simplifies the
+    runtime: the unwinding mechanism need only handle the crash case,
+    and it always terminates the process.</p>
+    <h4 data-number="9.2.0.3" id="resource-cleanup."><span
+    class="header-section-number">9.2.0.3</span> Resource cleanup.</h4>
+    <p><span class="smallcaps">Japl</span>’s ownership system ensures
+    that resources are cleaned up deterministically:</p>
+    <ul>
+    <li><p>On the normal path: resources are consumed by explicit calls
+    (<code>File.close</code>, <code>Buffer.freeze</code>).</p></li>
+    <li><p>On the crash path: the unwinder invokes drop handlers for all
+    live owned resources on the stack.</p></li>
+    <li><p>The linear type system guarantees that every resource has
+    exactly one cleanup path, whether normal or crash.</p></li>
+    </ul>
+    <h2 data-number="9.3" id="supervision-implementation"><span
+    class="header-section-number">9.3</span> Supervision
+    Implementation</h2>
+    <p>Supervisors are implemented as ordinary <span
+    class="smallcaps">Japl</span> processes with special runtime
+    support:</p>
+    <ol>
+    <li><p><strong>Monitoring</strong>: The runtime maintains a table of
+    monitor relationships. When a process terminates, the runtime sends
+    a <code>ProcessDown</code> message to all monitors.</p></li>
+    <li><p><strong>Restart logic</strong>: The supervisor process
+    receives <code>ProcessDown</code> messages and applies the
+    configured restart strategy. This is ordinary message-handling code,
+    not special runtime machinery.</p></li>
+    <li><p><strong>Restart limits</strong>: The supervisor tracks
+    restart timestamps in a circular buffer. If the number of restarts
+    in the configured time window exceeds the limit, the supervisor
+    itself crashes, escalating to its parent.</p></li>
+    </ol>
+    <h2 data-number="9.4" id="performance-characteristics"><span
+    class="header-section-number">9.4</span> Performance
+    Characteristics</h2>
+    <div class="center">
+    <table>
+    <thead>
+    <tr>
+    <th style="text-align: left;"><strong>Operation</strong></th>
+    <th style="text-align: left;"><strong>Cost</strong></th>
+    <th style="text-align: left;"><strong>Notes</strong></th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+    <td style="text-align: left;"><code>Result</code> creation</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(O(1)\)</span></td>
+    <td style="text-align: left;">Tag + payload</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>?</code> propagation</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(O(1)\)</span></td>
+    <td style="text-align: left;">Conditional branch</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;"><code>match</code> on error</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(O(1)\)</span></td>
+    <td style="text-align: left;">Tag comparison</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Process crash</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(O(s)\)</span></td>
+    <td style="text-align: left;"><span class="math inline">\(s\)</span>
+    = stack depth</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Resource cleanup</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(O(r)\)</span></td>
+    <td style="text-align: left;"><span class="math inline">\(r\)</span>
+    = owned resources</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Supervisor restart</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(O(1)\)</span></td>
+    <td style="text-align: left;">Message send</td>
+    </tr>
+    <tr>
+    <td style="text-align: left;">Monitor notification</td>
+    <td style="text-align: left;"><span
+    class="math inline">\(O(m)\)</span></td>
+    <td style="text-align: left;"><span class="math inline">\(m\)</span>
+    = monitor count</td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+    <p>The key performance insight is that domain errors (the common
+    case) are zero-overhead beyond the branch prediction cost. Process
+    crashes (the uncommon case) have a cost proportional to the amount
+    of cleanup required, which is acceptable for an exceptional event.
+    Supervisor restarts involve only message passing and process
+    creation, both of which are designed to be lightweight.</p>
+    <h2 data-number="9.5"
+    id="comparison-with-exception-based-implementations"><span
+    class="header-section-number">9.5</span> Comparison with
+    Exception-Based Implementations</h2>
+    <p>Traditional exception implementations use either
+    <em>table-based</em> or <em>setjmp/longjmp-based</em> unwinding:</p>
+    <ul>
+    <li><p><strong>Table-based (C++, Java)</strong>: Zero cost on the
+    non-exception path, but exceptions are extremely expensive (hundreds
+    of microseconds) due to table lookup and stack unwinding.</p></li>
+    <li><p><strong>setjmp/longjmp (some C)</strong>: Moderate cost on
+    both paths due to register saving and restoration.</p></li>
+    </ul>
+    <p><span class="smallcaps">Japl</span>’s approach avoids both of
+    these costs for domain errors. The <code>?</code> operator is a
+    conditional branch, costing nanoseconds. Only process crashes incur
+    unwinding cost, and since crash recovery creates a fresh process,
+    the total recovery time is dominated by process creation, not
+    unwinding.</p>
+    <h1 data-number="10" id="sec:case-studies"><span
+    class="header-section-number">10</span> Case Studies</h1>
+    <p>We present three case studies demonstrating <span
+    class="smallcaps">Japl</span>’s dual error model in realistic
+    scenarios.</p>
+    <h2 data-number="10.1" id="case-study-1-http-server"><span
+    class="header-section-number">10.1</span> Case Study 1: HTTP
+    Server</h2>
+    <p>An HTTP server encounters many failure modes: malformed requests,
+    missing resources, authentication failures, database errors, and
+    network issues. The dual model cleanly separates these:</p>
+    <pre><code>type HttpError =
+  | BadRequest(String)
+  | NotFound
+  | Unauthorized
+  | Forbidden
+  | InternalError(String)
+
+type AppError =
+  | Http(HttpError)
+  | Db(DbError)
+  | Validation(List[FieldError])
+
+fn handle_get_user(req: Request) -&gt; Response
+    with Io =
+  match parse_user_id(req) with
+  | Err(_) -&gt; response(400, &quot;bad user id&quot;)
+  | Ok(id) -&gt;
+      match Fail.catch(fn -&gt; get_user(id)) with
+      | Ok(user) -&gt; json(200, user)
+      | Err(NotFound) -&gt;
+          response(404, &quot;not found&quot;)
+      | Err(Unauthorized) -&gt;
+          response(401, &quot;unauthorized&quot;)
+      | Err(InvalidInput(msg)) -&gt;
+          response(400, msg)
+      | Err(DbError(msg)) -&gt;
+          log_error(&quot;db error: &quot; ++ msg)
+          response(500, &quot;internal error&quot;)
+
+fn get_user(id: UserId) -&gt; User
+    with Io, Fail[AppError] =
+  let row = db_find_user(id)?
+  decode_user(row)?</code></pre>
+    <p>Each HTTP request is handled in its own process. If a handler
+    process crashes (due to a bug, not a domain error), the supervisor
+    restarts the request-handling infrastructure:</p>
+    <pre><code>fn http_listener(port: Int) -&gt; Never
+    with Process, Io =
+  let listener = Tcp.listen(port)
+  accept_loop(listener)
+
+fn accept_loop(listener: TcpListener) -&gt; Never
+    with Process, Io =
+  let conn = Tcp.accept(listener)
+  -- Each connection gets its own process
+  let _ = Process.spawn(fn -&gt;
+    handle_connection(conn)
+  )
+  accept_loop(listener)
+
+fn handle_connection(conn: TcpConn) -&gt; Unit
+    with Io =
+  let req = Http.parse_request(conn)
+  let resp = route_and_handle(req)
+  Http.send_response(conn, resp)
+  Tcp.close(conn)</code></pre>
+    <p>If <code>handle_connection</code> crashes, only that one
+    connection is affected. The listener process continues accepting new
+    connections. If the listener itself crashes, its supervisor restarts
+    it.</p>
+    <h2 data-number="10.2"
+    id="case-study-2-database-connection-pool"><span
+    class="header-section-number">10.2</span> Case Study 2: Database
+    Connection Pool</h2>
+    <p>A database connection pool must handle connection failures
+    gracefully while providing a reliable interface to consumers:</p>
+    <pre><code>type PoolError =
+  | NoAvailableConnection
+  | QueryFailed(String)
+  | ConnectionLost
+
+type PoolMsg =
+  | Checkout(Reply[DbConn])
+  | Return(DbConn)
+  | HealthCheck
+
+fn pool_manager(state: PoolState) -&gt; Never
+    with Process[PoolMsg], Io =
+  match Process.receive() with
+  | Checkout(reply) -&gt;
+      match find_available(state) with
+      | Some(conn) -&gt;
+          Reply.send(reply, Ok(conn))
+          pool_manager(mark_in_use(state, conn))
+      | None -&gt;
+          Reply.send(reply, Err(NoAvailableConnection))
+          pool_manager(state)
+  | Return(conn) -&gt;
+      match validate_connection(conn) with
+      | Ok(_) -&gt;
+          pool_manager(mark_available(state, conn))
+      | Err(_) -&gt;
+          -- Connection is broken, create new one
+          let new_conn = Db.connect(state.config)
+          pool_manager(mark_available(state, new_conn))
+  | HealthCheck -&gt;
+      let state = check_all_connections(state)
+      pool_manager(state)</code></pre>
+    <p>The pool manager handles connection validation failures as domain
+    errors (creating replacement connections). If the pool manager
+    itself encounters an invariant violation (e.g., the pool state
+    becomes inconsistent), it crashes and the supervisor restarts
+    it:</p>
+    <pre><code>fn db_pool_supervisor(config: DbConfig)
+    -&gt; Never with Process =
+  Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = 3,
+    max_seconds = 30,
+    children = [
+      { id = &quot;pool_manager&quot;
+      , start = fn -&gt;
+          let conns = initialize_connections(config)
+          pool_manager(initial_state(conns))
+      , restart = Permanent
+      , shutdown = Timeout(5000)
+      },
+      { id = &quot;health_checker&quot;
+      , start = fn -&gt; health_check_loop(config)
+      , restart = Permanent
+      , shutdown = Timeout(1000)
+      },
+    ]
+  )</code></pre>
+    <h2 data-number="10.3"
+    id="case-study-3-distributed-task-worker"><span
+    class="header-section-number">10.3</span> Case Study 3: Distributed
+    Task Worker</h2>
+    <p>A distributed task worker receives tasks from a coordinator,
+    executes them, and reports results. It must handle task failures,
+    network partitions, and coordinator unavailability:</p>
+    <pre><code>type TaskError =
+  | InvalidTask(String)
+  | ExecutionFailed(String)
+  | DependencyMissing(String)
+
+type WorkerMsg =
+  | ExecuteTask(Task, Reply[TaskResult])
+  | CancelTask(TaskId)
+  | UpdateConfig(WorkerConfig)
+
+fn task_worker(state: WorkerState) -&gt; Never
+    with Process[WorkerMsg], Io, Net =
+  match Process.receive() with
+  | ExecuteTask(task, reply) -&gt;
+      let result = Fail.catch(fn -&gt;
+        validate_task(task)?
+        fetch_dependencies(task)?
+        execute(task)?
+      )
+      match result with
+      | Ok(output) -&gt;
+          Reply.send(reply, TaskSuccess(output))
+      | Err(InvalidTask(msg)) -&gt;
+          Reply.send(reply, TaskRejected(msg))
+      | Err(ExecutionFailed(msg)) -&gt;
+          Reply.send(reply, TaskFailed(msg))
+      | Err(DependencyMissing(dep)) -&gt;
+          Reply.send(reply, TaskPending(dep))
+      task_worker(state)
+  | CancelTask(id) -&gt;
+      let state = cancel_if_running(state, id)
+      task_worker(state)
+  | UpdateConfig(config) -&gt;
+      task_worker({ state | config })</code></pre>
+    <p>The worker uses <code>Result</code> types for task-level failures
+    (which are reported to the coordinator) and relies on supervision
+    for worker-level failures (which trigger a restart):</p>
+    <pre><code>fn worker_supervisor(config: WorkerConfig)
+    -&gt; Never with Process =
+  Supervisor.start(
+    strategy = OneForOne,
+    max_restarts = 10,
+    max_seconds = 60,
+    children = List.map(
+      List.range(1, config.worker_count),
+      fn i -&gt; {
+        id = &quot;worker-&quot; ++ Int.to_string(i),
+        start = fn -&gt;
+          let state = WorkerState.init(config)
+          task_worker(state),
+        restart = Permanent,
+        shutdown = Timeout(10000),
+      }
+    )
+  )
+
+-- Coordinator connection with reconnection
+fn coordinator_link(url: String) -&gt; Never
+    with Process, Io, Net =
+  match Fail.catch(fn -&gt; connect_coordinator(url)) with
+  | Ok(conn) -&gt;
+      register_with_coordinator(conn)
+      message_loop(conn)
+  | Err(e) -&gt;
+      log_warning(&quot;coordinator connection &quot;
+        ++ &quot;failed: &quot; ++ show(e))
+      Process.sleep(5000)
+      coordinator_link(url)</code></pre>
+    <p>In this design:</p>
+    <ul>
+    <li><p>Task validation, dependency resolution, and execution
+    failures are domain errors, reported back to the coordinator via
+    typed <code>TaskResult</code> messages.</p></li>
+    <li><p>Worker crashes (due to bugs or resource exhaustion) are
+    handled by the supervisor, which restarts the worker with fresh
+    state.</p></li>
+    <li><p>Coordinator connectivity issues are handled by the
+    <code>coordinator_link</code> process, which retries connection. If
+    it fails too many times, it crashes and escalates to its
+    supervisor.</p></li>
+    </ul>
+    <h1 data-number="11" id="sec:formal-properties"><span
+    class="header-section-number">11</span> Formal Properties</h1>
+    <p>We now state and prove three key properties of <span
+    class="smallcaps">Japl</span>’s dual error model.</p>
+    <h2 data-number="11.1" id="error-safety-theorem"><span
+    class="header-section-number">11.1</span> Error Safety Theorem</h2>
+    <div id="thm:error-safety" class="theorem">
+    <p><strong>Theorem 16</strong> (Error Safety). <em>In a well-typed
+    <span class="smallcaps">Japl</span> program, every domain error is
+    either:</em></p>
+    <ol>
+    <li><p><em>Explicitly handled (matched and acted upon),
+    or</em></p></li>
+    <li><p><em>Explicitly propagated (via <code>?</code> or effect
+    signature).</em></p></li>
+    </ol>
+    <p><em>No domain error can be silently discarded.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> The proof proceeds by structural induction on the
+    typing derivation.</p>
+    <p><strong>Base case:</strong> A function that calls a fallible
+    operation (one with a <code>Fail[E]</code> effect) must either:</p>
+    <ul>
+    <li><p>Use <code>?</code> to propagate the error, which requires the
+    calling function’s effect signature to include <code>Fail[E]</code>
+    (or a supertype).</p></li>
+    <li><p>Use <code>Fail.catch</code> to handle the error, which
+    eliminates the <code>Fail[E]</code> effect and produces a
+    <code>Result[A, E]</code> value.</p></li>
+    <li><p>Use <code>match</code> on the <code>Result</code> value,
+    which requires exhaustive coverage of both <code>Ok</code> and
+    <code>Err</code> variants.</p></li>
+    </ul>
+    <p>In all three cases, the error is either propagated or handled.
+    The type system prevents ignoring a <code>Result</code> value: the
+    <code>Result</code> type is not <code>Unit</code>, so assigning it
+    to an unused binding triggers a compiler warning, and the
+    <code>Fail[E]</code> effect prevents calling the function in a
+    context that does not expect failure.</p>
+    <p><strong>Inductive step:</strong> If function <span
+    class="math inline">\(f\)</span> calls function <span
+    class="math inline">\(g\)</span> with effect <code>Fail[E]</code>,
+    then <span class="math inline">\(f\)</span>’s effect signature must
+    include <code>Fail[E]</code> (propagation) or <span
+    class="math inline">\(f\)</span> must handle the effect (handling).
+    By the inductive hypothesis, <span
+    class="math inline">\(g\)</span>’s errors are properly handled or
+    propagated. The composition preserves the property.</p>
+    <p><strong>Boundary condition:</strong> At the top level
+    (<code>main</code> or a process entry point), if
+    <code>Fail[E]</code> remains in the effect set, the compiler reports
+    an error: unhandled failure effect. The programmer must install a
+    handler before the program is accepted.</p>
+    <p>Therefore, in any well-typed program, every domain error is
+    either handled or propagated, with no possibility of silent discard.
+    0◻ ◻</p>
+    </div>
+    <h2 data-number="11.2" id="crash-containment-theorem"><span
+    class="header-section-number">11.2</span> Crash Containment
+    Theorem</h2>
+    <div id="thm:crash-containment" class="theorem">
+    <p><strong>Theorem 17</strong> (Crash Containment). <em>If process
+    <span class="math inline">\(P_i\)</span> crashes in a system of
+    processes <span class="math inline">\(P_1 \parallel P_2 \parallel
+    \cdots \parallel P_n\)</span>, the state of every other process
+    <span class="math inline">\(P_j\)</span> (<span
+    class="math inline">\(j \neq i\)</span>) is unaffected by the
+    crash.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> The proof relies on three properties enforced by
+    <span class="smallcaps">Japl</span>’s type system and runtime:</p>
+    <p><strong>Property 1: Memory isolation.</strong> Processes do not
+    share mutable state. Values passed between processes are either:</p>
+    <ul>
+    <li><p>Immutable values on the shared heap (which cannot be modified
+    by any process), or</p></li>
+    <li><p>Linearly-typed resources whose ownership is transferred (the
+    sending process loses access).</p></li>
+    </ul>
+    <p>By construction, no process can hold a mutable reference to
+    memory owned by another process.</p>
+    <p><strong>Property 2: Communication isolation.</strong> Processes
+    communicate exclusively through typed message passing. Messages are
+    values (immutable or ownership-transferred). The runtime’s message
+    delivery mechanism copies immutable values and transfers ownership
+    atomically.</p>
+    <p><strong>Property 3: Crash scope.</strong> When <span
+    class="math inline">\(P_i\)</span> crashes:</p>
+    <ol>
+    <li><p>The runtime terminates <span
+    class="math inline">\(P_i\)</span>’s execution.</p></li>
+    <li><p>All resources owned by <span
+    class="math inline">\(P_i\)</span> are released (deterministic
+    cleanup).</p></li>
+    <li><p>Monitor notifications are sent as messages to monitoring
+    processes.</p></li>
+    <li><p>No write is performed to any memory accessible by <span
+    class="math inline">\(P_j\)</span>.</p></li>
+    </ol>
+    <p>Since <span class="math inline">\(P_j\)</span>’s state consists
+    of its local stack, its owned resources, and its mailbox, and since
+    the crash of <span class="math inline">\(P_i\)</span> can only add a
+    <code>ProcessDown</code> message to <span
+    class="math inline">\(P_j\)</span>’s mailbox (if <span
+    class="math inline">\(P_j\)</span> monitors <span
+    class="math inline">\(P_i\)</span>), the operational state of <span
+    class="math inline">\(P_j\)</span> is unaffected.</p>
+    <p>The only observable effect of <span
+    class="math inline">\(P_i\)</span>’s crash on <span
+    class="math inline">\(P_j\)</span> is the arrival of a
+    <code>ProcessDown</code> message, which is a normal message that
+    <span class="math inline">\(P_j\)</span> processes through its
+    regular message-handling logic. 0◻ ◻</p>
+    </div>
+    <h2 data-number="11.3" id="supervision-liveness-theorem"><span
+    class="header-section-number">11.3</span> Supervision Liveness
+    Theorem</h2>
+    <div id="thm:supervision-liveness" class="theorem">
+    <p><strong>Theorem 18</strong> (Supervision Liveness). <em>For a
+    process <span class="math inline">\(P\)</span> with restart type
+    <code>Permanent</code> supervised by a supervisor <span
+    class="math inline">\(S\)</span> with restart limit <span
+    class="math inline">\((m, t)\)</span> (at most <span
+    class="math inline">\(m\)</span> restarts in <span
+    class="math inline">\(t\)</span> seconds): if <span
+    class="math inline">\(P\)</span> crashes and fewer than <span
+    class="math inline">\(m\)</span> restarts have occurred in the last
+    <span class="math inline">\(t\)</span> seconds, then <span
+    class="math inline">\(P\)</span> is restarted within a bounded
+    time.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> We model the supervisor as a process <span
+    class="math inline">\(S\)</span> that repeatedly performs:</p>
+    <ol>
+    <li><p>Wait for a <code>ProcessDown</code> message (blocking
+    receive).</p></li>
+    <li><p>Check the restart counter against the limit.</p></li>
+    <li><p>If within limits, spawn a new instance of the child
+    process.</p></li>
+    <li><p>If limits exceeded, crash (escalate to parent
+    supervisor).</p></li>
+    </ol>
+    <p><strong>Crash detection</strong>: The runtime guarantees that
+    when <span class="math inline">\(P\)</span> terminates, a
+    <code>ProcessDown</code> message is enqueued in <span
+    class="math inline">\(S\)</span>’s mailbox. This follows from the
+    completeness property of <span class="smallcaps">Japl</span>’s
+    monitoring mechanism, which is implemented in the runtime
+    scheduler.</p>
+    <p><strong>Message delivery</strong>: The runtime guarantees that
+    messages in a process’s mailbox are eventually delivered (processes
+    are fairly scheduled). Therefore, <span
+    class="math inline">\(S\)</span> will eventually receive the
+    <code>ProcessDown</code> message.</p>
+    <p><strong>Restart execution</strong>: Upon receiving the message
+    and determining that restart limits are not exceeded, <span
+    class="math inline">\(S\)</span> invokes the child’s start function,
+    creating a new process. Process creation is an <span
+    class="math inline">\(O(1)\)</span> runtime operation (allocate a
+    process structure, add to the scheduler’s run queue).</p>
+    <p><strong>Bounded time</strong>: The total time from crash to
+    restart is bounded by: <span
+    class="math display">\[T_{\mathit{restart}} \leq T_{\mathit{detect}}
+    + T_{\mathit{schedule}} + T_{\mathit{start}}\]</span> where <span
+    class="math inline">\(T_{\mathit{detect}}\)</span> is the monitor
+    notification time (one scheduler tick), <span
+    class="math inline">\(T_{\mathit{schedule}}\)</span> is the time
+    until the supervisor is scheduled (bounded by the scheduler’s
+    fairness guarantee), and <span
+    class="math inline">\(T_{\mathit{start}}\)</span> is the child
+    creation time (bounded by process allocation cost).</p>
+    <p>Under the assumption that the scheduler provides fair scheduling
+    with bounded delay, <span
+    class="math inline">\(T_{\mathit{restart}}\)</span> is bounded.</p>
+    <p><strong>Caveat (<span
+    class="math inline">\(T_{\mathit{schedule}}\)</span> under
+    load).</strong> The bound on <span
+    class="math inline">\(T_{\mathit{schedule}}\)</span> depends on the
+    scheduler’s fairness guarantee, which is sensitive to system load.
+    Under heavy load, the number of runnable processes may cause <span
+    class="math inline">\(T_{\mathit{schedule}}\)</span> to grow,
+    becoming effectively non-deterministic from the application’s
+    perspective. In the worst case, a slow supervisor response can
+    itself trigger cascading timeouts: if a child’s clients time out
+    while waiting for the restart, those clients may themselves fail,
+    causing their supervisors to restart them, amplifying the load.
+    <span class="smallcaps">Japl</span>’s runtime mitigates this by
+    giving supervisor processes elevated scheduling priority
+    (supervisors are scheduled before workers), but the liveness bound
+    should be understood as holding under a well-provisioned scheduler,
+    not as an absolute real-time guarantee. Deployers should account for
+    scheduler latency when choosing restart-limit windows. 0◻ ◻</p>
+    </div>
+    <div class="corollary">
+    <p><strong>Corollary 19</strong> (Escalation termination). <em>The
+    escalation chain (child <span class="math inline">\(\to\)</span>
+    supervisor <span class="math inline">\(\to\)</span> parent
+    supervisor <span class="math inline">\(\to \cdots\)</span>)
+    terminates: either a supervisor successfully restarts the failed
+    subtree, or the escalation reaches the root supervisor, which
+    terminates the application.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> The supervision tree has finite depth <span
+    class="math inline">\(d\)</span>. At each level, a supervisor either
+    restarts (terminating the escalation) or exceeds its restart limit
+    and crashes (escalating). Since the tree has finite depth,
+    escalation terminates in at most <span
+    class="math inline">\(d\)</span> steps. ◻</p>
+    </div>
+    <h2 data-number="11.4" id="composability-of-error-safety"><span
+    class="header-section-number">11.4</span> Composability of Error
+    Safety</h2>
+    <div class="proposition">
+    <p><strong>Proposition 20</strong> (Compositional error safety).
+    <em>If modules <span class="math inline">\(M_1\)</span> and <span
+    class="math inline">\(M_2\)</span> independently satisfy error
+    safety, then their composition <span class="math inline">\(M_1 \circ
+    M_2\)</span> (where <span class="math inline">\(M_1\)</span> calls
+    functions from <span class="math inline">\(M_2\)</span>) also
+    satisfies error safety.</em></p>
+    </div>
+    <div class="proof">
+    <p><em>Proof.</em> By the effect system’s composition rules: if
+    <span class="math inline">\(M_2\)</span> exports a function <span
+    class="math inline">\(f\)</span> with effect <code>Fail[E]</code>,
+    then any function in <span class="math inline">\(M_1\)</span> that
+    calls <span class="math inline">\(f\)</span> must either handle
+    <code>Fail[E]</code> or include it in its own effect signature. The
+    type checker enforces this at the module boundary. Since both
+    modules independently satisfy error safety (all their internal error
+    handling is complete), the composition inherits this property.
+    0◻ ◻</p>
+    </div>
+    <h1 data-number="12" id="sec:discussion"><span
+    class="header-section-number">12</span> Discussion</h1>
+    <h2 data-number="12.1" id="when-the-model-breaks-down"><span
+    class="header-section-number">12.1</span> When the Model Breaks
+    Down</h2>
+    <p>No error model is perfect. We acknowledge several
+    limitations:</p>
+    <h4 data-number="12.1.0.1"
+    id="ffi-boundaries-and-asynchronous-exceptions."><span
+    class="header-section-number">12.1.0.1</span> FFI boundaries and
+    asynchronous exceptions.</h4>
+    <p>When <span class="smallcaps">Japl</span> calls foreign functions
+    via FFI, the type system cannot track errors in the foreign code.
+    Foreign functions may throw C++ exceptions, segfault, or corrupt
+    memory in ways that violate process isolation. <span
+    class="smallcaps">Japl</span> mitigates this through
+    capability-gated FFI (requiring the <code>Unsafe</code> capability)
+    and by running FFI calls in dedicated processes that can crash
+    without affecting the rest of the system.</p>
+    <p>A subtle hazard arises when a supervisor decides to kill a child
+    process that is currently executing inside an FFI call. The foreign
+    code may hold external resources (file locks, GPU memory, database
+    transactions) that the <span class="smallcaps">Japl</span> runtime
+    cannot release through its normal ownership-based cleanup. To
+    address this, <span class="smallcaps">Japl</span> enforces the
+    following protocol at the unsafe FFI boundary: (1) the runtime marks
+    the process as “in-FFI” for the duration of the foreign call, during
+    which asynchronous kill signals are <em>deferred</em> rather than
+    delivered immediately; (2) when the foreign call returns, the
+    runtime checks for a pending kill signal and, if present, invokes a
+    user-supplied <code>ffi_cleanup</code> callback before crashing the
+    process; (3) if the foreign call does not return within a
+    configurable timeout, the runtime forcibly terminates the process
+    and logs a resource-leak warning—the Crash Containment theorem (<a
+    href="#thm:crash-containment" data-reference-type="ref+Label"
+    data-reference="thm:crash-containment">17</a>) holds for <span
+    class="smallcaps">Japl</span>-managed resources but <em>not</em> for
+    external resources held across a stuck FFI boundary. Programmers
+    must therefore treat long-running or resource-holding FFI calls as
+    inherently unsafe and design their cleanup callbacks
+    accordingly.</p>
+    <h4 data-number="12.1.0.2" id="divergence-non-termination."><span
+    class="header-section-number">12.1.0.2</span> Divergence
+    (non-termination).</h4>
+    <p>The dual error model addresses failures that produce a value
+    (<code>Result</code>) and failures that terminate a process (crash),
+    but a third failure mode exists: <em>divergence</em>, where a
+    computation enters an infinite loop and produces neither a result
+    nor a crash. A divergent process bypasses both the <code>Fail</code>
+    effect and the crash mechanism, silently consuming resources while
+    its supervisor receives no <code>ProcessDown</code> notification.
+    <span class="smallcaps">Japl</span> addresses this through two
+    BEAM-inspired mechanisms. First, each process has a configurable
+    <em>watchdog timer</em>: if a process does not yield (via message
+    receive, explicit yield, or function return) within a configurable
+    time bound, the runtime forces a crash with reason
+    <code>Timeout</code>. Second, the runtime employs <em>reduction
+    counting</em>: each function call and loop iteration consumes a
+    “reduction credit,” and when the credit is exhausted the process is
+    preempted, giving the scheduler an opportunity to detect runaway
+    computation. Together, these mechanisms convert divergence into a
+    detectable crash, bringing it within the scope of supervision.
+    However, divergence detection is inherently best-effort—a process
+    that performs useful work slowly is indistinguishable from one that
+    is divergent—and the watchdog timeout must be tuned to the
+    application’s expected latency profile.</p>
+    <h4 data-number="12.1.0.3" id="resource-exhaustion."><span
+    class="header-section-number">12.1.0.3</span> Resource
+    exhaustion.</h4>
+    <p>System-level resource exhaustion (out of memory, file descriptor
+    limits) can affect all processes simultaneously, potentially
+    violating crash containment. <span class="smallcaps">Japl</span>’s
+    runtime attempts to reserve emergency memory for crash handling, but
+    this is a best-effort mechanism.</p>
+    <h4 data-number="12.1.0.4" id="error-type-proliferation."><span
+    class="header-section-number">12.1.0.4</span> Error type
+    proliferation.</h4>
+    <p>In large systems, the number of distinct error types can grow,
+    leading to complex error type hierarchies. <span
+    class="smallcaps">Japl</span> mitigates this through error type
+    composition (wrapping sub-errors in higher-level types) and the
+    <code>map_err</code> pattern, but discipline is still required.</p>
+    <h2 data-number="12.2"
+    id="relationship-to-algebraic-effects-research"><span
+    class="header-section-number">12.2</span> Relationship to Algebraic
+    Effects Research</h2>
+    <p><span class="smallcaps">Japl</span>’s <code>Fail</code> effect is
+    a specific instance of the general algebraic effects framework <span
+    class="citation"
+    data-cites="plotkin2009handlers plotkin2013handling"></span>. The
+    effect handlers for <code>Fail</code> are relatively simple (the
+    handler either returns the error or discards the continuation),
+    which means that <span class="smallcaps">Japl</span> does not
+    require the full generality of effect handlers with resumable
+    continuations.</p>
+    <p>This restriction is deliberate: the full algebraic effects model
+    with multi-shot continuations introduces complexity (both conceptual
+    and in implementation) that is not justified by the error handling
+    use case. <span class="smallcaps">Japl</span> uses one-shot
+    continuations for error handling, which can be implemented without
+    heap-allocated continuation frames.</p>
+    <p>Future work may extend <span class="smallcaps">Japl</span>’s
+    effect system with more general algebraic effects for other use
+    cases (generators, async/await, transactional memory), using the
+    <code>Fail</code> effect as a proving ground.</p>
+    <h2 data-number="12.3" id="the-category-theoretic-perspective"><span
+    class="header-section-number">12.3</span> The Category-Theoretic
+    Perspective</h2>
+    <p>The Kleisli category perspective provides more than just a formal
+    framework; it suggests design principles. In <span
+    class="math inline">\(\mathbf{Kl}(T_E)\)</span>:</p>
+    <ul>
+    <li><p>Composition of fallible functions is automatically
+    associative.</p></li>
+    <li><p>Error propagation is a natural consequence of the monad
+    structure.</p></li>
+    <li><p>The relationship between pure functions (in <span
+    class="math inline">\(\mathbf{Set}\)</span>) and fallible functions
+    (in <span class="math inline">\(\mathbf{Kl}(T_E)\)</span>) is
+    captured by the adjunction between the free and forgetful
+    functors.</p></li>
+    </ul>
+    <p>The process algebra layer adds a second category: the category of
+    processes and communication channels. The boundary between the two
+    categories (domain errors and process failures) is not a
+    functor—there is no structure-preserving map from process crashes to
+    domain errors—which reinforces the design decision to keep them
+    separate.</p>
+    <h2 data-number="12.4" id="educational-considerations"><span
+    class="header-section-number">12.4</span> Educational
+    Considerations</h2>
+    <p>One of <span class="smallcaps">Japl</span>’s goals is
+    accessibility. The dual error model is designed to be explainable
+    without category theory:</p>
+    <ol>
+    <li><p><strong>Domain errors</strong>: “Sometimes things don’t work
+    out. Your function says so in its return type, and you have to deal
+    with it.” This is familiar to Rust and Go programmers.</p></li>
+    <li><p><strong>Process crashes</strong>: “Sometimes things go really
+    wrong. Your process dies, and a supervisor starts a fresh one.” This
+    is familiar to Erlang programmers and to anyone who has restarted a
+    crashed application.</p></li>
+    </ol>
+    <p>The effect system adds the compiler-checked documentation aspect:
+    “The type signature tells you exactly what can go wrong and how.”
+    This is the lesson of Java’s checked exceptions, done correctly.</p>
+    <h1 data-number="13" id="sec:extended-related"><span
+    class="header-section-number">13</span> Related Work: Extended
+    Discussion</h1>
+    <h2 data-number="13.1" id="algebraic-effects-in-practice"><span
+    class="header-section-number">13.1</span> Algebraic Effects in
+    Practice</h2>
+    <p>Koka <span class="citation" data-cites="leijen2017type"></span>
+    demonstrates that algebraic effects can be practical in a
+    general-purpose language. Koka’s effect system tracks all
+    computational effects including exceptions, divergence, and IO.
+    <span class="smallcaps">Japl</span>’s effect system is inspired by
+    Koka’s but differs in two important ways: (1) <span
+    class="smallcaps">Japl</span> adds process-level effects
+    (<code>Process</code>), and (2) <span
+    class="smallcaps">Japl</span>’s <code>Fail</code> effect is
+    specialized for error handling rather than being a general exception
+    effect.</p>
+    <p>The Eff programming language <span class="citation"
+    data-cites="bauer2015programming"></span> provides a direct
+    implementation of algebraic effects and handlers with a clean
+    operational semantics. Frank <span class="citation"
+    data-cites="lindley2017frank"></span> explores effect typing with a
+    focus on multi-handler patterns. Helium <span class="citation"
+    data-cites="biernacki2019abstracting"></span> and Effekt <span
+    class="citation" data-cites="brachthaeuser2020effects"></span>
+    explore efficient implementations of effect handlers.</p>
+    <h2 data-number="13.2"
+    id="process-calculi-and-typed-communication"><span
+    class="header-section-number">13.2</span> Process Calculi and Typed
+    Communication</h2>
+    <p>The <span class="math inline">\(\pi\)</span>-calculus <span
+    class="citation" data-cites="milner1999communicating"></span>
+    provides the foundation for reasoning about mobile processes and
+    name-passing. Session types <span class="citation"
+    data-cites="honda1993types honda1998language"></span> extend this
+    with typed communication protocols, ensuring that processes follow
+    agreed-upon message exchange patterns. <span
+    class="smallcaps">Japl</span>’s typed mailboxes can be viewed as a
+    simplified form of session typing where the session protocol is
+    determined by the mailbox type.</p>
+    <p>Singularity OS <span class="citation"
+    data-cites="hunt2007singularity"></span> explored software-isolated
+    processes with typed channels in a systems programming context,
+    demonstrating that process isolation can be enforced by the type
+    system rather than hardware memory protection.</p>
+    <h2 data-number="13.3"
+    id="error-handling-in-distributed-systems"><span
+    class="header-section-number">13.3</span> Error Handling in
+    Distributed Systems</h2>
+    <p>The eight fallacies of distributed computing <span
+    class="citation" data-cites="deutsch1994eight"></span> highlight
+    that network failures are fundamentally different from local
+    failures. Waldo <em>et al.</em> <span class="citation"
+    data-cites="waldo1997note"></span> argue that distributed computing
+    cannot be made transparent—the programmer must be aware of
+    distribution boundaries.</p>
+    <p><span class="smallcaps">Japl</span> takes this critique
+    seriously: the <code>Net</code> effect explicitly marks functions
+    that involve network communication, and network failures are domain
+    errors (represented as <code>Result</code> types) rather than
+    crashes, since they are anticipated and recoverable. However, <span
+    class="smallcaps">Japl</span> allows process IDs to be
+    location-transparent, accepting Waldo’s critique for failure
+    handling while maintaining uniformity for the communication
+    model.</p>
+    <h2 data-number="13.4" id="gradual-typing-and-error-handling"><span
+    class="header-section-number">13.4</span> Gradual Typing and Error
+    Handling</h2>
+    <p>Gradual typing <span class="citation"
+    data-cites="siek2006gradual"></span> offers a middle ground between
+    static and dynamic typing. Similarly, one could imagine a “gradual
+    error handling” approach where error types are optionally specified.
+    <span class="smallcaps">Japl</span> deliberately does not take this
+    path: the value of the <code>Fail</code> effect comes precisely from
+    its completeness. A “gradual” <code>Fail</code> effect that allows
+    untracked errors would undermine the error safety theorem.</p>
+    <h1 data-number="14" id="sec:future"><span
+    class="header-section-number">14</span> Future Work</h1>
+    <p>Several directions for future research emerge from this work:</p>
+    <h4 data-number="14.0.0.1"
+    id="automatic-error-type-inference-across-module-boundaries."><span
+    class="header-section-number">14.0.0.1</span> Automatic error type
+    inference across module boundaries.</h4>
+    <p>Currently, <span class="smallcaps">Japl</span> requires explicit
+    error type annotations at module boundaries. Research into inferring
+    error types across modules while maintaining modular compilation
+    could reduce annotation burden.</p>
+    <h4 data-number="14.0.0.2"
+    id="supervision-strategy-verification."><span
+    class="header-section-number">14.0.0.2</span> Supervision strategy
+    verification.</h4>
+    <p>Given typed crash reasons and supervision strategies, it may be
+    possible to statically verify that a supervision tree handles all
+    crash scenarios appropriately—that no crash reason goes unhandled
+    and no restart strategy is inappropriately permissive.</p>
+    <h4 data-number="14.0.0.3"
+    id="performance-guided-error-mode-selection."><span
+    class="header-section-number">14.0.0.3</span> Performance-guided
+    error mode selection.</h4>
+    <p>Profiling data could guide the compiler in optimizing error
+    handling paths—for example, converting <code>Result</code> checks to
+    branch-free code when profiling shows the error path is extremely
+    rare.</p>
+    <h4 data-number="14.0.0.4" id="cross-node-supervision."><span
+    class="header-section-number">14.0.0.4</span> Cross-node
+    supervision.</h4>
+    <p>Extending the supervision model to distributed settings, where
+    supervisor and child may be on different nodes, introduces new
+    challenges around failure detection timing and network partition
+    handling.</p>
+    <h4 data-number="14.0.0.5" id="error-type-evolution."><span
+    class="header-section-number">14.0.0.5</span> Error type
+    evolution.</h4>
+    <p>As systems evolve, error types change. Research into
+    backward-compatible error type evolution (adding variants without
+    breaking existing handlers) could leverage <span
+    class="smallcaps">Japl</span>’s row-polymorphic type system.</p>
+    <h4 data-number="14.0.0.6"
+    id="integration-with-property-based-testing."><span
+    class="header-section-number">14.0.0.6</span> Integration with
+    property-based testing.</h4>
+    <p><span class="smallcaps">Japl</span>’s built-in property testing
+    could be extended to automatically generate test cases that exercise
+    error paths, using the <code>Fail</code> effect annotations to guide
+    test generation.</p>
+    <h1 data-number="15" id="sec:conclusion"><span
+    class="header-section-number">15</span> Conclusion</h1>
+    <p>Error handling is not a peripheral concern—it is central to the
+    design of reliable software. The history of programming languages
+    shows that no single error handling mechanism is sufficient.
+    Exceptions conflate control flow with failure signaling. Error codes
+    lack algebraic structure. Result types handle domain errors well but
+    provide no answer for unexpected failures. Crash-and-restart
+    semantics handle unexpected failures well but lack compile-time
+    error typing.</p>
+    <p><span class="smallcaps">Japl</span>’s dual error model
+    synthesizes the best insights from each tradition:</p>
+    <ul>
+    <li><p>From <strong>Rust</strong>: typed result values for
+    recoverable errors, the <code>?</code> propagation operator,
+    exhaustive pattern matching on error types.</p></li>
+    <li><p>From <strong>Erlang</strong>: process isolation,
+    crash-and-restart semantics, supervision trees, the error kernel
+    pattern.</p></li>
+    <li><p>From <strong>algebraic effects</strong>: the
+    <code>Fail</code> effect for compiler-tracked, composable failure
+    handling.</p></li>
+    <li><p>From <strong>Java</strong> (corrected): the insight that
+    failure should be visible in type signatures, implemented through
+    effects rather than checked exceptions.</p></li>
+    </ul>
+    <p>The key contribution is the principled boundary between domain
+    errors and process failures. Domain errors are expected, handled as
+    values, tracked by the effect system, and resolved within the call
+    chain. Process failures are unexpected, handled by supervision, and
+    resolved by restarting with fresh state. The two modes are
+    complementary, not competing.</p>
+    <p>We have shown that this model satisfies three important formal
+    properties: error safety (domain errors cannot be silently
+    discarded), crash containment (a process crash cannot corrupt
+    another process), and supervision liveness (crashed permanent
+    processes are eventually restarted). These properties hold
+    compositionally, enabling modular reasoning about error handling in
+    large systems.</p>
+    <p>Through case studies of an HTTP server, a database connection
+    pool, and a distributed task worker, we have demonstrated that the
+    dual model handles real-world error scenarios with minimal ceremony
+    and maximal type safety. The result is a language that makes failure
+    a first-class, well-typed, well-understood aspect of program
+    design—because failures are normal, and they should be typed.</p>
+    <div class="thebibliography">
+    <p><span>40</span></p>
+    <p>D. Abrahams. Exception safety in generic components. In
+    <em>Generic Programming</em>, volume 1766 of <em>LNCS</em>, pages
+    69–79. Springer, 2000.</p>
+    <p>J. Armstrong. <em>Making Reliable Distributed Systems in the
+    Presence of Software Errors</em>. PhD thesis, Royal Institute of
+    Technology, Stockholm, 2003.</p>
+    <p>J. Armstrong. A history of Erlang. In <em>Proceedings of the
+    Third ACM SIGPLAN Conference on History of Programming Languages
+    (HOPL III)</em>, pages 6-1–6-26, 2007.</p>
+    <p>A. Bauer and M. Pretnar. Programming with algebraic effects and
+    handlers. <em>Journal of Logical and Algebraic Methods in
+    Programming</em>, 84(1):108–123, 2015.</p>
+    <p>D. Biernacki, M. Pir<span>ó</span>g, P. Polesiuk, and
+    F. Sieczkowski. Abstracting algebraic effects. <em>Proceedings of
+    the ACM on Programming Languages</em>, 3(POPL):6:1–6:28, 2019.</p>
+    <p>J. Bloch. <em>Effective Java</em>. Addison-Wesley, 2nd edition,
+    2008.</p>
+    <p>J. I. Brachth<span>ä</span>user, P. Schuster, and K. Ostermann.
+    Effects as capabilities: Effect handlers and lightweight effect
+    polymorphism. <em>Proceedings of the ACM on Programming
+    Languages</em>, 4(OOPSLA):126:1–126:30, 2020.</p>
+    <p>T. D. Chandra and S. Toueg. Unreliable failure detectors for
+    reliable distributed systems. <em>Journal of the ACM</em>,
+    43(2):225–267, 1996.</p>
+    <p>P. Deutsch. The eight fallacies of distributed computing.
+    Technical report, Sun Microsystems, 1994.</p>
+    <p>A. A. Donovan and B. W. Kernighan. <em>The Go Programming
+    Language</em>. Addison-Wesley, 2015.</p>
+    <p>B. Eckel. Does Java need checked exceptions? <a
+    href="http://www.mindview.net/Etc/Discussions/CheckedExceptions"
+    class="uri">http://www.mindview.net/Etc/Discussions/CheckedExceptions</a>,
+    2003.</p>
+    <p>J. Epstein, A. P. Black, and S. Peyton Jones. Towards Haskell in
+    the cloud. In <em>Proceedings of the 4th ACM Symposium on
+    Haskell</em>, pages 118–129, 2011.</p>
+    <p>J. Gosling, B. Joy, G. Steele, G. Bracha, and A. Buckley. <em>The
+    Java Language Specification, Java SE 8 Edition</em>. Addison-Wesley,
+    2014.</p>
+    <p>C. A. R. Hoare. <em>Communicating Sequential Processes</em>.
+    Prentice Hall, 1985.</p>
+    <p>K. Honda. Types for dyadic interaction. In <em>CONCUR’93</em>,
+    volume 715 of <em>LNCS</em>, pages 509–523. Springer, 1993.</p>
+    <p>K. Honda, V. T. Vasconcelos, and M. Kubo. Language primitives and
+    type discipline for structured communication-based programming. In
+    <em>ESOP’98</em>, volume 1381 of <em>LNCS</em>, pages 122–138.
+    Springer, 1998.</p>
+    <p>G. C. Hunt and J. R. Larus. Singularity: Rethinking the software
+    stack. <em>ACM SIGOPS Operating Systems Review</em>, 41(2):37–49,
+    2007.</p>
+    <p>M. P. Jones. Functional programming with overloading and
+    higher-order polymorphism. In <em>Advanced Functional
+    Programming</em>, volume 925 of <em>LNCS</em>, pages 97–136.
+    Springer, 1995.</p>
+    <p>S. King. polysemy: Higher-order, no-boilerplate, zero-cost free
+    monads. Hackage library, 2019.</p>
+    <p>O. Kiselyov, A. Sabry, and C. Swords. Extensible effects: An
+    alternative to monad transformers. In <em>Proceedings of the 2013
+    ACM SIGPLAN Symposium on Haskell</em>, pages 59–70, 2013.</p>
+    <p>S. Klabnik and C. Nichols. <em>The Rust Programming
+    Language</em>. No Starch Press, 2019.</p>
+    <p>D. Leijen. Type directed compilation of row-typed algebraic
+    effects. In <em>Proceedings of the 44th ACM SIGPLAN Symposium on
+    Principles of Programming Languages (POPL)</em>, pages 486–499,
+    2017.</p>
+    <p>T. Lindahl and K. Sagonas. Practical type inference based on
+    success typings. In <em>Proceedings of the 8th ACM SIGPLAN
+    International Conference on Principles and Practice of Declarative
+    Programming</em>, pages 167–178, 2006.</p>
+    <p>S. Lindley, C. McBride, and C. McLaughlin. Do be do be do. In
+    <em>Proceedings of the 44th ACM SIGPLAN Symposium on Principles of
+    Programming Languages (POPL)</em>, pages 500–514, 2017.</p>
+    <p>M. Logan, E. Merritt, and R. Carlsson. <em>Erlang and OTP in
+    Action</em>. Manning Publications, 2010.</p>
+    <p>S. Marlow, editor. <em>Haskell 2010 Language Report</em>. <a
+    href="https://www.haskell.org/onlinereport/haskell2010/"
+    class="uri">https://www.haskell.org/onlinereport/haskell2010/</a>,
+    2010.</p>
+    <p>S. Marlow, S. Peyton Jones, A. Moran, and J. Reppy. Asynchronous
+    exceptions in Haskell. In <em>Proceedings of the ACM SIGPLAN
+    Conference on Programming Language Design and Implementation
+    (PLDI)</em>, pages 274–285, 2001.</p>
+    <p>N. D. Matsakis and F. S. Klock II. The Rust language. In
+    <em>Proceedings of the 2014 ACM SIGAda Annual Conference on High
+    Integrity Language Technology</em>, pages 103–104, 2014.</p>
+    <p>R. Milner. <em>Communicating and Mobile Systems: the <span
+    class="math inline">\(\pi\)</span>-Calculus</em>. Cambridge
+    University Press, 1999.</p>
+    <p>E. Moggi. Notions of computation and monads. <em>Information and
+    Computation</em>, 93(1):55–92, 1991.</p>
+    <p>R. Pike. Go at Google: Language design in the service of software
+    engineering. In <em>Proceedings of the 3rd Annual Conference on
+    Systems, Programming, and Applications: Software for Humanity
+    (SPLASH)</em>, 2012.</p>
+    <p>G. D. Plotkin and M. Pretnar. Handlers of algebraic effects. In
+    <em>Programming Languages and Systems (ESOP)</em>, volume 5502 of
+    <em>LNCS</em>, pages 80–94. Springer, 2009.</p>
+    <p>G. D. Plotkin and M. Pretnar. Handling algebraic effects.
+    <em>Logical Methods in Computer Science</em>, 9(4):1–36, 2013.</p>
+    <p>J. G. Siek and W. Taha. Gradual typing for functional languages.
+    In <em>Scheme and Functional Programming Workshop</em>, pages 81–92,
+    2006.</p>
+    <p>B. Stroustrup. <em>The Design and Evolution of C++</em>.
+    Addison-Wesley, 1994.</p>
+    <p>H. Sutter. <em>Exceptional C++: 47 Engineering Puzzles,
+    Programming Problems, and Solutions</em>. Addison-Wesley, 1999.</p>
+    <p>P. Wadler. The essence of functional programming. In
+    <em>Proceedings of the 19th ACM SIGPLAN-SIGACT Symposium on
+    Principles of Programming Languages (POPL)</em>, pages 1–14,
+    1992.</p>
+    <p>P. Wadler. Monads for functional programming. In <em>Advanced
+    Functional Programming</em>, volume 925 of <em>LNCS</em>, pages
+    24–52. Springer, 1995.</p>
+    <p>J. Waldo, G. Wyant, A. Wollrath, and S. Kendall. A note on
+    distributed computing. In <em>Mobile Object Systems: Towards the
+    Programmable Internet</em>, volume 1222 of <em>LNCS</em>, pages
+    49–64. Springer, 1997.</p>
+    <p>N. Wu, T. Schrijvers, and R. Hinze. Effect handlers in scope.
+    <em>Journal of Functional Programming</em>, 29:e16, 2019.</p>
+    </div>
+    <h1 data-number="16" id="app:typing"><span
+    class="header-section-number">16</span> Extended Typing Rules</h1>
+    <p>We present the full typing rules for <span
+    class="smallcaps">Japl</span>’s error handling constructs.</p>
+    <h2 data-number="16.1" id="judgment-forms"><span
+    class="header-section-number">16.1</span> Judgment Forms</h2>
+    <p>The main typing judgment has the form: <span
+    class="math display">\[\Gamma \vdash e : \tau \mid
+    \mathcal{E}\]</span> where <span
+    class="math inline">\(\Gamma\)</span> is the type environment, <span
+    class="math inline">\(e\)</span> is an expression, <span
+    class="math inline">\(\tau\)</span> is the result type, and <span
+    class="math inline">\(\mathcal{E}\)</span> is the effect set.</p>
+    <h2 data-number="16.2" id="rules-for-fail"><span
+    class="header-section-number">16.2</span> Rules for Fail</h2>
+    <h4 data-number="16.2.0.1" id="fail-introduction."><span
+    class="header-section-number">16.2.0.1</span> Fail
+    introduction.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e : E}
+        {\Gamma \vdash \mathsf{fail}(e) : \tau \mid \mathcal{E}\cup
+    \{\texttt{Fail}[E]\}}\]</span></p>
+    <h4 data-number="16.2.0.2" id="fail-propagation-operator."><span
+    class="header-section-number">16.2.0.2</span> Fail propagation
+    (<code>?</code> operator).</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e : \texttt{Result}\langle A, E\rangle \mid
+    \mathcal{E}}
+        {\Gamma \vdash e\texttt{?} : A \mid \mathcal{E}\cup
+    \{\texttt{Fail}[E]\}}\]</span></p>
+    <h4 data-number="16.2.0.3" id="fail-handling."><span
+    class="header-section-number">16.2.0.3</span> Fail handling.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e : A \mid \mathcal{E}\cup \{\texttt{Fail}[E]\}}
+        {\Gamma \vdash \mathsf{Fail.catch}(\lambda().\, e) :
+    \texttt{Result}\langle A, E\rangle \mid \mathcal{E}}\]</span></p>
+    <h4 data-number="16.2.0.4" id="effect-subsumption."><span
+    class="header-section-number">16.2.0.4</span> Effect
+    subsumption.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e : \tau \mid \mathcal{E}_1 \quad \mathcal{E}_1
+    \subseteq \mathcal{E}_2}
+        {\Gamma \vdash e : \tau \mid \mathcal{E}_2}\]</span></p>
+    <h2 data-number="16.3" id="rules-for-processes-and-crashes"><span
+    class="header-section-number">16.3</span> Rules for Processes and
+    Crashes</h2>
+    <h4 data-number="16.3.0.1" id="process-spawn."><span
+    class="header-section-number">16.3.0.1</span> Process spawn.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e : \mathsf{Never} \mid \mathcal{E}\cup
+    \{\texttt{Process}[M]\}}
+        {\Gamma \vdash \mathsf{Process.spawn}(\lambda().\, e) :
+    \mathsf{Pid}[M] \mid \mathcal{E}&#39; \cup
+    \{\texttt{Process}\}}\]</span></p>
+    <h4 data-number="16.3.0.2" id="assert-crash-on-failure."><span
+    class="header-section-number">16.3.0.2</span> Assert (crash on
+    failure).</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e : \mathsf{Bool}}
+        {\Gamma \vdash \mathsf{assert}\; e : \mathsf{Unit} \mid
+    \mathcal{E}}\]</span> Note: <code>assert</code> does not add an
+    effect—it either succeeds (producing <code>Unit</code>) or crashes
+    the process. Process crashes are not tracked in the effect system
+    because they are by definition unexpected.</p>
+    <h4 data-number="16.3.0.3" id="process-monitor."><span
+    class="header-section-number">16.3.0.3</span> Process monitor.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash p : \mathsf{Pid}[M]}
+        {\Gamma \vdash \mathsf{Process.monitor}(p) : \mathsf{MonitorRef}
+    \mid \mathcal{E}\cup \{\texttt{Process}\}}\]</span></p>
+    <h2 data-number="16.4" id="linear-resource-typing-rules"><span
+    class="header-section-number">16.4</span> Linear Resource Typing
+    Rules</h2>
+    <p>The following rules formalize the linear typing discipline that
+    underpins deterministic resource cleanup and the Crash Containment
+    proof (<a href="#thm:crash-containment"
+    data-reference-type="ref+Label"
+    data-reference="thm:crash-containment">17</a>). A <em>linear
+    type</em> <span class="math inline">\(\tau^{!}\)</span> denotes a
+    resource that must be consumed (used or released) exactly once.</p>
+    <h4 data-number="16.4.0.1" id="resource-acquisition."><span
+    class="header-section-number">16.4.0.1</span> Resource
+    acquisition.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e_{\mathit{args}} : \tau_{\mathit{args}} \mid
+    \mathcal{E}\cup \{\texttt{Io}\}}
+        {\Gamma \vdash \mathsf{acquire}(e_{\mathit{args}}) : \tau^{!}
+    \mid \mathcal{E}\cup \{\texttt{Io}\}}\]</span> The <span
+    class="math inline">\(\mathsf{acquire}\)</span> operation produces a
+    linearly-typed resource handle. The handle must appear in exactly
+    one subsequent consumption site.</p>
+    <h4 data-number="16.4.0.2" id="resource-release."><span
+    class="header-section-number">16.4.0.2</span> Resource release.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma, x : \tau^{!} \vdash e_{\mathit{body}} : \sigma \mid
+    \mathcal{E}}
+        {\Gamma \vdash \mathsf{release}(x, e_{\mathit{body}}) : \sigma
+    \mid \mathcal{E}}\]</span> The <span
+    class="math inline">\(\mathsf{release}\)</span> operation consumes
+    the linear resource <span class="math inline">\(x\)</span>, removing
+    it from the environment. After release, <span
+    class="math inline">\(x\)</span> is no longer available.</p>
+    <h4 data-number="16.4.0.3" id="linear-variable-usage."><span
+    class="header-section-number">16.4.0.3</span> Linear variable
+    usage.</h4>
+    <p><span class="math display">\[\inferrule
+        {x : \tau^{!} \in \Gamma}
+        {\Gamma \vdash x : \tau^{!} \mid \mathcal{E}}
+        \quad\text{(exactly once in } \Gamma\text{)}\]</span> A
+    linearly-typed binding must be used exactly once. The type checker
+    rejects programs that use a linear variable zero times (resource
+    leak) or more than once (use-after-free).</p>
+    <h4 data-number="16.4.0.4" id="ownership-transfer-send."><span
+    class="header-section-number">16.4.0.4</span> Ownership transfer
+    (send).</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma_1 \vdash p : \mathsf{Pid}[M] \quad \Gamma_2 \vdash v :
+    \tau^{!} \quad \Gamma_1 \cap \Gamma_2 \text{ contains no linear
+    bindings}}
+        {\Gamma_1, \Gamma_2 \vdash \mathsf{Process.send}(p, v) :
+    \mathsf{Unit} \mid \mathcal{E}\cup \{\texttt{Process}\}}\]</span>
+    Sending a linearly-typed value to another process transfers
+    ownership: the sender’s environment no longer contains the binding,
+    and the receiver becomes the sole owner.</p>
+    <h4 data-number="16.4.0.5" id="crash-cleanup-obligation."><span
+    class="header-section-number">16.4.0.5</span> Crash cleanup
+    obligation.</h4>
+    <p>When a process crashes, the runtime walks its stack and invokes
+    the drop handler for every live linear binding. The type system
+    guarantees that every <span class="math inline">\(\tau^{!}\)</span>
+    in scope has a corresponding drop handler registered at allocation
+    time. This is the formal basis for the “deterministic cleanup” claim
+    in the Crash Containment proof: no resource is leaked, because every
+    live linear binding is released by the unwinder.</p>
+    <h2 data-number="16.5" id="result-type-rules"><span
+    class="header-section-number">16.5</span> Result Type Rules</h2>
+    <h4 data-number="16.5.0.1" id="ok-introduction."><span
+    class="header-section-number">16.5.0.1</span> Ok introduction.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e : A}
+        {\Gamma \vdash \ensuremath{\mathsf{Ok}}(e) :
+    \texttt{Result}\langle A, E\rangle \mid \mathcal{E}}\]</span></p>
+    <h4 data-number="16.5.0.2" id="err-introduction."><span
+    class="header-section-number">16.5.0.2</span> Err introduction.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e : E}
+        {\Gamma \vdash \ensuremath{\mathsf{Err}}(e) :
+    \texttt{Result}\langle A, E\rangle \mid \mathcal{E}}\]</span></p>
+    <h4 data-number="16.5.0.3" id="match-elimination."><span
+    class="header-section-number">16.5.0.3</span> Match
+    elimination.</h4>
+    <p><span class="math display">\[\inferrule
+        {\Gamma \vdash e : \texttt{Result}\langle A, E\rangle \mid
+    \mathcal{E}\\
+         \Gamma, x : A \vdash e_1 : \tau \mid \mathcal{E}\\
+         \Gamma, y : E \vdash e_2 : \tau \mid \mathcal{E}}
+        {\Gamma \vdash \mathsf{match}\; e\;
+    \{\ensuremath{\mathsf{Ok}}(x) \Rightarrow e_1;\;
+    \ensuremath{\mathsf{Err}}(y) \Rightarrow e_2\} : \tau \mid
+    \mathcal{E}}\]</span></p>
+    <h1 data-number="17" id="app:supervision-fsm"><span
+    class="header-section-number">17</span> Supervision State
+    Machine</h1>
+    <p>A supervisor process can be modeled as a finite state machine
+    with the following states:</p>
+    <ol>
+    <li><p><strong>Running</strong>: All children are alive and
+    operational.</p></li>
+    <li><p><strong>Restarting</strong>: A child has crashed and is being
+    restarted.</p></li>
+    <li><p><strong>Escalating</strong>: Restart limits have been
+    exceeded; the supervisor is crashing.</p></li>
+    <li><p><strong>ShuttingDown</strong>: The supervisor has received a
+    shutdown signal and is terminating children.</p></li>
+    </ol>
+    <p>The transitions are: <span class="math display">\[\begin{align*}
+      \mathsf{Running} &amp;\xrightarrow{\mathsf{ChildCrash}(i)}
+    \mathsf{Restarting}(i) \\
+      \mathsf{Restarting}(i) &amp;\xrightarrow{\mathsf{WithinLimits}}
+    \mathsf{Running} \\
+      \mathsf{Restarting}(i) &amp;\xrightarrow{\mathsf{LimitsExceeded}}
+    \mathsf{Escalating} \\
+      \mathsf{Running} &amp;\xrightarrow{\mathsf{Shutdown}}
+    \mathsf{ShuttingDown} \\
+      \mathsf{Escalating} &amp;\xrightarrow{\tau}
+    \mathsf{crash}(\mathsf{MaxRestartsExceeded})
+    \end{align*}\]</span></p>
+    <p>The restart limit check uses a sliding window:</p>
+    <pre><code>fn check_restart_limit(
+  history: List[Timestamp],
+  max_restarts: Int,
+  max_seconds: Int,
+  now: Timestamp
+) -&gt; Bool =
+  let recent = List.filter(history,
+    fn t -&gt; Timestamp.diff(now, t) &lt; max_seconds)
+  List.length(recent) &lt; max_restarts</code></pre>
+    <h1 data-number="18" id="app:patterns"><span
+    class="header-section-number">18</span> Error Handling Patterns
+    Catalog</h1>
+    <p>We catalog common error handling patterns in <span
+    class="smallcaps">Japl</span>.</p>
+    <h2 data-number="18.1" id="pattern-error-mapping"><span
+    class="header-section-number">18.1</span> Pattern: Error
+    Mapping</h2>
+    <p>Convert between error types at module boundaries:</p>
+    <pre><code>fn get_user(id: UserId) -&gt; User
+    with Io, Fail[AppError] =
+  let row = db_query(id)
+    |&gt; map_err(fn e -&gt; DbError(show(e)))?
+  decode_user(row)
+    |&gt; map_err(fn e -&gt; InvalidInput(show(e)))?</code></pre>
+    <h2 data-number="18.2" id="pattern-error-accumulation"><span
+    class="header-section-number">18.2</span> Pattern: Error
+    Accumulation</h2>
+    <p>Collect multiple errors instead of failing at the first one:</p>
+    <pre><code>fn validate_form(form: Form)
+    -&gt; Result[ValidForm, List[FieldError]] =
+  let errors = []
+  let errors = match validate_name(form.name) with
+    | Err(e) -&gt; [e, ..errors]
+    | Ok(_) -&gt; errors
+  let errors = match validate_email(form.email) with
+    | Err(e) -&gt; [e, ..errors]
+    | Ok(_) -&gt; errors
+  let errors = match validate_age(form.age) with
+    | Err(e) -&gt; [e, ..errors]
+    | Ok(_) -&gt; errors
+  if List.is_empty(errors) then
+    Ok(to_valid_form(form))
+  else
+    Err(List.reverse(errors))</code></pre>
+    <h2 data-number="18.3" id="pattern-retry-with-backoff"><span
+    class="header-section-number">18.3</span> Pattern: Retry with
+    Backoff</h2>
+    <p>Retry a fallible operation with exponential backoff:</p>
+    <pre><code>fn retry(
+  max_attempts: Int,
+  base_delay_ms: Int,
+  action: fn() -&gt; a with Io, Fail[e]
+) -&gt; a with Io, Fail[e] =
+  fn go(attempt: Int) -&gt; a with Io, Fail[e] =
+    match Fail.catch(action) with
+    | Ok(result) -&gt; result
+    | Err(e) -&gt;
+        if attempt &gt;= max_attempts then
+          Fail.raise(e)
+        else
+          let delay = base_delay_ms
+            * Int.pow(2, attempt)
+          Process.sleep(delay)
+          go(attempt + 1)
+  go(0)</code></pre>
+    <h2 data-number="18.4" id="pattern-circuit-breaker"><span
+    class="header-section-number">18.4</span> Pattern: Circuit
+    Breaker</h2>
+    <p>Prevent cascading failures by stopping calls to a failing
+    service:</p>
+    <pre><code>type CircuitState =
+  | Closed(failure_count: Int)
+  | Open(until: Timestamp)
+  | HalfOpen
+
+fn circuit_breaker(
+  state: CircuitState,
+  threshold: Int,
+  timeout_ms: Int,
+  action: fn() -&gt; a with Io, Net, Fail[e]
+) -&gt; a with Io, Net, Fail[CircuitError[e]] =
+  match state with
+  | Open(until) -&gt;
+      if Timestamp.now() &lt; until then
+        Fail.raise(CircuitOpen)
+      else
+        circuit_breaker(HalfOpen,
+          threshold, timeout_ms, action)
+  | HalfOpen -&gt;
+      match Fail.catch(action) with
+      | Ok(result) -&gt; result
+      | Err(e) -&gt;
+          Fail.raise(ServiceError(e))
+  | Closed(count) -&gt;
+      match Fail.catch(action) with
+      | Ok(result) -&gt; result
+      | Err(e) -&gt;
+          if count + 1 &gt;= threshold then
+            Fail.raise(CircuitOpen)
+          else
+            Fail.raise(ServiceError(e))</code></pre>
+    <h2 data-number="18.5" id="pattern-crash-boundary"><span
+    class="header-section-number">18.5</span> Pattern: Crash
+    Boundary</h2>
+    <p>Convert between domain errors and process crashes at a
+    well-defined boundary:</p>
+    <pre><code>-- Wrap a potentially-crashing computation
+-- as a domain error
+fn safe_call(f: fn() -&gt; a with Io)
+    -&gt; Result[a, String] with Process, Io =
+  let worker = Process.spawn(fn -&gt;
+    let result = f()
+    Process.send(Process.self_parent(),
+      WorkerDone(result))
+  )
+  Process.monitor(worker)
+  match Process.receive_with_timeout(10000) with
+  | WorkerDone(result) -&gt; Ok(result)
+  | ProcessDown(^worker, reason) -&gt;
+      Err(&quot;worker crashed: &quot; ++ show(reason))
+  | _ -&gt; Err(&quot;timeout waiting for worker&quot;)</code></pre>
+
+    <div class="paper-footer">
+      <p>JAPL Research Series — YonedaAI Research Collective</p>
+      <p><a href="../index.html">japl-nine.vercel.app</a></p>
+    </div>
+  </main>
+</div>
+
+<script>
+// Auto-generate sidebar TOC from h2/h3 headings
+const toc = document.getElementById('toc');
+const headings = document.querySelectorAll('.content h2, .content h3');
+headings.forEach((h, i) => {
+  if (!h.id) h.id = 'section-' + i;
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.href = '#' + h.id;
+  a.textContent = h.textContent;
+  if (h.tagName === 'H3') a.className = 'toc-h3';
+  li.appendChild(a);
+  toc.appendChild(li);
+});
+</script>
+
+</body>
+</html>
