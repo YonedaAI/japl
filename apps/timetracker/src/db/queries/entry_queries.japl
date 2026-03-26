@@ -1,0 +1,26 @@
+// Database queries: TimeEntry operations
+
+fn query_entries(pool, user_id) {
+  match query_db(pool, "SELECT * FROM time_entries WHERE user_id = $1 ORDER BY started_at DESC", [user_id]) {
+    Ok(rows) => rows,
+    Err(_) => []
+  }
+}
+
+fn query_entries_for_date(pool, user_id, date) {
+  match query_db(pool, "SELECT * FROM time_entries WHERE user_id = $1 AND started_at::date = $2", [user_id, date]) {
+    Ok(rows) => rows,
+    Err(_) => []
+  }
+}
+
+fn query_entries_for_project(pool, user_id, project_id) {
+  match query_db(pool, "SELECT * FROM time_entries WHERE user_id = $1 AND project_id = $2", [user_id, project_id]) {
+    Ok(rows) => rows,
+    Err(_) => []
+  }
+}
+
+fn insert_entry(pool, entry) {
+  execute(pool, "INSERT INTO time_entries VALUES ($1, $2, $3, $4, $5, $6, $7)", [entry.id, entry.user_id, entry.project_id, entry.description, entry.started_at, entry.stopped_at, show(entry.duration_seconds)])
+}

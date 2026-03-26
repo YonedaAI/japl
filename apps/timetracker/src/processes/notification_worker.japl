@@ -1,0 +1,19 @@
+// Process: Background notification worker
+
+type NotifyMsg =
+  | SendNotification(String)
+  | Shutdown
+
+fn notification_loop() {
+  receive {
+    SendNotification(user_id) =>
+      let _ = println("[Notify] Sending notification to user: " <> user_id)
+      notification_loop(),
+    Shutdown =>
+      println("[Notify] Worker shutting down")
+  }
+}
+
+fn start_notification_worker() {
+  notification_loop()
+}

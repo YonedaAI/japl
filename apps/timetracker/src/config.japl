@@ -1,0 +1,21 @@
+// Configuration for TimeTracker app
+
+type Config = {
+  port: Int,
+  db_url: String,
+  jwt_secret: String,
+  log_level: String
+}
+
+fn default_config() {
+  {
+    port: 8080,
+    db_url: "postgres://localhost:5432/timetracker",
+    jwt_secret: "dev-secret-change-in-production",
+    log_level: "info"
+  }
+}
+
+fn load_config() {
+  default_config()
+}

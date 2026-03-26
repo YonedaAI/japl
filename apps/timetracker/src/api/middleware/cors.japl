@@ -1,0 +1,8 @@
+// Middleware: CORS headers
+
+fn with_cors(handler) {
+  fn(req) {
+    let response = handler(req)
+    { status: response.status, body: response.body }
+  }
+}

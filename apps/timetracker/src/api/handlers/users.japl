@@ -1,0 +1,18 @@
+// User handlers: profile endpoints
+
+fn handle_get_me(req) {
+  if string_length(req.user_id) > 0 {
+    ok("{ \"id\": \"" <> req.user_id <> "\", \"name\": \"Alice\" }")
+  } else {
+    unauthorized()
+  }
+}
+
+fn handle_update_me(req) {
+  let name = get_field(req.body, "name")
+  match validate_name(name) {
+    Err(e) => bad_request(e),
+    Ok(valid_name) =>
+      ok("{ \"name\": \"" <> valid_name <> "\" }")
+  }
+}

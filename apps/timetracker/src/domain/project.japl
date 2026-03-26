@@ -1,0 +1,39 @@
+// Domain: Project types and validation
+
+type Project = {
+  id: String,
+  name: String,
+  owner_id: String,
+  created_at: String,
+  archived: Bool
+}
+
+type CreateProjectRequest = {
+  name: String
+}
+
+fn validate_project_name(name) {
+  if string_length(name) > 0 { Ok(name) }
+  else { Err("Project name cannot be empty") }
+}
+
+fn create_project(owner_id, name, now_ts) {
+  match validate_project_name(name) {
+    Err(e) => Err(e),
+    Ok(_) => Ok({
+      id: generate_id(),
+      name: name,
+      owner_id: owner_id,
+      created_at: now_ts,
+      archived: false
+    })
+  }
+}
+
+fn archive_project(project) {
+  { project | archived: true }
+}
+
+fn is_owner(project, user_id) {
+  project.owner_id == user_id
+}

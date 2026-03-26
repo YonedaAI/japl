@@ -1,0 +1,10 @@
+// Middleware: Request logging
+
+fn with_logging(handler) {
+  fn(req) {
+    println("[REQ] " <> req.method <> " " <> req.path)
+    let response = handler(req)
+    println("[RES] " <> show(response.status) <> " " <> req.method <> " " <> req.path)
+    response
+  }
+}

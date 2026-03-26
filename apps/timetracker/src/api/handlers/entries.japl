@@ -1,0 +1,22 @@
+// Entry handlers: time entry CRUD and timer control
+
+fn handle_start_timer(req) {
+  let project_id = get_field(req.body, "project_id")
+  if string_length(project_id) > 0 {
+    ok("{ \"status\": \"started\", \"project_id\": \"" <> project_id <> "\" }")
+  } else {
+    bad_request("Missing project_id")
+  }
+}
+
+fn handle_stop_timer(req) {
+  ok("{ \"status\": \"stopped\", \"duration\": \"1h 30m 0s\" }")
+}
+
+fn handle_list_entries(req) {
+  ok("[{ \"id\": \"entry-1\", \"project_id\": \"proj-1\", \"duration\": 5400 }]")
+}
+
+fn handle_get_entry(req, entry_id) {
+  ok("{ \"id\": \"" <> entry_id <> "\", \"duration\": 3600 }")
+}

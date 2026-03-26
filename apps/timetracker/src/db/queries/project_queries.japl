@@ -1,0 +1,19 @@
+// Database queries: Project operations
+
+fn query_projects(pool, owner_id) {
+  match query_db(pool, "SELECT * FROM projects WHERE owner_id = $1 AND archived = false", [owner_id]) {
+    Ok(rows) => rows,
+    Err(_) => []
+  }
+}
+
+fn find_project_by_id(pool, id) {
+  match query_db(pool, "SELECT * FROM projects WHERE id = $1", [id]) {
+    Ok([row]) => Some(row),
+    _ => None
+  }
+}
+
+fn insert_project(pool, project) {
+  execute(pool, "INSERT INTO projects VALUES ($1, $2, $3, $4, $5)", [project.id, project.name, project.owner_id, project.created_at, show(project.archived)])
+}

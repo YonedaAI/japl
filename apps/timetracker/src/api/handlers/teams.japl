@@ -1,0 +1,21 @@
+// Team handlers: team management endpoints
+
+fn handle_create_team(req) {
+  let name = get_field(req.body, "name")
+  if string_length(name) > 0 {
+    let result = create_team(name, req.user_id, "2024-01-15T00:00:00Z")
+    created("{ \"id\": \"team-1\", \"name\": \"" <> name <> "\" }")
+  } else {
+    bad_request("Team name cannot be empty")
+  }
+}
+
+fn handle_add_member(req, team_id) {
+  let user_id = get_field(req.body, "user_id")
+  let member = add_member(team_id, user_id)
+  ok("{ \"team_id\": \"" <> team_id <> "\", \"user_id\": \"" <> user_id <> "\", \"role\": \"member\" }")
+}
+
+fn handle_list_team_members(req, team_id) {
+  ok("[{ \"user_id\": \"user-1\", \"role\": \"owner\" }]")
+}

@@ -1,0 +1,44 @@
+// Domain: Team types and role management
+
+type Team = {
+  id: String,
+  name: String,
+  created_at: String
+}
+
+type Role =
+  | Owner
+  | Admin
+  | Member
+
+type TeamMember = {
+  team_id: String,
+  user_id: String,
+  role: String
+}
+
+fn create_team(name, owner_id, now_ts) {
+  let team = { id: generate_id(), name: name, created_at: now_ts }
+  let membership = { team_id: team.id, user_id: owner_id, role: "owner" }
+  { team: team, membership: membership }
+}
+
+fn add_member(team_id, user_id) {
+  { team_id: team_id, user_id: user_id, role: "member" }
+}
+
+fn can_manage(role) {
+  match role {
+    Owner => true,
+    Admin => true,
+    Member => false
+  }
+}
+
+fn role_to_string(role) {
+  match role {
+    Owner => "owner",
+    Admin => "admin",
+    Member => "member"
+  }
+}
