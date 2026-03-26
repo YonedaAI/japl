@@ -1,0 +1,14 @@
+[package]
+name = "japl-ir"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+japl-common.workspace = true
+japl-ast.workspace = true
+japl-runtime = { path = "../../runtime/japl-runtime" }
+smol_str.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+japl-parser.workspace = true

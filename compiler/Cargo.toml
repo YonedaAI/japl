@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/japl-common",
+    "crates/japl-lexer",
+    "crates/japl-parser",
+    "crates/japl-ast",
+    "crates/japl-types",
+    "crates/japl-checker",
+    "crates/japl-ir",
+    "crates/japl-codegen",
+    "crates/japl-driver",
+    "runtime/japl-runtime",
+    "runtime/japl-stdlib",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+japl-common = { path = "crates/japl-common" }
+japl-ast = { path = "crates/japl-ast" }
+japl-lexer = { path = "crates/japl-lexer" }
+japl-parser = { path = "crates/japl-parser" }
+japl-types = { path = "crates/japl-types" }
+japl-checker = { path = "crates/japl-checker" }
+japl-ir = { path = "crates/japl-ir" }
+japl-codegen = { path = "crates/japl-codegen" }
+japl-driver = { path = "crates/japl-driver" }
+japl-runtime = { path = "runtime/japl-runtime" }
+japl-stdlib = { path = "runtime/japl-stdlib" }
+logos = "0.14"
+smol_str = "0.3"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }

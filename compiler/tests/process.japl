@@ -1,0 +1,13 @@
+-- process.japl: Process spawn and message passing
+
+type Message =
+  | Ping(Int)
+  | Pong(Int)
+  | Shutdown
+
+fn counter(count: Int) -> Int = receive
+  | Ping(n) -> counter(count + n)
+  | Shutdown -> count
+
+fn pipeline(xs: List[Int]) -> List[Int] =
+  xs |> map(fn x -> x * 2) |> filter(fn x -> x > 5)

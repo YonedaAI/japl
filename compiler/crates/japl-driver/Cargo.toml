@@ -1,0 +1,17 @@
+[package]
+name = "japl-driver"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "japlc"
+path = "src/main.rs"
+
+[dependencies]
+japl-common.workspace = true
+japl-ast.workspace = true
+japl-lexer.workspace = true
+japl-parser.workspace = true
+japl-ir.workspace = true
+japl-codegen.workspace = true
+clap.workspace = true

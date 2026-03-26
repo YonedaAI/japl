@@ -1,0 +1,10 @@
+[package]
+name = "japl-lexer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+japl-common.workspace = true
+logos.workspace = true
+smol_str.workspace = true
+thiserror.workspace = true

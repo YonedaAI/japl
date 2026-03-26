@@ -1,0 +1,27 @@
+# Rust
+compiler/target/
+**/*.rs.bk
+
+# LaTeX artifacts
+*.aux
+*.log
+*.toc
+*.out
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Knowledge base (generated)
+# .knowledge-base.md

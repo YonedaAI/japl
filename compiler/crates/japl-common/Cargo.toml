@@ -1,0 +1,8 @@
+[package]
+name = "japl-common"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+smol_str.workspace = true

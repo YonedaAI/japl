@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JAPL — Pure by default, concurrent by design</title>
+  <meta name="description" content="JAPL is a strict, typed, effect-aware functional language combining Rust's ownership, Go's simplicity, Erlang's processes, and FP semantics.">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>J</text></svg>">
+</head>
+<body>
+
+<!-- ============================================================
+     Navigation
+     ============================================================ -->
+<nav>
+  <div class="container">
+    <a href="#" class="nav-logo">JAPL<span>.</span></a>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#principles">Principles</a></li>
+      <li><a href="#code">Code</a></li>
+      <li><a href="#papers">Research</a></li>
+      <li><a href="#dna">DNA</a></li>
+      <li><a href="#compiler">Compiler</a></li>
+      <li><a href="https://github.com/YonedaAI/japl" target="_blank" rel="noopener">GitHub</a></li>
+    </ul>
+    <button class="nav-hamburger" id="navToggle" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ============================================================
+     Hero
+     ============================================================ -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-content">
+      <h1 class="hero-wordmark">JAPL</h1>
+      <p class="hero-sub">A Programming Language</p>
+      <p class="hero-tagline">Pure by default, concurrent by design, resource-safe by construction, distributed without apology.</p>
+      <p class="hero-desc">A language where pure functions handle logic, supervised processes handle time and failure, and ownership handles reality.</p>
+      <div class="hero-ctas">
+        <a href="#papers" class="btn btn-primary">Read the Research</a>
+        <a href="https://github.com/YonedaAI/japl" class="btn btn-secondary" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Core Principles
+     ============================================================ -->
+<section id="principles">
+  <div class="container">
+    <p class="section-label">Philosophy</p>
+    <h2 class="section-title">Core Principles</h2>
+    <p class="section-desc">Seven design commitments that shape every decision in the language.</p>
+
+    <div class="principles-grid">
+
+      <div class="principle-card">
+        <div class="principle-icon">V</div>
+        <h3>Values Are Primary</h3>
+        <p>Data is immutable by default. Values flow through functions without hidden state, making programs deterministic and easy to reason about.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">M</div>
+        <h3>Mutation Is Local and Explicit</h3>
+        <p>When mutation is needed, it is confined to explicit scopes with linear ownership. No action at a distance, no shared mutable state.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">C</div>
+        <h3>Concurrency Is Process-Based</h3>
+        <p>Lightweight, supervised processes communicate through typed messages. No threads, no locks, no data races by construction.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">F</div>
+        <h3>Failures Are Normal and Typed</h3>
+        <p>Errors are values. Recovery strategies are declared in types. Supervision trees handle the unexpected so your logic stays clean.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">D</div>
+        <h3>Distribution Is Native</h3>
+        <p>Processes can span nodes. Location transparency, typed protocols, and built-in distribution make networked systems a first-class concern.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">&fnof;</div>
+        <h3>Functions Are the Unit of Composition</h3>
+        <p>Pipelines, higher-order functions, and algebraic effects compose cleanly. No inheritance hierarchies, no framework lock-in.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">R</div>
+        <h3>Runtime Simplicity = Type Power</h3>
+        <p>The type system does the heavy lifting at compile time so the runtime can stay minimal, predictable, and fast.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Code Example
+     ============================================================ -->
+<section id="code" class="code-section">
+  <div class="container">
+    <p class="section-label">Syntax</p>
+    <h2 class="section-title">See It in Action</h2>
+    <p class="section-desc">Clean, expressive syntax that reads like specification and runs like production code.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <span class="code-dot code-dot--red"></span>
+        <span class="code-dot code-dot--yellow"></span>
+        <span class="code-dot code-dot--green"></span>
+        <span class="code-block-title">server.japl</span>
+      </div>
+<pre><span class="cmt">-- A typed web server with process-based concurrency</span>
+
+<span class="kw">type</span> <span class="ty">Request</span> <span class="op">=</span>
+  <span class="pipe">|</span> <span class="ty">Get</span><span class="pun">(</span><span class="ty">String</span><span class="pun">)</span>
+  <span class="pipe">|</span> <span class="ty">Post</span><span class="pun">(</span><span class="ty">String</span><span class="pun">,</span> <span class="ty">Body</span><span class="pun">)</span>
+
+<span class="kw">type</span> <span class="ty">Response</span> <span class="op">=</span>
+  <span class="pipe">|</span> <span class="ty">Ok</span><span class="pun">(</span><span class="ty">Body</span><span class="pun">)</span>
+  <span class="pipe">|</span> <span class="ty">NotFound</span>
+  <span class="pipe">|</span> <span class="ty">Error</span><span class="pun">(</span><span class="ty">String</span><span class="pun">)</span>
+
+<span class="kw">fn</span> <span class="fn">handle</span><span class="pun">(</span>req<span class="pun">:</span> <span class="ty">Request</span><span class="pun">)</span> <span class="op">-></span> <span class="ty">Response</span> <span class="op">=</span> <span class="kw">match</span> req <span class="kw">with</span>
+  <span class="pipe">|</span> <span class="ty">Get</span><span class="pun">(</span><span class="str">"/health"</span><span class="pun">)</span> <span class="op">-></span> <span class="ty">Ok</span><span class="pun">(</span><span class="str">"ok"</span><span class="pun">)</span>
+  <span class="pipe">|</span> <span class="ty">Get</span><span class="pun">(</span>path<span class="pun">)</span>       <span class="op">-></span> lookup<span class="pun">(</span>path<span class="pun">)</span>
+  <span class="pipe">|</span> <span class="ty">Post</span><span class="pun">(</span>path<span class="pun">,</span> body<span class="pun">)</span> <span class="op">-></span> store<span class="pun">(</span>path<span class="pun">,</span> body<span class="pun">)</span>
+
+<span class="kw">fn</span> <span class="fn">counter</span><span class="pun">(</span>count<span class="pun">:</span> <span class="ty">Int</span><span class="pun">)</span> <span class="op">-></span> <span class="ty">Int</span> <span class="op">=</span> <span class="kw">receive</span>
+  <span class="pipe">|</span> <span class="ty">Increment</span><span class="pun">(</span>n<span class="pun">)</span> <span class="op">-></span> counter<span class="pun">(</span>count <span class="op">+</span> n<span class="pun">)</span>
+  <span class="pipe">|</span> <span class="ty">GetCount</span>     <span class="op">-></span> count
+  <span class="pipe">|</span> <span class="ty">Shutdown</span>     <span class="op">-></span> count
+
+<span class="kw">fn</span> <span class="fn">main</span><span class="pun">()</span> <span class="op">-></span> <span class="ty">Result</span><span class="pun">[</span><span class="ty">Unit</span><span class="pun">,</span> <span class="ty">Error</span><span class="pun">]</span> <span class="op">=</span>
+  <span class="kw">let</span> pid <span class="op">=</span> <span class="fn">spawn</span><span class="pun">(</span>counter<span class="pun">,</span> <span class="num">0</span><span class="pun">)</span>
+  <span class="kw">let</span> server <span class="op">=</span> <span class="fn">listen</span><span class="pun">(</span><span class="num">8080</span><span class="pun">,</span> handle<span class="pun">)</span>
+  <span class="fn">supervise</span><span class="pun">(</span><span class="pun">[</span>pid<span class="pun">,</span> server<span class="pun">]</span><span class="pun">,</span> <span class="ty">OneForOne</span><span class="pun">)</span></pre>
+    </div>
+
+    <div class="code-block" style="margin-top: 20px;">
+      <div class="code-block-header">
+        <span class="code-dot code-dot--red"></span>
+        <span class="code-dot code-dot--yellow"></span>
+        <span class="code-dot code-dot--green"></span>
+        <span class="code-block-title">shapes.japl</span>
+      </div>
+<pre><span class="cmt">-- Algebraic data types and pattern matching</span>
+
+<span class="kw">type</span> <span class="ty">Shape</span> <span class="op">=</span>
+  <span class="pipe">|</span> <span class="ty">Circle</span><span class="pun">(</span><span class="ty">Float</span><span class="pun">)</span>
+  <span class="pipe">|</span> <span class="ty">Rectangle</span><span class="pun">(</span><span class="ty">Float</span><span class="pun">,</span> <span class="ty">Float</span><span class="pun">)</span>
+  <span class="pipe">|</span> <span class="ty">Triangle</span><span class="pun">(</span><span class="ty">Float</span><span class="pun">,</span> <span class="ty">Float</span><span class="pun">,</span> <span class="ty">Float</span><span class="pun">)</span>
+
+<span class="kw">fn</span> <span class="fn">area</span><span class="pun">(</span>shape<span class="pun">:</span> <span class="ty">Shape</span><span class="pun">)</span> <span class="op">-></span> <span class="ty">Float</span> <span class="op">=</span> <span class="kw">match</span> shape <span class="kw">with</span>
+  <span class="pipe">|</span> <span class="ty">Circle</span><span class="pun">(</span>r<span class="pun">)</span>       <span class="op">-></span> <span class="num">3.14159</span> <span class="op">*</span> r <span class="op">*</span> r
+  <span class="pipe">|</span> <span class="ty">Rectangle</span><span class="pun">(</span>w<span class="pun">,</span> h<span class="pun">)</span> <span class="op">-></span> w <span class="op">*</span> h
+  <span class="pipe">|</span> <span class="ty">Triangle</span><span class="pun">(</span>a<span class="pun">,</span> b<span class="pun">,</span> c<span class="pun">)</span> <span class="op">-></span>
+    <span class="kw">let</span> s <span class="op">=</span> <span class="pun">(</span>a <span class="op">+</span> b <span class="op">+</span> c<span class="pun">)</span> <span class="op">/</span> <span class="num">2.0</span>
+    <span class="fn">sqrt</span><span class="pun">(</span>s <span class="op">*</span> <span class="pun">(</span>s <span class="op">-</span> a<span class="pun">)</span> <span class="op">*</span> <span class="pun">(</span>s <span class="op">-</span> b<span class="pun">)</span> <span class="op">*</span> <span class="pun">(</span>s <span class="op">-</span> c<span class="pun">)</span><span class="pun">)</span>
+
+<span class="kw">fn</span> <span class="fn">pipeline</span><span class="pun">(</span>shapes<span class="pun">:</span> <span class="ty">List</span><span class="pun">[</span><span class="ty">Shape</span><span class="pun">]</span><span class="pun">)</span> <span class="op">-></span> <span class="ty">Float</span> <span class="op">=</span>
+  shapes <span class="pipe">|></span> <span class="fn">map</span><span class="pun">(</span>area<span class="pun">)</span> <span class="pipe">|></span> <span class="fn">filter</span><span class="pun">(</span><span class="kw">fn</span> a <span class="op">-></span> a <span class="op">></span> <span class="num">10.0</span><span class="pun">)</span> <span class="pipe">|></span> <span class="fn">sum</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Research Papers
+     ============================================================ -->
+<section id="papers">
+  <div class="container">
+    <p class="section-label">Research</p>
+    <h2 class="section-title">The JAPL Papers</h2>
+    <p class="section-desc">Seven papers developing the theoretical and practical foundations of the language, from first principles to runtime implementation.</p>
+
+    <div class="papers-grid">
+
+      <div class="paper-card">
+        <span class="paper-number">Part I</span>
+        <h3>Values Are Primary</h3>
+        <p>Immutable data, algebraic types, and pattern matching as the foundation for a value-oriented programming model.</p>
+        <div class="paper-meta">
+          <span>~25 pages</span>
+          <span>50 references</span>
+        </div>
+        <div class="paper-links">
+          <a href="papers/pdf/01-values-are-primary.pdf" class="paper-link">Read PDF</a>
+          <a href="papers/latex/01-values-are-primary.tex" class="paper-link">LaTeX Source</a>
+        </div>
+      </div>
+
+      <div class="paper-card">
+        <span class="paper-number">Part II</span>
+        <h3>Mutation Is Local and Explicit</h3>
+        <p>Linear types, ownership semantics, and confined mutability for safe, predictable state transitions.</p>
+        <div class="paper-meta">
+          <span>~25 pages</span>
+          <span>38 references</span>
+        </div>
+        <div class="paper-links">
+          <a href="papers/pdf/02-mutation-local-explicit.pdf" class="paper-link">Read PDF</a>
+          <a href="papers/latex/02-mutation-local-explicit.tex" class="paper-link">LaTeX Source</a>
+        </div>
+      </div>
+
+      <div class="paper-card">
+        <span class="paper-number">Part III</span>
+        <h3>Process-Based Concurrency</h3>
+        <p>Lightweight processes, typed message passing, and supervision trees as the concurrency primitive.</p>
+        <div class="paper-meta">
+          <span>36 pages</span>
+          <span>40 references</span>
+        </div>
+        <div class="paper-links">
+          <a href="papers/pdf/03-process-concurrency.pdf" class="paper-link">Read PDF</a>
+          <a href="papers/latex/03-process-concurrency.tex" class="paper-link">LaTeX Source</a>
+        </div>
+      </div>
+
+      <div class="paper-card">
+        <span class="paper-number">Part IV</span>
+        <h3>Typed Failures</h3>
+        <p>Error values, result types, and recovery strategies that make failure handling explicit and composable.</p>
+        <div class="paper-meta">
+          <span>23 pages</span>
+          <span>40 references</span>
+        </div>
+        <div class="paper-links">
+          <a href="papers/pdf/04-typed-failures.pdf" class="paper-link">Read PDF</a>
+          <a href="papers/latex/04-typed-failures.tex" class="paper-link">LaTeX Source</a>
+        </div>
+      </div>
+
+      <div class="paper-card">
+        <span class="paper-number">Part V</span>
+        <h3>Native Distribution</h3>
+        <p>Location-transparent processes, typed protocols, and network-aware semantics for distributed systems.</p>
+        <div class="paper-meta">
+          <span>~25 pages</span>
+          <span>35 references</span>
+        </div>
+        <div class="paper-links">
+          <a href="papers/pdf/05-native-distribution.pdf" class="paper-link">Read PDF</a>
+          <a href="papers/latex/05-native-distribution.tex" class="paper-link">LaTeX Source</a>
+        </div>
+      </div>
+
+      <div class="paper-card">
+        <span class="paper-number">Part VI</span>
+        <h3>Function Composition</h3>
+        <p>Pipelines, higher-order functions, algebraic effects, and the function as the universal unit of abstraction.</p>
+        <div class="paper-meta">
+          <span>~22 pages</span>
+          <span>40 references</span>
+        </div>
+        <div class="paper-links">
+          <a href="papers/pdf/06-function-composition.pdf" class="paper-link">Read PDF</a>
+          <a href="papers/latex/06-function-composition.tex" class="paper-link">LaTeX Source</a>
+        </div>
+      </div>
+
+      <div class="paper-card">
+        <span class="paper-number">Part VII</span>
+        <h3>Runtime Simplicity</h3>
+        <p>A minimal runtime enabled by maximum compile-time reasoning: type-directed erasure, monomorphization, and static dispatch.</p>
+        <div class="paper-meta">
+          <span>23 pages</span>
+          <span>40 references</span>
+        </div>
+        <div class="paper-links">
+          <a href="papers/pdf/07-runtime-simplicity.pdf" class="paper-link">Read PDF</a>
+          <a href="papers/latex/07-runtime-simplicity.tex" class="paper-link">LaTeX Source</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Language Design DNA
+     ============================================================ -->
+<section id="dna">
+  <div class="container">
+    <p class="section-label">Lineage</p>
+    <h2 class="section-title">Language Design DNA</h2>
+    <p class="section-desc">Four traditions, unified by a coherent type theory.</p>
+
+    <div class="dna-grid">
+
+      <div class="dna-card dna-card--ml">
+        <p class="dna-source">ML / OCaml / Gleam</p>
+        <p class="dna-arrow">&#x2193;</p>
+        <p class="dna-label">Logic</p>
+        <p class="dna-desc">Algebraic types, pattern matching, parametric polymorphism, and type inference form the reasoning backbone.</p>
+      </div>
+
+      <div class="dna-card dna-card--rust">
+        <p class="dna-source">Rust</p>
+        <p class="dna-arrow">&#x2193;</p>
+        <p class="dna-label">Resources</p>
+        <p class="dna-desc">Ownership, borrowing, and linear types ensure memory safety and deterministic resource management without a GC.</p>
+      </div>
+
+      <div class="dna-card dna-card--erlang">
+        <p class="dna-source">Erlang / OTP</p>
+        <p class="dna-arrow">&#x2193;</p>
+        <p class="dna-label">Liveness</p>
+        <p class="dna-desc">Lightweight processes, message passing, supervision trees, and "let it crash" philosophy for fault-tolerant systems.</p>
+      </div>
+
+      <div class="dna-card dna-card--go">
+        <p class="dna-source">Go</p>
+        <p class="dna-arrow">&#x2193;</p>
+        <p class="dna-label">Deployment</p>
+        <p class="dna-desc">Fast compilation, static binaries, simple tooling, and a pragmatic approach to getting production systems running.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Compiler Architecture
+     ============================================================ -->
+<section id="compiler">
+  <div class="container">
+    <p class="section-label">Implementation</p>
+    <h2 class="section-title">Compiler Architecture</h2>
+    <p class="section-desc">A stage-0 bootstrap compiler written in Rust, implementing the full JAPL pipeline from source to execution.</p>
+
+    <div class="compiler-grid">
+      <div class="compiler-stage">
+        <p class="compiler-stage-name">Lexer</p>
+        <p class="compiler-stage-desc">Tokenization</p>
+      </div>
+      <div class="compiler-stage">
+        <p class="compiler-stage-name">Parser</p>
+        <p class="compiler-stage-desc">AST construction</p>
+      </div>
+      <div class="compiler-stage">
+        <p class="compiler-stage-name">Type Checker</p>
+        <p class="compiler-stage-desc">Hindley-Milner</p>
+      </div>
+      <div class="compiler-stage">
+        <p class="compiler-stage-name">Effect System</p>
+        <p class="compiler-stage-desc">Algebraic effects</p>
+      </div>
+      <div class="compiler-stage">
+        <p class="compiler-stage-name">Linearity</p>
+        <p class="compiler-stage-desc">Ownership check</p>
+      </div>
+      <div class="compiler-stage">
+        <p class="compiler-stage-name">Runtime</p>
+        <p class="compiler-stage-desc">Process scheduler</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 32px;">
+      <span class="compiler-stat">129 tests passing</span>
+      <a href="https://github.com/YonedaAI/japl" class="btn btn-secondary" style="margin-left: 16px;" target="_blank" rel="noopener">View Source</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     Footer
+     ============================================================ -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <h3>JAPL</h3>
+        <p>A strict, typed, effect-aware functional language combining Rust's ownership, Go's simplicity, Erlang's processes, and FP semantics.</p>
+        <p style="margin-top: 12px;">The JAPL Research Collaboration<br>YonedaAI Research Collective</p>
+      </div>
+      <div class="footer-col">
+        <h4>Research</h4>
+        <ul>
+          <li><a href="#papers">Papers</a></li>
+          <li><a href="https://github.com/YonedaAI/japl" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="#compiler">Compiler</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Contact</h4>
+        <ul>
+          <li><a href="mailto:matthew@yonedaai.com">matthew@yonedaai.com</a></li>
+          <li><a href="https://github.com/YonedaAI/japl" target="_blank" rel="noopener">GitHub: YonedaAI/japl</a></li>
+          <li>Chicago, IL</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>Matthew Long &middot; YonedaAI Research Collective &middot; 2025</p>
+    </div>
+  </div>
+</footer>
+
+<!-- Minimal JS: mobile nav toggle -->
+<script>
+  document.getElementById('navToggle').addEventListener('click', function() {
+    document.getElementById('navLinks').classList.toggle('open');
+  });
+  // Close mobile nav on link click
+  document.querySelectorAll('#navLinks a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      document.getElementById('navLinks').classList.remove('open');
+    });
+  });
+</script>
+
+</body>
+</html>
