@@ -60,22 +60,23 @@ function cmdBuild(args: string[]): void {
     process.exit(1);
   }
 
-  const target = flags['target'] ?? 'ts';
-  if (target !== 'ts') {
+  const target = (flags['target'] ?? 'ts') as 'ts' | 'c';
+  if (target !== 'ts' && target !== 'c') {
     console.error(`Error: target "${target}" not yet supported`);
     process.exit(1);
   }
 
+  const ext = target === 'c' ? '.c' : '.ts';
   let outputPath: string;
   if (flags['out']) {
     const outDir = flags['out'];
-    const baseName = path.basename(inputFile, '.japl') + '.ts';
+    const baseName = path.basename(inputFile, '.japl') + ext;
     outputPath = path.join(outDir, baseName);
   } else {
-    outputPath = inputFile.replace(/\.japl$/, '.ts');
+    outputPath = inputFile.replace(/\.japl$/, ext);
   }
 
-  buildFile(inputFile, outputPath);
+  buildFile(inputFile, outputPath, target);
 }
 
 function cmdRun(args: string[]): void {
