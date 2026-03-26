@@ -1,0 +1,141 @@
+-- server.japl: API Server Simulation in JAPL
+-- Demonstrates route matching, request/response types, middleware pattern
+
+-- HTTP method type
+type Method =
+  | Get
+  | Post
+  | Put
+  | Delete
+
+-- Option type for lookups
+type Option =
+  | Some(String)
+  | None
+
+-- Simple in-memory "database" as list of (key, value) pairs
+type Entry = | KV(String, String)
+
+-- Show a method as a string
+fn method_to_string(m: Method) -> String = match m with
+  | Get -> "GET"
+  | Post -> "POST"
+  | Put -> "PUT"
+  | Delete -> "DELETE"
+
+-- Look up a key in our store
+fn store_get(store: List[Entry], key: String) -> Option = match store with
+  | [] -> None
+  | [KV(k, v), ..rest] ->
+    if k == key then Some(v)
+    else store_get(rest, key)
+
+-- Add/update a key in our store
+fn store_put(store: List[Entry], key: String, val: String) -> List[Entry] = match store with
+  | [] -> [KV(key, val)]
+  | [KV(k, v), ..rest] ->
+    if k == key then list_append([KV(key, val)], rest)
+    else list_append([KV(k, v)], store_put(rest, key, val))
+
+-- Delete a key from our store
+fn store_delete(store: List[Entry], key: String) -> List[Entry] = match store with
+  | [] -> []
+  | [KV(k, v), ..rest] ->
+    if k == key then rest
+    else list_append([KV(k, v)], store_delete(rest, key))
+
+-- Middleware: logging
+fn log_request(method: Method, path: String) -> String =
+  let msg = "[LOG] " ++ method_to_string(method) ++ " " ++ path
+  let _ = println(msg)
+  msg
+
+-- Middleware: add CORS-like header info (simulated via print)
+fn cors_log() -> String =
+  let _ = println("[CORS] Access-Control-Allow-Origin: *")
+  "cors"
+
+-- Route handler: GET /users
+fn handle_get_users(store: List[Entry]) -> { status: Int, body: String } =
+  match store_get(store, "users") with
+  | Some(data) -> { status = 200, body = "users: " ++ data }
+  | None -> { status = 200, body = "users: []" }
+
+-- Route handler: POST /users
+fn handle_post_user(body: String) -> { status: Int, body: String } =
+  let _ = println("[DB] Storing user: " ++ body)
+  { status = 201, body = "created: " ++ body }
+
+-- Route handler: GET /health
+fn handle_health() -> { status: Int, body: String } =
+  { status = 200, body = "status: ok, version: 0.1.0" }
+
+-- Route handler: GET /echo
+fn handle_echo(body: String) -> { status: Int, body: String } =
+  { status = 200, body = "echo: " ++ body }
+
+-- Route handler: 404 Not Found
+fn handle_not_found(path: String) -> { status: Int, body: String } =
+  { status = 404, body = "error: Not found: " ++ path }
+
+-- Route handler: 405 Method Not Allowed
+fn handle_method_not_allowed(method: Method, path: String) -> { status: Int, body: String } =
+  { status = 405, body = "error: " ++ method_to_string(method) ++ " not allowed on " ++ path }
+
+-- The main router: pattern match on method + path
+fn router(method: Method, path: String, body: String, store: List[Entry]) -> { status: Int, body: String } =
+  match method with
+  | Get ->
+    if path == "/health" then handle_health()
+    else if path == "/users" then handle_get_users(store)
+    else if path == "/echo" then handle_echo(body)
+    else handle_not_found(path)
+  | Post ->
+    if path == "/users" then handle_post_user(body)
+    else handle_not_found(path)
+  | Put ->
+    handle_method_not_allowed(Put, path)
+  | Delete ->
+    if path == "/users" then { status = 200, body = "deleted: true" }
+    else handle_not_found(path)
+
+-- Format a response for display
+fn show_response(resp: { status: Int, body: String }) -> String =
+  "  Status: " ++ int_to_string(resp.status) ++ " | Body: " ++ resp.body
+
+-- Process a single request through middleware pipeline and router
+fn process_request(method: Method, path: String, body: String, store: List[Entry]) -> { status: Int, body: String } =
+  let _ = log_request(method, path)
+  let resp = router(method, path, body, store)
+  let _ = cors_log()
+  resp
+
+-- A request is represented as a tuple of (Method, String, String)
+type Req = | MkReq(Method, String, String)
+
+-- Process a list of requests and print results
+fn run_requests(requests: List[Req], store: List[Entry], n: Int) -> Int =
+  match requests with
+  | [] -> n
+  | [MkReq(method, path, body), ..rest] ->
+    let _ = println("--- Request " ++ int_to_string(n) ++ " ---")
+    let resp = process_request(method, path, body, store)
+    let _ = println(show_response(resp))
+    let _ = println("")
+    run_requests(rest, store, n + 1)
+
+fn main() =
+  println("=== JAPL API Server Simulation ===")
+  println("")
+  let store = [KV("users", "[alice, bob]"), KV("config", "debug")]
+  let requests = [
+    MkReq(Get, "/health", ""),
+    MkReq(Get, "/users", ""),
+    MkReq(Post, "/users", "charlie"),
+    MkReq(Get, "/echo", "hello world"),
+    MkReq(Delete, "/users", ""),
+    MkReq(Put, "/users", ""),
+    MkReq(Get, "/nonexistent", "")
+  ]
+  let _ = run_requests(requests, store, 1)
+  println("Server simulation complete!")

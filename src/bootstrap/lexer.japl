@@ -1,0 +1,200 @@
+-- lexer.japl: A JAPL lexer written in JAPL
+-- Since the interpreter lacks string indexing, we represent source code
+-- as a list of single-character strings and tokenize that list.
+
+-- Token types
+type Token =
+  | TKeyword(String)
+  | TIdent(String)
+  | TInt(String)
+  | TString(String)
+  | TOp(String)
+  | TLParen
+  | TRParen
+  | TLBrace
+  | TRBrace
+  | TComma
+  | TColon
+  | TArrow
+  | TPipe
+  | TPipeArrow
+  | TEof
+
+-- Check if a character is a digit
+fn is_digit(c: String) -> Bool =
+  if c == "0" then True
+  else if c == "1" then True
+  else if c == "2" then True
+  else if c == "3" then True
+  else if c == "4" then True
+  else if c == "5" then True
+  else if c == "6" then True
+  else if c == "7" then True
+  else if c == "8" then True
+  else if c == "9" then True
+  else False
+
+-- Check if a character is a letter or underscore
+fn is_alpha(c: String) -> Bool =
+  if c == "_" then True
+  else if c == "a" then True
+  else if c == "b" then True
+  else if c == "c" then True
+  else if c == "d" then True
+  else if c == "e" then True
+  else if c == "f" then True
+  else if c == "g" then True
+  else if c == "h" then True
+  else if c == "i" then True
+  else if c == "j" then True
+  else if c == "k" then True
+  else if c == "l" then True
+  else if c == "m" then True
+  else if c == "n" then True
+  else if c == "o" then True
+  else if c == "p" then True
+  else if c == "q" then True
+  else if c == "r" then True
+  else if c == "s" then True
+  else if c == "t" then True
+  else if c == "u" then True
+  else if c == "v" then True
+  else if c == "w" then True
+  else if c == "x" then True
+  else if c == "y" then True
+  else if c == "z" then True
+  else False
+
+-- Check if a character is whitespace
+fn is_space(c: String) -> Bool =
+  if c == " " then True
+  else False
+
+-- Check if a word is a keyword
+fn is_keyword(word: String) -> Bool =
+  if word == "fn" then True
+  else if word == "let" then True
+  else if word == "type" then True
+  else if word == "match" then True
+  else if word == "if" then True
+  else if word == "else" then True
+  else if word == "then" then True
+  else if word == "with" then True
+  else False
+
+-- Collect consecutive characters matching a predicate from front of list
+-- Returns (collected_string, remaining_chars)
+type CollectResult = | Collected(String, List[String])
+
+fn collect_while_digit(acc: String, chars: List[String]) -> CollectResult =
+  match chars with
+  | [] -> Collected(acc, [])
+  | [c, ..rest] ->
+    if is_digit(c) then collect_while_digit(acc ++ c, rest)
+    else Collected(acc, chars)
+
+fn collect_while_alpha(acc: String, chars: List[String]) -> CollectResult =
+  match chars with
+  | [] -> Collected(acc, [])
+  | [c, ..rest] ->
+    if is_alpha(c) then collect_while_alpha(acc ++ c, rest)
+    else if is_digit(c) then collect_while_alpha(acc ++ c, rest)
+    else Collected(acc, chars)
+
+-- Skip whitespace
+fn skip_spaces(chars: List[String]) -> List[String] =
+  match chars with
+  | [] -> []
+  | [c, ..rest] ->
+    if is_space(c) then skip_spaces(rest)
+    else chars
+
+-- Tokenize a list of characters into a list of tokens
+fn tokenize(chars: List[String]) -> List[Token] =
+  let cs = skip_spaces(chars)
+  match cs with
+  | [] -> [TEof]
+  | ["(", ..rest] -> list_append([TLParen], tokenize(rest))
+  | [")", ..rest] -> list_append([TRParen], tokenize(rest))
+  | ["{", ..rest] -> list_append([TLBrace], tokenize(rest))
+  | ["}", ..rest] -> list_append([TRBrace], tokenize(rest))
+  | [",", ..rest] -> list_append([TComma], tokenize(rest))
+  | [":", ..rest] -> list_append([TColon], tokenize(rest))
+  | ["|", ">", ..rest] -> list_append([TPipeArrow], tokenize(rest))
+  | ["|", ..rest] -> list_append([TPipe], tokenize(rest))
+  | ["-", ">", ..rest] -> list_append([TArrow], tokenize(rest))
+  | ["+", ..rest] -> list_append([TOp("+")], tokenize(rest))
+  | ["-", ..rest] -> list_append([TOp("-")], tokenize(rest))
+  | ["*", ..rest] -> list_append([TOp("*")], tokenize(rest))
+  | ["/", ..rest] -> list_append([TOp("/")], tokenize(rest))
+  | ["=", "=", ..rest] -> list_append([TOp("==")], tokenize(rest))
+  | ["!", "=", ..rest] -> list_append([TOp("!=")], tokenize(rest))
+  | ["<", ..rest] -> list_append([TOp("<")], tokenize(rest))
+  | [">", ..rest] -> list_append([TOp(">")], tokenize(rest))
+  | ["=", ..rest] -> list_append([TOp("=")], tokenize(rest))
+  | [c, ..rest] ->
+    if is_digit(c) then
+      match collect_while_digit(c, rest) with
+      | Collected(num, remaining) -> list_append([TInt(num)], tokenize(remaining))
+    else if is_alpha(c) then
+      match collect_while_alpha(c, rest) with
+      | Collected(word, remaining) ->
+        if is_keyword(word) then list_append([TKeyword(word)], tokenize(remaining))
+        else list_append([TIdent(word)], tokenize(remaining))
+    else tokenize(rest)
+
+-- Display a single token
+fn show_token(tok: Token) -> String = match tok with
+  | TKeyword(s) -> "Keyword(" ++ s ++ ")"
+  | TIdent(s) -> "Ident(" ++ s ++ ")"
+  | TInt(s) -> "Int(" ++ s ++ ")"
+  | TString(s) -> "String(" ++ s ++ ")"
+  | TOp(s) -> "Op(" ++ s ++ ")"
+  | TLParen -> "LParen"
+  | TRParen -> "RParen"
+  | TLBrace -> "LBrace"
+  | TRBrace -> "RBrace"
+  | TComma -> "Comma"
+  | TColon -> "Colon"
+  | TArrow -> "Arrow"
+  | TPipe -> "Pipe"
+  | TPipeArrow -> "PipeArrow"
+  | TEof -> "EOF"
+
+-- Print all tokens in a list
+fn print_tokens(tokens: List[Token]) -> Int = match tokens with
+  | [] -> 0
+  | [tok, ..rest] ->
+    let _ = println("  " ++ show_token(tok))
+    print_tokens(rest)
+
+-- Main: tokenize sample JAPL expressions
+fn main() =
+  println("=== JAPL Lexer (self-hosted) ===")
+  println("")
+  println("--- Test 1: Simple function call ---")
+  let input1 = ["f", "n", " ", "a", "d", "d", "(", "x", ",", " ", "y", ")", " ", "=", " ", "x", " ", "+", " ", "y"]
+  let tokens1 = tokenize(input1)
+  let _ = print_tokens(tokens1)
+  println("")
+  println("--- Test 2: Let binding ---")
+  let input2 = ["l", "e", "t", " ", "x", " ", "=", " ", "4", "2"]
+  let tokens2 = tokenize(input2)
+  let _ = print_tokens(tokens2)
+  println("")
+  println("--- Test 3: Match expression ---")
+  let input3 = ["m", "a", "t", "c", "h", " ", "n", " ", "w", "i", "t", "h", " ", "|", " ", "0", " ", "-", ">", " ", "1"]
+  let tokens3 = tokenize(input3)
+  let _ = print_tokens(tokens3)
+  println("")
+  println("--- Test 4: Pipe operator ---")
+  let input4 = ["x", " ", "|", ">", " ", "f"]
+  let tokens4 = tokenize(input4)
+  let _ = print_tokens(tokens4)
+  println("")
+  println("--- Test 5: Comparison ---")
+  let input5 = ["i", "f", " ", "x", " ", "=", "=", " ", "1", "0", " ", "t", "h", "e", "n", " ", "y"]
+  let tokens5 = tokenize(input5)
+  let _ = print_tokens(tokens5)
+  println("")
+  println("Lexer complete!")
