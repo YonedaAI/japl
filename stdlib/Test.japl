@@ -1,0 +1,17 @@
+module Test
+
+pub fn assert_eq(actual: a, expected: a) -> Unit {
+  assert actual == expected
+}
+
+pub fn assert_ne(actual: a, expected: a) -> Unit {
+  assert actual != expected
+}
+
+pub fn assert_true(v: Bool) -> Unit {
+  assert v == true
+}
+
+pub fn assert_false(v: Bool) -> Unit {
+  assert v == false
+}

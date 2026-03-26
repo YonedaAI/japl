@@ -1,0 +1,25 @@
+module Core
+
+pub fn identity(x: a) -> a { x }
+
+pub fn const_(x: a, _y: b) -> a { x }
+
+pub fn flip(f: fn(a, b) -> c) -> fn(b, a) -> c {
+  fn(b, a) { f(a, b) }
+}
+
+pub fn compose(f: fn(b) -> c, g: fn(a) -> b) -> fn(a) -> c {
+  fn(x) { f(g(x)) }
+}
+
+pub fn pipe(x: a, f: fn(a) -> b) -> b {
+  f(x)
+}
+
+pub fn apply(f: fn(a) -> b, x: a) -> b {
+  f(x)
+}
+
+pub fn always(x: a) -> fn(b) -> a {
+  fn(_) { x }
+}

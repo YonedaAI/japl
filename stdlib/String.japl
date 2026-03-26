@@ -1,0 +1,30 @@
+module String
+
+pub fn length(s: String) -> Int {
+  string_length(s)
+}
+
+pub fn concat(a: String, b: String) -> String {
+  a <> b
+}
+
+pub fn is_empty(s: String) -> Bool {
+  length(s) == 0
+}
+
+pub fn repeat(s: String, n: Int) -> String {
+  if n <= 0 { "" }
+  else { s <> repeat(s, n - 1) }
+}
+
+pub fn contains(haystack: String, needle: String) -> Bool {
+  string_contains(haystack, needle)
+}
+
+pub fn starts_with(s: String, prefix: String) -> Bool {
+  string_starts_with(s, prefix)
+}
+
+pub fn trim(s: String) -> String {
+  string_trim(s)
+}

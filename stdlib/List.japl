@@ -1,0 +1,87 @@
+module List
+
+pub fn map(list: List(a), f: fn(a) -> b) -> List(b) {
+  match list {
+    [] => []
+    [head, ...tail] => [f(head), ...map(tail, f)]
+  }
+}
+
+pub fn filter(list: List(a), pred: fn(a) -> Bool) -> List(a) {
+  match list {
+    [] => []
+    [head, ...tail] =>
+      if pred(head) { [head, ...filter(tail, pred)] }
+      else { filter(tail, pred) }
+  }
+}
+
+pub fn fold(list: List(a), init: b, f: fn(b, a) -> b) -> b {
+  match list {
+    [] => init
+    [head, ...tail] => fold(tail, f(init, head), f)
+  }
+}
+
+pub fn length(list: List(a)) -> Int {
+  fold(list, 0, fn(acc, _) { acc + 1 })
+}
+
+pub fn reverse(list: List(a)) -> List(a) {
+  fold(list, [], fn(acc, x) { [x, ...acc] })
+}
+
+pub fn head(list: List(a)) -> Option(a) {
+  match list {
+    [] => None
+    [x, ..._] => Some(x)
+  }
+}
+
+pub fn tail(list: List(a)) -> Option(List(a)) {
+  match list {
+    [] => None
+    [_, ...rest] => Some(rest)
+  }
+}
+
+pub fn concat(a: List(t), b: List(t)) -> List(t) {
+  match a {
+    [] => b
+    [head, ...tail] => [head, ...concat(tail, b)]
+  }
+}
+
+pub fn any(list: List(a), pred: fn(a) -> Bool) -> Bool {
+  match list {
+    [] => false
+    [head, ...tail] =>
+      if pred(head) { true }
+      else { any(tail, pred) }
+  }
+}
+
+pub fn all(list: List(a), pred: fn(a) -> Bool) -> Bool {
+  match list {
+    [] => true
+    [head, ...tail] =>
+      if pred(head) { all(tail, pred) }
+      else { false }
+  }
+}
+
+pub fn find(list: List(a), pred: fn(a) -> Bool) -> Option(a) {
+  match list {
+    [] => None
+    [head, ...tail] =>
+      if pred(head) { Some(head) }
+      else { find(tail, pred) }
+  }
+}
+
+pub fn flat_map(list: List(a), f: fn(a) -> List(b)) -> List(b) {
+  match list {
+    [] => []
+    [head, ...tail] => concat(f(head), flat_map(tail, f))
+  }
+}

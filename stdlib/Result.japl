@@ -1,0 +1,61 @@
+module Result
+
+type Result(a, e) =
+  | Ok(a)
+  | Err(e)
+
+pub fn map(r: Result(a, e), f: fn(a) -> b) -> Result(b, e) {
+  match r {
+    Ok(x) => Ok(f(x))
+    Err(e) => Err(e)
+  }
+}
+
+pub fn flat_map(r: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e) {
+  match r {
+    Ok(x) => f(x)
+    Err(e) => Err(e)
+  }
+}
+
+pub fn map_err(r: Result(a, e), f: fn(e) -> e2) -> Result(a, e2) {
+  match r {
+    Ok(x) => Ok(x)
+    Err(e) => Err(f(e))
+  }
+}
+
+pub fn unwrap_or(r: Result(a, e), default: a) -> a {
+  match r {
+    Ok(x) => x
+    Err(_) => default
+  }
+}
+
+pub fn is_ok(r: Result(a, e)) -> Bool {
+  match r {
+    Ok(_) => true
+    Err(_) => false
+  }
+}
+
+pub fn is_err(r: Result(a, e)) -> Bool {
+  match r {
+    Ok(_) => false
+    Err(_) => true
+  }
+}
+
+pub fn and_then(r: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e) {
+  match r {
+    Ok(x) => f(x)
+    Err(e) => Err(e)
+  }
+}
+
+pub fn or_else(r: Result(a, e), f: fn(e) -> Result(a, e2)) -> Result(a, e2) {
+  match r {
+    Ok(x) => Ok(x)
+    Err(e) => f(e)
+  }
+}

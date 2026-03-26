@@ -1,0 +1,23 @@
+fn greet(name: String) -> String {
+  "Hello, " <> name <> "!"
+}
+
+type Shape =
+  | Circle(Float)
+  | Rectangle(Float, Float)
+
+fn area(shape: Shape) -> Float {
+  match shape {
+    Circle(r) => 3.14159 * r * r
+    Rectangle(w, h) => w * h
+  }
+}
+
+fn main() {
+  println(greet("JAPL"))
+
+  let shapes = [Circle(5.0), Rectangle(3.0, 4.0)]
+  let areas = shapes |> List.map(area)
+
+  println("Areas: " <> show(areas))
+}
