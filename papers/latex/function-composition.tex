@@ -1393,7 +1393,7 @@ The implementation imposes no runtime overhead: closures are optimized away by i
 
 Our comparison with Haskell, OCaml, Rust, Go, Erlang, and Scala shows that \japl{} occupies a principled position in the design space: simpler than Haskell and Scala, more expressive than Go and Erlang, and free of the ownership complexity that Rust imposes on closure composition. The key differentiator is \japl{}'s commitment to a small, orthogonal set of composition mechanisms---functions, modules, traits, patterns, and pipes---that work together without overlap or interference.
 
-The slogan that summarizes \japl{}'s design philosophy---``Pure functions handle logic, supervised processes handle time and failure, and ownership handles reality''---is reflected in the composition model. Functions are the universal connective tissue. They compose at the value level (pipes and $\gg$), at the module level (functors), and at the type level (traits as natural transformations). The categorical semantics ensure that composition means the same thing at every level: associative, identity-preserving morphism composition.
+The slogan that summarizes \japl{}'s design philosophy---``Pure functions handle logic, supervised processes handle time and failure, and ownership handles resources''---is reflected in the composition model. Functions are the universal connective tissue. They compose at the value level (pipes and $\gg$), at the module level (functors), and at the type level (traits as natural transformations). The categorical semantics ensure that composition means the same thing at every level: associative, identity-preserving morphism composition.
 
 Functions compose. Categories prove it. Types enforce it. \japl{} builds on this foundation.
 
