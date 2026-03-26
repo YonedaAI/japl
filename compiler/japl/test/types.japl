@@ -1,0 +1,17 @@
+type Color =
+  | Red
+  | Green
+  | Blue
+
+fn color_name(c: Color) -> String {
+  match c {
+    Red => "red"
+    Green => "green"
+    Blue => "blue"
+  }
+}
+
+fn main() {
+  let c = Green
+  println(color_name(c))
+}

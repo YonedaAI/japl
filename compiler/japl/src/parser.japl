@@ -1,0 +1,697 @@
+// Recursive descent parser for the JAPL self-hosted compiler
+// Consumes a list of tokens and produces a list of declarations
+
+type ParseResult(a) = MkResult(a, List(Token))
+
+fn parse(tokens: List(Token)) -> List(Decl) {
+  let filtered = filter_tokens(tokens)
+  parse_decls(filtered)
+}
+
+fn filter_tokens(tokens: List(Token)) -> List(Token) {
+  match tokens {
+    [] => []
+    [TkNewline, ..rest] => filter_tokens(rest)
+    _ =>
+      let first = list_head(tokens)
+      let rest = list_tail(tokens)
+      cons(first, filter_tokens(rest))
+  }
+}
+
+fn parse_decls(tokens: List(Token)) -> List(Decl) {
+  match tokens {
+    [] => []
+    [TkEof] => []
+    [TkKeyword(kw), ..rest] =>
+      if kw == "pub" {
+        match rest {
+          [TkKeyword(kw2), ..rest2] =>
+            if kw2 == "fn" {
+              let result = parse_fn_decl(rest2)
+              match result {
+                MkResult(decl, remaining) =>
+                  match decl {
+                    DFn(name, params, body) =>
+                      cons(DPubFn(name, params, body), parse_decls(remaining))
+                    _ => cons(decl, parse_decls(remaining))
+                  }
+              }
+            }
+            else { parse_decls(rest) }
+          _ => parse_decls(rest)
+        }
+      }
+      else if kw == "fn" {
+        let result = parse_fn_decl(rest)
+        match result {
+          MkResult(decl, remaining) => cons(decl, parse_decls(remaining))
+        }
+      }
+      else if kw == "type" {
+        let result = parse_type_decl(rest)
+        match result {
+          MkResult(decl, remaining) => cons(decl, parse_decls(remaining))
+        }
+      }
+      else { parse_decls(rest) }
+    _ =>
+      let rest = list_tail(tokens)
+      parse_decls(rest)
+  }
+}
+
+fn parse_fn_decl(tokens: List(Token)) -> ParseResult(Decl) {
+  match tokens {
+    [TkIdent(name), TkLParen, ..rest] =>
+      let params_result = parse_params(rest)
+      match params_result {
+        MkResult(params, rest2) =>
+          let rest3 = skip_return_type(rest2)
+          match rest3 {
+            [TkLBrace, ..rest4] =>
+              let body_result = parse_block_body(rest4)
+              match body_result {
+                MkResult(body, rest5) => MkResult(DFn(name, params, body), rest5)
+              }
+            _ => MkResult(DFn(name, params, EVar("unit")), rest3)
+          }
+      }
+    _ => MkResult(DFn("unknown", [], EVar("unit")), tokens)
+  }
+}
+
+fn skip_return_type(tokens: List(Token)) -> List(Token) {
+  match tokens {
+    [TkArrow, ..rest] => skip_type_expr(rest)
+    _ => tokens
+  }
+}
+
+fn skip_type_expr(tokens: List(Token)) -> List(Token) {
+  match tokens {
+    [TkIdent(_), TkLParen, ..rest] => skip_parens(rest, 1)
+    [TkUpperIdent(_), TkLParen, ..rest] => skip_parens(rest, 1)
+    [TkIdent(_), ..rest] => rest
+    [TkUpperIdent(_), ..rest] => rest
+    [TkLBrace, ..rest] => skip_braces(rest, 1)
+    [TkKeyword(kw), ..rest] =>
+      if kw == "fn" {
+        match rest {
+          [TkLParen, ..rest2] =>
+            let after_params = skip_parens(rest2, 1)
+            match after_params {
+              [TkArrow, ..rest3] => skip_type_expr(rest3)
+              _ => after_params
+            }
+          _ => rest
+        }
+      }
+      else { rest }
+    _ => tokens
+  }
+}
+
+fn skip_parens(tokens: List(Token), depth: Int) -> List(Token) {
+  if depth == 0 { tokens }
+  else {
+    match tokens {
+      [] => []
+      [TkLParen, ..rest] => skip_parens(rest, depth + 1)
+      [TkRParen, ..rest] => skip_parens(rest, depth - 1)
+      _ =>
+        let rest = list_tail(tokens)
+        skip_parens(rest, depth)
+    }
+  }
+}
+
+fn skip_braces(tokens: List(Token), depth: Int) -> List(Token) {
+  if depth == 0 { tokens }
+  else {
+    match tokens {
+      [] => []
+      [TkLBrace, ..rest] => skip_braces(rest, depth + 1)
+      [TkRBrace, ..rest] => skip_braces(rest, depth - 1)
+      _ =>
+        let rest = list_tail(tokens)
+        skip_braces(rest, depth)
+    }
+  }
+}
+
+fn parse_params(tokens: List(Token)) -> ParseResult(List(Param)) {
+  match tokens {
+    [TkRParen, ..rest] => MkResult([], rest)
+    [TkIdent(name), TkColon, ..rest] =>
+      let rest2 = skip_type_annotation(rest)
+      match rest2 {
+        [TkComma, ..rest3] =>
+          let next = parse_params(rest3)
+          match next {
+            MkResult(params, rest4) => MkResult(cons(MkParam(name), params), rest4)
+          }
+        [TkRParen, ..rest3] => MkResult([MkParam(name)], rest3)
+        _ => MkResult([MkParam(name)], rest2)
+      }
+    [TkIdent(name), TkComma, ..rest] =>
+      let next = parse_params(rest)
+      match next {
+        MkResult(params, rest2) => MkResult(cons(MkParam(name), params), rest2)
+      }
+    [TkIdent(name), TkRParen, ..rest] => MkResult([MkParam(name)], rest)
+    _ => MkResult([], tokens)
+  }
+}
+
+fn skip_type_annotation(tokens: List(Token)) -> List(Token) {
+  match tokens {
+    [TkIdent(_), TkLParen, ..rest] => skip_parens(rest, 1)
+    [TkUpperIdent(_), TkLParen, ..rest] => skip_parens(rest, 1)
+    [TkIdent(_), ..rest] => rest
+    [TkUpperIdent(_), ..rest] => rest
+    [TkKeyword(kw), ..rest] =>
+      if kw == "fn" {
+        match rest {
+          [TkLParen, ..rest2] =>
+            let skipped = skip_parens(rest2, 1)
+            match skipped {
+              [TkArrow, ..rest3] => skip_type_annotation(rest3)
+              _ => skipped
+            }
+          _ => rest
+        }
+      }
+      else { rest }
+    _ => tokens
+  }
+}
+
+fn parse_type_decl(tokens: List(Token)) -> ParseResult(Decl) {
+  match tokens {
+    [TkUpperIdent(name), TkOperator(eq), ..rest] =>
+      if eq == "=" {
+        let variants_result = parse_variants(rest)
+        match variants_result {
+          MkResult(variants, rest2) => MkResult(DType(name, variants), rest2)
+        }
+      }
+      else { MkResult(DType(name, []), rest) }
+    [TkUpperIdent(name), TkLParen, ..rest] =>
+      let skipped = skip_parens(rest, 1)
+      match skipped {
+        [TkOperator(eq), ..rest2] =>
+          if eq == "=" {
+            let variants_result = parse_variants(rest2)
+            match variants_result {
+              MkResult(variants, rest3) => MkResult(DType(name, variants), rest3)
+            }
+          }
+          else { MkResult(DType(name, []), skipped) }
+        _ => MkResult(DType(name, []), skipped)
+      }
+    _ => MkResult(DType("Unknown", []), tokens)
+  }
+}
+
+fn parse_variants(tokens: List(Token)) -> ParseResult(List(Variant)) {
+  match tokens {
+    [TkBar, TkUpperIdent(name), TkLParen, ..rest] =>
+      let arity_result = count_variant_fields(rest, 0)
+      match arity_result {
+        MkResult(arity, rest2) =>
+          let next = parse_variants(rest2)
+          match next {
+            MkResult(variants, rest3) =>
+              MkResult(cons(MkVariant(name, arity), variants), rest3)
+          }
+      }
+    [TkBar, TkUpperIdent(name), ..rest] =>
+      let next = parse_variants(rest)
+      match next {
+        MkResult(variants, rest2) =>
+          MkResult(cons(MkVariant(name, 0), variants), rest2)
+      }
+    _ => MkResult([], tokens)
+  }
+}
+
+fn count_variant_fields(tokens: List(Token), count: Int) -> ParseResult(Int) {
+  match tokens {
+    [TkRParen, ..rest] =>
+      if count == 0 { MkResult(1, rest) }
+      else { MkResult(count, rest) }
+    [TkComma, ..rest] => count_variant_fields(rest, count + 1)
+    [] => MkResult(count, [])
+    _ =>
+      let rest = list_tail(tokens)
+      if count == 0 { count_variant_fields(rest, 1) }
+      else { count_variant_fields(rest, count) }
+  }
+}
+
+fn parse_block_body(tokens: List(Token)) -> ParseResult(Expr) {
+  let result = parse_block_exprs(tokens)
+  match result {
+    MkResult(exprs, rest) =>
+      match exprs {
+        [single] => MkResult(single, rest)
+        _ => MkResult(EBlock(exprs), rest)
+      }
+  }
+}
+
+fn parse_block_exprs(tokens: List(Token)) -> ParseResult(List(Expr)) {
+  match tokens {
+    [TkRBrace, ..rest] => MkResult([], rest)
+    [] => MkResult([], [])
+    _ =>
+      let expr_result = parse_expr(tokens)
+      match expr_result {
+        MkResult(expr, rest) =>
+          let rest2 = skip_separator(rest)
+          let next = parse_block_exprs(rest2)
+          match next {
+            MkResult(exprs, rest3) => MkResult(cons(expr, exprs), rest3)
+          }
+      }
+  }
+}
+
+fn skip_separator(tokens: List(Token)) -> List(Token) {
+  match tokens {
+    [TkSemicolon, ..rest] => rest
+    _ => tokens
+  }
+}
+
+fn parse_expr(tokens: List(Token)) -> ParseResult(Expr) {
+  let lhs_result = parse_primary(tokens)
+  match lhs_result {
+    MkResult(lhs, rest) => parse_expr_continued(lhs, rest)
+  }
+}
+
+fn parse_expr_continued(lhs: Expr, tokens: List(Token)) -> ParseResult(Expr) {
+  match tokens {
+    [TkOperator(op), ..rest] =>
+      if op == "<>" {
+        let rhs_result = parse_primary(rest)
+        match rhs_result {
+          MkResult(rhs, rest2) => parse_expr_continued(EConcat(lhs, rhs), rest2)
+        }
+      }
+      else if op == "+" || op == "-" || op == "*" || op == "/" || op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=" || op == "&&" || op == "||" {
+        let rhs_result = parse_primary(rest)
+        match rhs_result {
+          MkResult(rhs, rest2) => parse_expr_continued(EBinOp(op, lhs, rhs), rest2)
+        }
+      }
+      else { MkResult(lhs, tokens) }
+    [TkPipe, ..rest] =>
+      let rhs_result = parse_primary(rest)
+      match rhs_result {
+        MkResult(rhs, rest2) => parse_expr_continued(EPipe(lhs, rhs), rest2)
+      }
+    [TkDot, TkIdent(field), ..rest] =>
+      parse_expr_continued(EFieldAccess(lhs, field), rest)
+    [TkLParen, ..rest] =>
+      let args_result = parse_args(rest)
+      match args_result {
+        MkResult(args, rest2) => parse_expr_continued(EApp(lhs, args), rest2)
+      }
+    _ => MkResult(lhs, tokens)
+  }
+}
+
+fn parse_primary(tokens: List(Token)) -> ParseResult(Expr) {
+  match tokens {
+    [TkInt(n), ..rest] => MkResult(EInt(n), rest)
+    [TkFloat(n), ..rest] => MkResult(EFloat(n), rest)
+    [TkString(s), ..rest] => MkResult(EString(s), rest)
+    [TkKeyword(kw), ..rest] =>
+      if kw == "true" { MkResult(EBool(true), rest) }
+      else if kw == "false" { MkResult(EBool(false), rest) }
+      else if kw == "let" { parse_let(rest) }
+      else if kw == "match" { parse_match(rest) }
+      else if kw == "if" { parse_if(rest) }
+      else if kw == "fn" {
+        match rest {
+          [TkLParen, ..rest2] => parse_lambda(rest2)
+          _ => MkResult(EVar("fn"), rest)
+        }
+      }
+      else { MkResult(EVar(kw), rest) }
+    [TkUpperIdent(name), TkLParen, ..rest] =>
+      let args_result = parse_args(rest)
+      match args_result {
+        MkResult(args, rest2) => MkResult(EConstruct(name, args), rest2)
+      }
+    [TkUpperIdent(name), ..rest] => MkResult(EConstruct(name, []), rest)
+    [TkIdent(name), TkLParen, ..rest] =>
+      let args_result = parse_args(rest)
+      match args_result {
+        MkResult(args, rest2) =>
+          parse_expr_continued(EApp(EVar(name), args), rest2)
+      }
+    [TkIdent(name), ..rest] => MkResult(EVar(name), rest)
+    [TkLParen, ..rest] =>
+      let expr_result = parse_expr(rest)
+      match expr_result {
+        MkResult(expr, rest2) =>
+          match rest2 {
+            [TkRParen, ..rest3] => MkResult(expr, rest3)
+            _ => MkResult(expr, rest2)
+          }
+      }
+    [TkLBrace, ..rest] => parse_record_or_block(rest)
+    [TkLBracket, ..rest] => parse_list_expr(rest)
+    [TkOperator(op), ..rest] =>
+      if op == "-" || op == "!" {
+        let expr_result = parse_primary(rest)
+        match expr_result {
+          MkResult(expr, rest2) => MkResult(EUnaryOp(op, expr), rest2)
+        }
+      }
+      else { MkResult(EVar("_error"), tokens) }
+    _ => MkResult(EVar("_error"), tokens)
+  }
+}
+
+fn parse_args(tokens: List(Token)) -> ParseResult(List(Expr)) {
+  match tokens {
+    [TkRParen, ..rest] => MkResult([], rest)
+    _ =>
+      let expr_result = parse_expr(tokens)
+      match expr_result {
+        MkResult(expr, rest) =>
+          match rest {
+            [TkComma, ..rest2] =>
+              let next = parse_args(rest2)
+              match next {
+                MkResult(args, rest3) => MkResult(cons(expr, args), rest3)
+              }
+            [TkRParen, ..rest2] => MkResult([expr], rest2)
+            _ => MkResult([expr], rest)
+          }
+      }
+  }
+}
+
+fn parse_let(tokens: List(Token)) -> ParseResult(Expr) {
+  match tokens {
+    [TkIdent(name), TkOperator(eq), ..rest] =>
+      if eq == "=" {
+        let value_result = parse_expr(rest)
+        match value_result {
+          MkResult(value, rest2) =>
+            let rest3 = skip_separator(rest2)
+            let body_result = parse_expr(rest3)
+            match body_result {
+              MkResult(body, rest4) => MkResult(ELet(name, value, body), rest4)
+            }
+        }
+      }
+      else { MkResult(EVar("_error"), rest) }
+    [TkIdent(name), TkColon, ..rest] =>
+      let rest2 = skip_type_annotation(rest)
+      match rest2 {
+        [TkOperator(eq), ..rest3] =>
+          if eq == "=" {
+            let value_result = parse_expr(rest3)
+            match value_result {
+              MkResult(value, rest4) =>
+                let rest5 = skip_separator(rest4)
+                let body_result = parse_expr(rest5)
+                match body_result {
+                  MkResult(body, rest6) => MkResult(ELet(name, value, body), rest6)
+                }
+            }
+          }
+          else { MkResult(EVar("_error"), rest2) }
+        _ => MkResult(EVar("_error"), rest2)
+      }
+    _ => MkResult(EVar("_error"), tokens)
+  }
+}
+
+fn parse_match(tokens: List(Token)) -> ParseResult(Expr) {
+  let scrut_result = parse_primary(tokens)
+  match scrut_result {
+    MkResult(scrutinee, rest) =>
+      match rest {
+        [TkLBrace, ..rest2] =>
+          let arms_result = parse_match_arms(rest2)
+          match arms_result {
+            MkResult(arms, rest3) => MkResult(EMatch(scrutinee, arms), rest3)
+          }
+        _ => MkResult(EMatch(scrutinee, []), rest)
+      }
+  }
+}
+
+fn parse_match_arms(tokens: List(Token)) -> ParseResult(List(MatchArm)) {
+  match tokens {
+    [TkRBrace, ..rest] => MkResult([], rest)
+    _ =>
+      let pat_result = parse_pattern(tokens)
+      match pat_result {
+        MkResult(pattern, rest) =>
+          match rest {
+            [TkFatArrow, ..rest2] =>
+              let body_result = parse_expr(rest2)
+              match body_result {
+                MkResult(body, rest3) =>
+                  let rest4 = skip_comma(rest3)
+                  let next = parse_match_arms(rest4)
+                  match next {
+                    MkResult(arms, rest5) =>
+                      MkResult(cons(MkArm(pattern, body), arms), rest5)
+                  }
+              }
+            _ => MkResult([], rest)
+          }
+      }
+  }
+}
+
+fn skip_comma(tokens: List(Token)) -> List(Token) {
+  match tokens {
+    [TkComma, ..rest] => rest
+    _ => tokens
+  }
+}
+
+fn parse_pattern(tokens: List(Token)) -> ParseResult(Pattern) {
+  match tokens {
+    [TkUpperIdent(name), TkLParen, ..rest] =>
+      let args_result = parse_pattern_args(rest)
+      match args_result {
+        MkResult(args, rest2) => MkResult(PConstructor(name, args), rest2)
+      }
+    [TkUpperIdent(name), ..rest] => MkResult(PConstructor(name, []), rest)
+    [TkIdent(name), ..rest] =>
+      if name == "_" { MkResult(PWildcard, rest) }
+      else { MkResult(PVar(name), rest) }
+    [TkInt(n), ..rest] => MkResult(PLiteral(EInt(n)), rest)
+    [TkString(s), ..rest] => MkResult(PLiteral(EString(s)), rest)
+    [TkLBracket, ..rest] => parse_list_pattern(rest)
+    _ => MkResult(PWildcard, tokens)
+  }
+}
+
+fn parse_pattern_args(tokens: List(Token)) -> ParseResult(List(Pattern)) {
+  match tokens {
+    [TkRParen, ..rest] => MkResult([], rest)
+    _ =>
+      let pat_result = parse_pattern(tokens)
+      match pat_result {
+        MkResult(pat, rest) =>
+          match rest {
+            [TkComma, ..rest2] =>
+              let next = parse_pattern_args(rest2)
+              match next {
+                MkResult(pats, rest3) => MkResult(cons(pat, pats), rest3)
+              }
+            [TkRParen, ..rest2] => MkResult([pat], rest2)
+            _ => MkResult([pat], rest)
+          }
+      }
+  }
+}
+
+fn parse_list_pattern(tokens: List(Token)) -> ParseResult(Pattern) {
+  match tokens {
+    [TkRBracket, ..rest] => MkResult(PList([], None), rest)
+    _ =>
+      let pats_result = parse_pattern_list_elems(tokens)
+      match pats_result {
+        MkResult(result, rest) => MkResult(result, rest)
+      }
+  }
+}
+
+fn parse_pattern_list_elems(tokens: List(Token)) -> ParseResult(Pattern) {
+  match tokens {
+    [TkDotDot, TkIdent(name), TkRBracket, ..rest] =>
+      MkResult(PList([], Some(name)), rest)
+    _ =>
+      let pat_result = parse_pattern(tokens)
+      match pat_result {
+        MkResult(pat, rest) =>
+          match rest {
+            [TkComma, TkDotDot, TkIdent(rest_name), TkRBracket, ..rest2] =>
+              MkResult(PList([pat], Some(rest_name)), rest2)
+            [TkComma, ..rest2] =>
+              let next = parse_pattern_list_elems(rest2)
+              match next {
+                MkResult(PList(pats, rest_name), rest3) =>
+                  MkResult(PList(cons(pat, pats), rest_name), rest3)
+                MkResult(_, rest3) => MkResult(PList([pat], None), rest3)
+              }
+            [TkRBracket, ..rest2] => MkResult(PList([pat], None), rest2)
+            _ => MkResult(PList([pat], None), rest)
+          }
+      }
+  }
+}
+
+fn parse_if(tokens: List(Token)) -> ParseResult(Expr) {
+  let cond_result = parse_expr(tokens)
+  match cond_result {
+    MkResult(cond, rest) =>
+      match rest {
+        [TkLBrace, ..rest2] =>
+          let then_result = parse_block_body(rest2)
+          match then_result {
+            MkResult(then_expr, rest3) =>
+              match rest3 {
+                [TkKeyword(kw), ..rest4] =>
+                  if kw == "else" {
+                    match rest4 {
+                      [TkLBrace, ..rest5] =>
+                        let else_result = parse_block_body(rest5)
+                        match else_result {
+                          MkResult(else_expr, rest6) =>
+                            MkResult(EIf(cond, then_expr, else_expr), rest6)
+                        }
+                      [TkKeyword(kw2), ..rest5] =>
+                        if kw2 == "if" {
+                          let elif_result = parse_if(rest5)
+                          match elif_result {
+                            MkResult(elif_expr, rest6) =>
+                              MkResult(EIf(cond, then_expr, elif_expr), rest6)
+                          }
+                        }
+                        else { MkResult(EIf(cond, then_expr, EVar("undefined")), rest3) }
+                      _ => MkResult(EIf(cond, then_expr, EVar("undefined")), rest3)
+                    }
+                  }
+                  else { MkResult(EIf(cond, then_expr, EVar("undefined")), rest3) }
+                _ => MkResult(EIf(cond, then_expr, EVar("undefined")), rest3)
+              }
+          }
+        _ => MkResult(EVar("_error"), rest)
+      }
+  }
+}
+
+fn parse_lambda(tokens: List(Token)) -> ParseResult(Expr) {
+  let params_result = parse_lambda_params(tokens)
+  match params_result {
+    MkResult(params, rest) =>
+      match rest {
+        [TkLBrace, ..rest2] =>
+          let body_result = parse_block_body(rest2)
+          match body_result {
+            MkResult(body, rest3) => MkResult(ELambda(params, body), rest3)
+          }
+        _ =>
+          let body_result = parse_expr(rest)
+          match body_result {
+            MkResult(body, rest2) => MkResult(ELambda(params, body), rest2)
+          }
+      }
+  }
+}
+
+fn parse_lambda_params(tokens: List(Token)) -> ParseResult(List(String)) {
+  match tokens {
+    [TkRParen, ..rest] => MkResult([], rest)
+    [TkIdent(name), TkComma, ..rest] =>
+      let next = parse_lambda_params(rest)
+      match next {
+        MkResult(params, rest2) => MkResult(cons(name, params), rest2)
+      }
+    [TkIdent(name), TkRParen, ..rest] => MkResult([name], rest)
+    [TkIdent(name), TkColon, ..rest] =>
+      let rest2 = skip_type_annotation(rest)
+      match rest2 {
+        [TkComma, ..rest3] =>
+          let next = parse_lambda_params(rest3)
+          match next {
+            MkResult(params, rest4) => MkResult(cons(name, params), rest4)
+          }
+        [TkRParen, ..rest3] => MkResult([name], rest3)
+        _ => MkResult([name], rest2)
+      }
+    _ => MkResult([], tokens)
+  }
+}
+
+fn parse_record_or_block(tokens: List(Token)) -> ParseResult(Expr) {
+  match tokens {
+    [TkIdent(name), TkColon, ..rest] =>
+      let value_result = parse_expr(rest)
+      match value_result {
+        MkResult(value, rest2) =>
+          let fields_result = parse_record_fields(rest2, [MkField(name, value)])
+          match fields_result {
+            MkResult(fields, rest3) => MkResult(ERecord(fields), rest3)
+          }
+      }
+    [TkRBrace, ..rest] => MkResult(ERecord([]), rest)
+    _ => parse_block_body(tokens)
+  }
+}
+
+fn parse_record_fields(tokens: List(Token), acc: List(RecordField)) -> ParseResult(List(RecordField)) {
+  match tokens {
+    [TkRBrace, ..rest] => MkResult(acc, rest)
+    [TkComma, TkIdent(name), TkColon, ..rest] =>
+      let value_result = parse_expr(rest)
+      match value_result {
+        MkResult(value, rest2) =>
+          parse_record_fields(rest2, append(acc, [MkField(name, value)]))
+      }
+    [TkComma, TkRBrace, ..rest] => MkResult(acc, rest)
+    _ => MkResult(acc, tokens)
+  }
+}
+
+fn parse_list_expr(tokens: List(Token)) -> ParseResult(Expr) {
+  match tokens {
+    [TkRBracket, ..rest] => MkResult(EList([]), rest)
+    _ =>
+      let elems_result = parse_list_elements(tokens)
+      match elems_result {
+        MkResult(elems, rest) => MkResult(EList(elems), rest)
+      }
+  }
+}
+
+fn parse_list_elements(tokens: List(Token)) -> ParseResult(List(Expr)) {
+  let expr_result = parse_expr(tokens)
+  match expr_result {
+    MkResult(expr, rest) =>
+      match rest {
+        [TkComma, ..rest2] =>
+          let next = parse_list_elements(rest2)
+          match next {
+            MkResult(exprs, rest3) => MkResult(cons(expr, exprs), rest3)
+          }
+        [TkRBracket, ..rest2] => MkResult([expr], rest2)
+        _ => MkResult([expr], rest)
+      }
+  }
+}

@@ -1,0 +1,1495 @@
+// JAPL Self-Hosted Compiler
+// A single-file bootstrap compiler that reads JAPL source and emits TypeScript.
+// Compiles via the TS compiler: japl build compiler.japl --target ts
+//
+// IMPORTANT: The TS compiler's list patterns only check length, not element
+// values. So we must use [first, ..rest] then match first as a constructor.
+
+// ── Token Types ──
+
+type Token =
+  | TkInt(String)
+  | TkFloat(String)
+  | TkString(String)
+  | TkIdent(String)
+  | TkUpperIdent(String)
+  | TkKeyword(String)
+  | TkOperator(String)
+  | TkLParen
+  | TkRParen
+  | TkLBrace
+  | TkRBrace
+  | TkLBracket
+  | TkRBracket
+  | TkComma
+  | TkColon
+  | TkSemicolon
+  | TkArrow
+  | TkFatArrow
+  | TkPipe
+  | TkBar
+  | TkDot
+  | TkDotDot
+  | TkEof
+
+// ── AST Types ──
+
+type Expr =
+  | EInt(String)
+  | EFloat(String)
+  | EString(String)
+  | EBool(Bool)
+  | EVar(String)
+  | EApp(Expr, List(Expr))
+  | ELambda(List(String), Expr)
+  | ELet(String, Expr, Expr)
+  | EMatch(Expr, List(MatchArm))
+  | EIf(Expr, Expr, Expr)
+  | EBinOp(String, Expr, Expr)
+  | EUnaryOp(String, Expr)
+  | ERecord(List(RecordField))
+  | EFieldAccess(Expr, String)
+  | EList(List(Expr))
+  | EConstruct(String, List(Expr))
+  | EBlock(List(Expr))
+  | EConcat(Expr, Expr)
+  | EPipe(Expr, Expr)
+
+type MatchArm =
+  | MkArm(Pattern, Expr)
+
+type RecordField =
+  | MkField(String, Expr)
+
+type Pattern =
+  | PVar(String)
+  | PConstructor(String, List(Pattern))
+  | PLiteral(Expr)
+  | PWildcard
+  | PList(List(Pattern))
+
+type Decl =
+  | DFn(String, List(String), Expr)
+  | DType(String, List(Variant))
+  | DPubFn(String, List(String), Expr)
+
+type Variant =
+  | MkVariant(String, Int)
+
+type PR =
+  | MkPR(Expr, List(Token))
+
+type DeclR =
+  | MkDR(Decl, List(Token))
+
+type ListPR =
+  | MkLPR(List(Expr), List(Token))
+
+type StringListR =
+  | MkSLR(List(String), List(Token))
+
+type PatR =
+  | MkPatR(Pattern, List(Token))
+
+type PatListR =
+  | MkPLR(List(Pattern), List(Token))
+
+type VarListR =
+  | MkVLR(List(Variant), List(Token))
+
+type IntR =
+  | MkIR(Int, List(Token))
+
+// ── String Utilities ──
+// Runtime-provided: cons, append, char_at, string_length, substring,
+//   show, read_file, get_arg, println
+
+fn is_digit(c: String) -> Bool {
+  if c == "0" { true }
+  else if c == "1" { true }
+  else if c == "2" { true }
+  else if c == "3" { true }
+  else if c == "4" { true }
+  else if c == "5" { true }
+  else if c == "6" { true }
+  else if c == "7" { true }
+  else if c == "8" { true }
+  else if c == "9" { true }
+  else { false }
+}
+
+fn is_lower(c: String) -> Bool {
+  if c == "a" { true } else if c == "b" { true } else if c == "c" { true }
+  else if c == "d" { true } else if c == "e" { true } else if c == "f" { true }
+  else if c == "g" { true } else if c == "h" { true } else if c == "i" { true }
+  else if c == "j" { true } else if c == "k" { true } else if c == "l" { true }
+  else if c == "m" { true } else if c == "n" { true } else if c == "o" { true }
+  else if c == "p" { true } else if c == "q" { true } else if c == "r" { true }
+  else if c == "s" { true } else if c == "t" { true } else if c == "u" { true }
+  else if c == "v" { true } else if c == "w" { true } else if c == "x" { true }
+  else if c == "y" { true } else if c == "z" { true }
+  else { false }
+}
+
+fn is_upper(c: String) -> Bool {
+  if c == "A" { true } else if c == "B" { true } else if c == "C" { true }
+  else if c == "D" { true } else if c == "E" { true } else if c == "F" { true }
+  else if c == "G" { true } else if c == "H" { true } else if c == "I" { true }
+  else if c == "J" { true } else if c == "K" { true } else if c == "L" { true }
+  else if c == "M" { true } else if c == "N" { true } else if c == "O" { true }
+  else if c == "P" { true } else if c == "Q" { true } else if c == "R" { true }
+  else if c == "S" { true } else if c == "T" { true } else if c == "U" { true }
+  else if c == "V" { true } else if c == "W" { true } else if c == "X" { true }
+  else if c == "Y" { true } else if c == "Z" { true }
+  else { false }
+}
+
+fn is_alpha(c: String) -> Bool {
+  if is_lower(c) { true }
+  else if is_upper(c) { true }
+  else if c == "_" { true }
+  else { false }
+}
+
+fn is_alphanum(c: String) -> Bool {
+  if is_alpha(c) { true }
+  else { is_digit(c) }
+}
+
+fn is_whitespace(c: String) -> Bool {
+  if c == " " { true }
+  else if c == "\t" { true }
+  else if c == "\r" { true }
+  else { false }
+}
+
+fn is_keyword(s: String) -> Bool {
+  if s == "fn" { true }
+  else if s == "let" { true }
+  else if s == "type" { true }
+  else if s == "match" { true }
+  else if s == "if" { true }
+  else if s == "else" { true }
+  else if s == "module" { true }
+  else if s == "import" { true }
+  else if s == "pub" { true }
+  else { false }
+}
+
+fn join(items: List(String), sep: String) -> String {
+  match items {
+    [] => ""
+    [x, ..rest] =>
+      match rest {
+        [] => x
+        _ => x <> sep <> join(rest, sep)
+      }
+  }
+}
+
+fn repeat_string(s: String, n: Int) -> String {
+  if n <= 0 { "" }
+  else { s <> repeat_string(s, n - 1) }
+}
+
+// ── Token helpers ──
+
+fn tok_is_eof(tok: Token) -> Bool {
+  match tok {
+    TkEof => true
+    _ => false
+  }
+}
+
+fn tok_keyword_val(tok: Token) -> String {
+  match tok {
+    TkKeyword(s) => s
+    _ => ""
+  }
+}
+
+fn tok_ident_val(tok: Token) -> String {
+  match tok {
+    TkIdent(s) => s
+    _ => ""
+  }
+}
+
+fn tok_upper_val(tok: Token) -> String {
+  match tok {
+    TkUpperIdent(s) => s
+    _ => ""
+  }
+}
+
+fn tok_string_val(tok: Token) -> String {
+  match tok {
+    TkString(s) => s
+    _ => ""
+  }
+}
+
+fn tok_int_val(tok: Token) -> String {
+  match tok {
+    TkInt(s) => s
+    _ => ""
+  }
+}
+
+fn tok_float_val(tok: Token) -> String {
+  match tok {
+    TkFloat(s) => s
+    _ => ""
+  }
+}
+
+fn tok_op_val(tok: Token) -> String {
+  match tok {
+    TkOperator(s) => s
+    _ => ""
+  }
+}
+
+fn tok_is(tok: Token, tag: String) -> Bool {
+  match tok {
+    TkKeyword(_) => tag == "keyword"
+    TkIdent(_) => tag == "ident"
+    TkUpperIdent(_) => tag == "upper"
+    TkOperator(_) => tag == "operator"
+    TkInt(_) => tag == "int"
+    TkFloat(_) => tag == "float"
+    TkString(_) => tag == "string"
+    TkLParen => tag == "lparen"
+    TkRParen => tag == "rparen"
+    TkLBrace => tag == "lbrace"
+    TkRBrace => tag == "rbrace"
+    TkLBracket => tag == "lbracket"
+    TkRBracket => tag == "rbracket"
+    TkComma => tag == "comma"
+    TkColon => tag == "colon"
+    TkSemicolon => tag == "semi"
+    TkArrow => tag == "arrow"
+    TkFatArrow => tag == "fatarrow"
+    TkPipe => tag == "pipe"
+    TkBar => tag == "bar"
+    TkDot => tag == "dot"
+    TkDotDot => tag == "dotdot"
+    TkEof => tag == "eof"
+  }
+}
+
+fn hd(tokens: List(Token)) -> Token {
+  match tokens {
+    [] => TkEof
+    [x, ..rest] => x
+  }
+}
+
+fn tl(tokens: List(Token)) -> List(Token) {
+  match tokens {
+    [] => []
+    [x, ..rest] => rest
+  }
+}
+
+fn hd2(tokens: List(Token)) -> Token {
+  hd(tl(tokens))
+}
+
+fn hd3(tokens: List(Token)) -> Token {
+  hd(tl(tl(tokens)))
+}
+
+fn tl2(tokens: List(Token)) -> List(Token) {
+  tl(tl(tokens))
+}
+
+fn tl3(tokens: List(Token)) -> List(Token) {
+  tl(tl(tl(tokens)))
+}
+
+// ── Lexer ──
+
+fn tokenize(source: String) -> List(Token) {
+  lex(source, 0)
+}
+
+fn lex(source: String, pos: Int) -> List(Token) {
+  if pos >= string_length(source) { [TkEof] }
+  else {
+    let c = char_at(source, pos)
+    if c == "\n" { lex(source, pos + 1) }
+    else if is_whitespace(c) { lex(source, pos + 1) }
+    else if c == "/" {
+      if peek_char(source, pos + 1) == "/" { lex_skip_comment(source, pos + 2) }
+      else { cons(TkOperator("/"), lex(source, pos + 1)) }
+    }
+    else if is_digit(c) { lex_number(source, pos) }
+    else if is_alpha(c) { lex_ident(source, pos) }
+    else if c == "\"" { lex_string(source, pos + 1, "") }
+    else { lex_operator(source, pos) }
+  }
+}
+
+fn peek_char(source: String, pos: Int) -> String {
+  if pos >= string_length(source) { "" }
+  else { char_at(source, pos) }
+}
+
+fn lex_skip_comment(source: String, pos: Int) -> List(Token) {
+  if pos >= string_length(source) { [TkEof] }
+  else if char_at(source, pos) == "\n" { lex(source, pos + 1) }
+  else { lex_skip_comment(source, pos + 1) }
+}
+
+fn lex_number(source: String, start: Int) -> List(Token) {
+  let iend = collect_digits(source, start)
+  if peek_char(source, iend) == "." {
+    if is_digit(peek_char(source, iend + 1)) {
+      let fend = collect_digits(source, iend + 1)
+      cons(TkFloat(substring(source, start, fend)), lex(source, fend))
+    }
+    else { cons(TkInt(substring(source, start, iend)), lex(source, iend)) }
+  }
+  else { cons(TkInt(substring(source, start, iend)), lex(source, iend)) }
+}
+
+fn collect_digits(source: String, pos: Int) -> Int {
+  if pos >= string_length(source) { pos }
+  else if is_digit(char_at(source, pos)) { collect_digits(source, pos + 1) }
+  else { pos }
+}
+
+fn lex_ident(source: String, start: Int) -> List(Token) {
+  let iend = collect_alphanum(source, start)
+  let word = substring(source, start, iend)
+  if word == "true" { cons(TkKeyword("true"), lex(source, iend)) }
+  else if word == "false" { cons(TkKeyword("false"), lex(source, iend)) }
+  else if is_keyword(word) { cons(TkKeyword(word), lex(source, iend)) }
+  else if is_upper(char_at(word, 0)) { cons(TkUpperIdent(word), lex(source, iend)) }
+  else { cons(TkIdent(word), lex(source, iend)) }
+}
+
+fn collect_alphanum(source: String, pos: Int) -> Int {
+  if pos >= string_length(source) { pos }
+  else if is_alphanum(char_at(source, pos)) { collect_alphanum(source, pos + 1) }
+  else { pos }
+}
+
+fn lex_string(source: String, pos: Int, acc: String) -> List(Token) {
+  if pos >= string_length(source) { cons(TkString(acc), [TkEof]) }
+  else {
+    let c = char_at(source, pos)
+    if c == "\"" { cons(TkString(acc), lex(source, pos + 1)) }
+    else if c == "\\" {
+      let escaped = char_at(source, pos + 1)
+      lex_string(source, pos + 2, acc <> "\\" <> escaped)
+    }
+    else { lex_string(source, pos + 1, acc <> c) }
+  }
+}
+
+fn lex_operator(source: String, pos: Int) -> List(Token) {
+  let c = char_at(source, pos)
+  let next = peek_char(source, pos + 1)
+  if c == "(" { cons(TkLParen, lex(source, pos + 1)) }
+  else if c == ")" { cons(TkRParen, lex(source, pos + 1)) }
+  else if c == "{" { cons(TkLBrace, lex(source, pos + 1)) }
+  else if c == "}" { cons(TkRBrace, lex(source, pos + 1)) }
+  else if c == "[" { cons(TkLBracket, lex(source, pos + 1)) }
+  else if c == "]" { cons(TkRBracket, lex(source, pos + 1)) }
+  else if c == "," { cons(TkComma, lex(source, pos + 1)) }
+  else if c == ";" { cons(TkSemicolon, lex(source, pos + 1)) }
+  else if c == ":" { cons(TkColon, lex(source, pos + 1)) }
+  else if c == "." {
+    if next == "." { cons(TkDotDot, lex(source, pos + 2)) }
+    else { cons(TkDot, lex(source, pos + 1)) }
+  }
+  else if c == "-" {
+    if next == ">" { cons(TkArrow, lex(source, pos + 2)) }
+    else { cons(TkOperator("-"), lex(source, pos + 1)) }
+  }
+  else if c == "=" {
+    if next == ">" { cons(TkFatArrow, lex(source, pos + 2)) }
+    else if next == "=" { cons(TkOperator("=="), lex(source, pos + 2)) }
+    else { cons(TkOperator("="), lex(source, pos + 1)) }
+  }
+  else if c == "!" {
+    if next == "=" { cons(TkOperator("!="), lex(source, pos + 2)) }
+    else { cons(TkOperator("!"), lex(source, pos + 1)) }
+  }
+  else if c == "<" {
+    if next == ">" { cons(TkOperator("<>"), lex(source, pos + 2)) }
+    else if next == "=" { cons(TkOperator("<="), lex(source, pos + 2)) }
+    else { cons(TkOperator("<"), lex(source, pos + 1)) }
+  }
+  else if c == ">" {
+    if next == "=" { cons(TkOperator(">="), lex(source, pos + 2)) }
+    else { cons(TkOperator(">"), lex(source, pos + 1)) }
+  }
+  else if c == "|" {
+    if next == ">" { cons(TkPipe, lex(source, pos + 2)) }
+    else if next == "|" { cons(TkOperator("||"), lex(source, pos + 2)) }
+    else { cons(TkBar, lex(source, pos + 1)) }
+  }
+  else if c == "&" {
+    if next == "&" { cons(TkOperator("&&"), lex(source, pos + 2)) }
+    else { lex(source, pos + 1) }
+  }
+  else if c == "+" { cons(TkOperator("+"), lex(source, pos + 1)) }
+  else if c == "*" { cons(TkOperator("*"), lex(source, pos + 1)) }
+  else if c == "%" { cons(TkOperator("%"), lex(source, pos + 1)) }
+  else { lex(source, pos + 1) }
+}
+
+// ── Parser ──
+// Uses hd/tl/tok_is pattern instead of list patterns with constructor checks
+
+fn parse(tokens: List(Token)) -> List(Decl) {
+  parse_decls(tokens)
+}
+
+fn parse_decls(tokens: List(Token)) -> List(Decl) {
+  match tokens {
+    [] => []
+    _ =>
+      let first = hd(tokens)
+      if tok_is_eof(first) { [] }
+      else {
+        match first {
+          TkKeyword(kw) =>
+            if kw == "pub" {
+              let second = hd2(tokens)
+              if tok_keyword_val(second) == "fn" {
+                let result = parse_fn_decl(tl2(tokens))
+                match result {
+                  MkDR(DFn(name, params, body), rem) =>
+                    cons(DPubFn(name, params, body), parse_decls(rem))
+                  MkDR(d, rem) => cons(d, parse_decls(rem))
+                }
+              }
+              else { parse_decls(tl(tokens)) }
+            }
+            else if kw == "fn" {
+              let result = parse_fn_decl(tl(tokens))
+              match result {
+                MkDR(d, rem) => cons(d, parse_decls(rem))
+              }
+            }
+            else if kw == "type" {
+              let result = parse_type_decl(tl(tokens))
+              match result {
+                MkDR(d, rem) => cons(d, parse_decls(rem))
+              }
+            }
+            else { parse_decls(tl(tokens)) }
+          _ => parse_decls(tl(tokens))
+        }
+      }
+  }
+}
+
+fn parse_fn_decl(tokens: List(Token)) -> DeclR {
+  // tokens starts after "fn" keyword, should be: name ( params ) ...
+  let name = tok_ident_val(hd(tokens))
+  if tok_is(hd2(tokens), "lparen") {
+    let pr = parse_param_names(tl2(tokens))
+    match pr {
+      MkSLR(params, rest2) =>
+        let rest3 = skip_return_type(rest2)
+        if tok_is(hd(rest3), "lbrace") {
+          let br = parse_block_body(tl(rest3))
+          match br {
+            MkPR(body, rest4) => MkDR(DFn(name, params, body), rest4)
+          }
+        }
+        else { MkDR(DFn(name, params, EVar("unit")), rest3) }
+    }
+  }
+  else { MkDR(DFn("unknown", [], EVar("unit")), tokens) }
+}
+
+fn skip_return_type(tokens: List(Token)) -> List(Token) {
+  if tok_is(hd(tokens), "arrow") { skip_type_expr(tl(tokens)) }
+  else { tokens }
+}
+
+fn skip_type_expr(tokens: List(Token)) -> List(Token) {
+  let first = hd(tokens)
+  match first {
+    TkUpperIdent(_) =>
+      if tok_is(hd2(tokens), "lparen") { skip_parens(tl2(tokens), 1) }
+      else { tl(tokens) }
+    TkIdent(_) =>
+      if tok_is(hd2(tokens), "lparen") { skip_parens(tl2(tokens), 1) }
+      else { tl(tokens) }
+    TkLBrace => skip_braces(tl(tokens), 1)
+    TkKeyword(kw) =>
+      if kw == "fn" {
+        if tok_is(hd2(tokens), "lparen") {
+          let after = skip_parens(tl2(tokens), 1)
+          if tok_is(hd(after), "arrow") { skip_type_expr(tl(after)) }
+          else { after }
+        }
+        else { tl(tokens) }
+      }
+      else { tokens }
+    _ => tokens
+  }
+}
+
+fn skip_parens(tokens: List(Token), depth: Int) -> List(Token) {
+  if depth == 0 { tokens }
+  else {
+    match tokens {
+      [] => []
+      _ =>
+        let first = hd(tokens)
+        match first {
+          TkLParen => skip_parens(tl(tokens), depth + 1)
+          TkRParen => skip_parens(tl(tokens), depth - 1)
+          _ => skip_parens(tl(tokens), depth)
+        }
+    }
+  }
+}
+
+fn skip_braces(tokens: List(Token), depth: Int) -> List(Token) {
+  if depth == 0 { tokens }
+  else {
+    match tokens {
+      [] => []
+      _ =>
+        let first = hd(tokens)
+        match first {
+          TkLBrace => skip_braces(tl(tokens), depth + 1)
+          TkRBrace => skip_braces(tl(tokens), depth - 1)
+          _ => skip_braces(tl(tokens), depth)
+        }
+    }
+  }
+}
+
+fn parse_param_names(tokens: List(Token)) -> StringListR {
+  let first = hd(tokens)
+  match first {
+    TkRParen => MkSLR([], tl(tokens))
+    TkIdent(name) =>
+      let second = hd2(tokens)
+      match second {
+        TkColon =>
+          let rest2 = skip_type_annotation(tl2(tokens))
+          if tok_is(hd(rest2), "comma") {
+            let next = parse_param_names(tl(rest2))
+            match next { MkSLR(params, rem) => MkSLR(cons(name, params), rem) }
+          }
+          else if tok_is(hd(rest2), "rparen") { MkSLR([name], tl(rest2)) }
+          else { MkSLR([name], rest2) }
+        TkComma =>
+          let next = parse_param_names(tl2(tokens))
+          match next { MkSLR(params, rem) => MkSLR(cons(name, params), rem) }
+        TkRParen => MkSLR([name], tl2(tokens))
+        _ => MkSLR([], tokens)
+      }
+    _ => MkSLR([], tokens)
+  }
+}
+
+fn skip_type_annotation(tokens: List(Token)) -> List(Token) {
+  let first = hd(tokens)
+  match first {
+    TkUpperIdent(_) =>
+      if tok_is(hd2(tokens), "lparen") { skip_parens(tl2(tokens), 1) }
+      else { tl(tokens) }
+    TkIdent(_) =>
+      if tok_is(hd2(tokens), "lparen") { skip_parens(tl2(tokens), 1) }
+      else { tl(tokens) }
+    TkKeyword(kw) =>
+      if kw == "fn" {
+        if tok_is(hd2(tokens), "lparen") {
+          let skipped = skip_parens(tl2(tokens), 1)
+          if tok_is(hd(skipped), "arrow") { skip_type_annotation(tl(skipped)) }
+          else { skipped }
+        }
+        else { tl(tokens) }
+      }
+      else { tokens }
+    _ => tokens
+  }
+}
+
+fn parse_type_decl(tokens: List(Token)) -> DeclR {
+  // tokens starts at UpperIdent name
+  let first = hd(tokens)
+  let name = tok_upper_val(first)
+  let second = hd2(tokens)
+  match second {
+    TkLParen =>
+      let skipped = skip_parens(tl2(tokens), 1)
+      if tok_is(hd(skipped), "operator") {
+        if tok_op_val(hd(skipped)) == "=" {
+          let vr = parse_variants(tl(skipped))
+          match vr { MkVLR(variants, rem) => MkDR(DType(name, variants), rem) }
+        }
+        else { MkDR(DType(name, []), skipped) }
+      }
+      else { MkDR(DType(name, []), skipped) }
+    TkOperator(eq) =>
+      if eq == "=" {
+        let vr = parse_variants(tl2(tokens))
+        match vr { MkVLR(variants, rem) => MkDR(DType(name, variants), rem) }
+      }
+      else { MkDR(DType(name, []), tl2(tokens)) }
+    _ => MkDR(DType("Unknown", []), tokens)
+  }
+}
+
+fn parse_variants(tokens: List(Token)) -> VarListR {
+  if tok_is(hd(tokens), "bar") {
+    let name_tok = hd2(tokens)
+    match name_tok {
+      TkUpperIdent(name) =>
+        if tok_is(hd3(tokens), "lparen") {
+          let ar = count_variant_fields(tl3(tokens), 0)
+          match ar {
+            MkIR(arity, rest2) =>
+              let next = parse_variants(rest2)
+              match next { MkVLR(variants, rem) => MkVLR(cons(MkVariant(name, arity), variants), rem) }
+          }
+        }
+        else {
+          let next = parse_variants(tl2(tokens))
+          match next { MkVLR(variants, rem) => MkVLR(cons(MkVariant(name, 0), variants), rem) }
+        }
+      _ => MkVLR([], tokens)
+    }
+  }
+  else { MkVLR([], tokens) }
+}
+
+fn count_variant_fields(tokens: List(Token), count: Int) -> IntR {
+  let first = hd(tokens)
+  match first {
+    TkRParen =>
+      if count == 0 { MkIR(1, tl(tokens)) }
+      else { MkIR(count, tl(tokens)) }
+    TkComma => count_variant_fields(tl(tokens), count + 1)
+    TkEof => MkIR(count, tokens)
+    _ =>
+      if count == 0 { count_variant_fields(tl(tokens), 1) }
+      else { count_variant_fields(tl(tokens), count) }
+  }
+}
+
+fn parse_block_body(tokens: List(Token)) -> PR {
+  let result = parse_block_exprs(tokens)
+  match result {
+    MkLPR(exprs, rest) =>
+      match exprs {
+        [single, ..more] =>
+          match more {
+            [] => MkPR(single, rest)
+            _ => MkPR(EBlock(exprs), rest)
+          }
+        _ => MkPR(EBlock(exprs), rest)
+      }
+  }
+}
+
+fn parse_block_exprs(tokens: List(Token)) -> ListPR {
+  match tokens {
+    [] => MkLPR([], [])
+    _ =>
+      if tok_is(hd(tokens), "rbrace") { MkLPR([], tl(tokens)) }
+      else {
+        let er = parse_expr(tokens)
+        match er {
+          MkPR(expr, rest) =>
+            let rest2 = skip_sep(rest)
+            let next = parse_block_exprs(rest2)
+            match next { MkLPR(exprs, rem) => MkLPR(cons(expr, exprs), rem) }
+        }
+      }
+  }
+}
+
+fn skip_sep(tokens: List(Token)) -> List(Token) {
+  if tok_is(hd(tokens), "semi") { tl(tokens) }
+  else { tokens }
+}
+
+fn parse_expr(tokens: List(Token)) -> PR {
+  let lr = parse_primary(tokens)
+  match lr {
+    MkPR(lhs, rest) => parse_expr_cont(lhs, rest)
+  }
+}
+
+fn parse_expr_cont(lhs: Expr, tokens: List(Token)) -> PR {
+  let first = hd(tokens)
+  match first {
+    TkOperator(op) =>
+      if op == "<>" {
+        let rr = parse_primary(tl(tokens))
+        match rr { MkPR(rhs, rest) => parse_expr_cont(EConcat(lhs, rhs), rest) }
+      }
+      else if op == "+" || op == "-" || op == "*" || op == "/" || op == "%" || op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=" || op == "&&" || op == "||" {
+        let rr = parse_primary(tl(tokens))
+        match rr { MkPR(rhs, rest) => parse_expr_cont(EBinOp(op, lhs, rhs), rest) }
+      }
+      else { MkPR(lhs, tokens) }
+    TkPipe =>
+      let rr = parse_primary(tl(tokens))
+      match rr { MkPR(rhs, rest) => parse_expr_cont(EPipe(lhs, rhs), rest) }
+    TkDot =>
+      let field_tok = hd2(tokens)
+      let field = tok_ident_val(field_tok)
+      parse_expr_cont(EFieldAccess(lhs, field), tl2(tokens))
+    TkLParen =>
+      let ar = parse_args(tl(tokens))
+      match ar { MkLPR(args, rest) => parse_expr_cont(EApp(lhs, args), rest) }
+    _ => MkPR(lhs, tokens)
+  }
+}
+
+fn parse_primary(tokens: List(Token)) -> PR {
+  let first = hd(tokens)
+  match first {
+    TkInt(n) => MkPR(EInt(n), tl(tokens))
+    TkFloat(n) => MkPR(EFloat(n), tl(tokens))
+    TkString(s) => MkPR(EString(s), tl(tokens))
+    TkKeyword(kw) =>
+      if kw == "true" { MkPR(EBool(true), tl(tokens)) }
+      else if kw == "false" { MkPR(EBool(false), tl(tokens)) }
+      else if kw == "let" { parse_let(tl(tokens)) }
+      else if kw == "match" { parse_match(tl(tokens)) }
+      else if kw == "if" { parse_if(tl(tokens)) }
+      else if kw == "fn" {
+        if tok_is(hd2(tokens), "lparen") { parse_lambda(tl2(tokens)) }
+        else { MkPR(EVar("fn"), tl(tokens)) }
+      }
+      else { MkPR(EVar(kw), tl(tokens)) }
+    TkUpperIdent(name) =>
+      if tok_is(hd2(tokens), "lparen") {
+        let ar = parse_args(tl2(tokens))
+        match ar { MkLPR(args, rest) => MkPR(EConstruct(name, args), rest) }
+      }
+      else { MkPR(EConstruct(name, []), tl(tokens)) }
+    TkIdent(name) =>
+      if tok_is(hd2(tokens), "lparen") {
+        let ar = parse_args(tl2(tokens))
+        match ar { MkLPR(args, rest) => parse_expr_cont(EApp(EVar(name), args), rest) }
+      }
+      else { MkPR(EVar(name), tl(tokens)) }
+    TkLParen =>
+      let er = parse_expr(tl(tokens))
+      match er {
+        MkPR(expr, rest) =>
+          if tok_is(hd(rest), "rparen") { MkPR(expr, tl(rest)) }
+          else { MkPR(expr, rest) }
+      }
+    TkLBrace => parse_record_or_block(tl(tokens))
+    TkLBracket => parse_list_expr(tl(tokens))
+    TkOperator(op) =>
+      if op == "-" || op == "!" {
+        let er = parse_primary(tl(tokens))
+        match er { MkPR(expr, rest) => MkPR(EUnaryOp(op, expr), rest) }
+      }
+      else { MkPR(EVar("_error"), tokens) }
+    _ => MkPR(EVar("_error"), tokens)
+  }
+}
+
+fn parse_args(tokens: List(Token)) -> ListPR {
+  if tok_is(hd(tokens), "rparen") { MkLPR([], tl(tokens)) }
+  else {
+    let er = parse_expr(tokens)
+    match er {
+      MkPR(expr, rest) =>
+        if tok_is(hd(rest), "comma") {
+          let next = parse_args(tl(rest))
+          match next { MkLPR(args, rem) => MkLPR(cons(expr, args), rem) }
+        }
+        else if tok_is(hd(rest), "rparen") { MkLPR([expr], tl(rest)) }
+        else { MkLPR([expr], rest) }
+    }
+  }
+}
+
+fn parse_let(tokens: List(Token)) -> PR {
+  let name = tok_ident_val(hd(tokens))
+  let second = hd2(tokens)
+  match second {
+    TkOperator(eq) =>
+      if eq == "=" {
+        let vr = parse_expr(tl2(tokens))
+        match vr {
+          MkPR(value, rest) =>
+            let rest2 = skip_sep(rest)
+            let br = parse_expr(rest2)
+            match br { MkPR(body, rem) => MkPR(ELet(name, value, body), rem) }
+        }
+      }
+      else { MkPR(EVar("_error"), tl(tokens)) }
+    TkColon =>
+      let rest2 = skip_type_annotation(tl2(tokens))
+      if tok_is(hd(rest2), "operator") {
+        if tok_op_val(hd(rest2)) == "=" {
+          let vr = parse_expr(tl(rest2))
+          match vr {
+            MkPR(value, rest3) =>
+              let rest4 = skip_sep(rest3)
+              let br = parse_expr(rest4)
+              match br { MkPR(body, rem) => MkPR(ELet(name, value, body), rem) }
+          }
+        }
+        else { MkPR(EVar("_error"), rest2) }
+      }
+      else { MkPR(EVar("_error"), rest2) }
+    _ => MkPR(EVar("_error"), tokens)
+  }
+}
+
+fn parse_match(tokens: List(Token)) -> PR {
+  let sr = parse_primary(tokens)
+  match sr {
+    MkPR(scrutinee, rest) =>
+      if tok_is(hd(rest), "lbrace") {
+        let ar = parse_match_arms(tl(rest))
+        match ar { MkLPR(arms, rem) => MkPR(EMatch(scrutinee, arms), rem) }
+      }
+      else { MkPR(EMatch(scrutinee, []), rest) }
+  }
+}
+
+fn parse_match_arms(tokens: List(Token)) -> ListPR {
+  if tok_is(hd(tokens), "rbrace") { MkLPR([], tl(tokens)) }
+  else {
+    let pr = parse_pattern(tokens)
+    match pr {
+      MkPatR(pattern, rest) =>
+        if tok_is(hd(rest), "fatarrow") {
+          let br = parse_expr(tl(rest))
+          match br {
+            MkPR(body, rest2) =>
+              let rest3 = skip_comma(rest2)
+              let next = parse_match_arms(rest3)
+              match next { MkLPR(arms, rem) => MkLPR(cons(MkArm(pattern, body), arms), rem) }
+          }
+        }
+        else { MkLPR([], rest) }
+    }
+  }
+}
+
+fn skip_comma(tokens: List(Token)) -> List(Token) {
+  if tok_is(hd(tokens), "comma") { tl(tokens) }
+  else { tokens }
+}
+
+fn parse_pattern(tokens: List(Token)) -> PatR {
+  let first = hd(tokens)
+  match first {
+    TkUpperIdent(name) =>
+      if tok_is(hd2(tokens), "lparen") {
+        let ar = parse_pattern_args(tl2(tokens))
+        match ar { MkPLR(args, rest) => MkPatR(PConstructor(name, args), rest) }
+      }
+      else { MkPatR(PConstructor(name, []), tl(tokens)) }
+    TkIdent(name) =>
+      if name == "_" { MkPatR(PWildcard, tl(tokens)) }
+      else { MkPatR(PVar(name), tl(tokens)) }
+    TkInt(n) => MkPatR(PLiteral(EInt(n)), tl(tokens))
+    TkString(s) => MkPatR(PLiteral(EString(s)), tl(tokens))
+    TkLBracket => parse_list_pattern(tl(tokens))
+    _ => MkPatR(PWildcard, tokens)
+  }
+}
+
+fn parse_pattern_args(tokens: List(Token)) -> PatListR {
+  if tok_is(hd(tokens), "rparen") { MkPLR([], tl(tokens)) }
+  else {
+    let pr = parse_pattern(tokens)
+    match pr {
+      MkPatR(pat, rest) =>
+        if tok_is(hd(rest), "comma") {
+          let next = parse_pattern_args(tl(rest))
+          match next { MkPLR(pats, rem) => MkPLR(cons(pat, pats), rem) }
+        }
+        else if tok_is(hd(rest), "rparen") { MkPLR([pat], tl(rest)) }
+        else { MkPLR([pat], rest) }
+    }
+  }
+}
+
+fn parse_list_pattern(tokens: List(Token)) -> PatR {
+  if tok_is(hd(tokens), "rbracket") { MkPatR(PList([]), tl(tokens)) }
+  else {
+    let pr = parse_pattern(tokens)
+    match pr {
+      MkPatR(pat, rest) =>
+        if tok_is(hd(rest), "comma") {
+          if tok_is(hd2(rest), "dotdot") {
+            // [pat, ..rest_name]
+            MkPatR(PList([pat]), tl(tl(tl(tl(rest)))))
+          }
+          else {
+            let next = parse_list_pattern_cont(tl(rest), [pat])
+            next
+          }
+        }
+        else if tok_is(hd(rest), "rbracket") { MkPatR(PList([pat]), tl(rest)) }
+        else { MkPatR(PList([pat]), rest) }
+    }
+  }
+}
+
+fn parse_list_pattern_cont(tokens: List(Token), acc: List(Pattern)) -> PatR {
+  if tok_is(hd(tokens), "rbracket") { MkPatR(PList(acc), tl(tokens)) }
+  else if tok_is(hd(tokens), "dotdot") {
+    // ..rest_name ]
+    MkPatR(PList(acc), tl(tl(tl(tokens))))
+  }
+  else {
+    let pr = parse_pattern(tokens)
+    match pr {
+      MkPatR(pat, rest) =>
+        if tok_is(hd(rest), "comma") {
+          parse_list_pattern_cont(tl(rest), append(acc, [pat]))
+        }
+        else if tok_is(hd(rest), "rbracket") {
+          MkPatR(PList(append(acc, [pat])), tl(rest))
+        }
+        else { MkPatR(PList(append(acc, [pat])), rest) }
+    }
+  }
+}
+
+fn parse_if(tokens: List(Token)) -> PR {
+  let cr = parse_expr(tokens)
+  match cr {
+    MkPR(cond, rest) =>
+      if tok_is(hd(rest), "lbrace") {
+        let tr = parse_block_body(tl(rest))
+        match tr {
+          MkPR(then_expr, rest2) =>
+            if tok_is(hd(rest2), "keyword") {
+              if tok_keyword_val(hd(rest2)) == "else" {
+                if tok_is(hd2(rest2), "lbrace") {
+                  let er = parse_block_body(tl2(rest2))
+                  match er {
+                    MkPR(else_expr, rest3) =>
+                      MkPR(EIf(cond, then_expr, else_expr), rest3)
+                  }
+                }
+                else if tok_is(hd2(rest2), "keyword") {
+                  if tok_keyword_val(hd2(rest2)) == "if" {
+                    let er = parse_if(tl2(rest2))
+                    match er {
+                      MkPR(elif_expr, rest3) =>
+                        MkPR(EIf(cond, then_expr, elif_expr), rest3)
+                    }
+                  }
+                  else { MkPR(EIf(cond, then_expr, EVar("undefined")), rest2) }
+                }
+                else { MkPR(EIf(cond, then_expr, EVar("undefined")), rest2) }
+              }
+              else { MkPR(EIf(cond, then_expr, EVar("undefined")), rest2) }
+            }
+            else { MkPR(EIf(cond, then_expr, EVar("undefined")), rest2) }
+        }
+      }
+      else { MkPR(EVar("_error"), rest) }
+  }
+}
+
+fn parse_lambda(tokens: List(Token)) -> PR {
+  let pr = parse_lambda_params(tokens)
+  match pr {
+    MkSLR(params, rest) =>
+      if tok_is(hd(rest), "lbrace") {
+        let br = parse_block_body(tl(rest))
+        match br { MkPR(body, rem) => MkPR(ELambda(params, body), rem) }
+      }
+      else {
+        let br = parse_expr(rest)
+        match br { MkPR(body, rem) => MkPR(ELambda(params, body), rem) }
+      }
+  }
+}
+
+fn parse_lambda_params(tokens: List(Token)) -> StringListR {
+  if tok_is(hd(tokens), "rparen") { MkSLR([], tl(tokens)) }
+  else {
+    let name = tok_ident_val(hd(tokens))
+    let second = hd2(tokens)
+    match second {
+      TkComma =>
+        let next = parse_lambda_params(tl2(tokens))
+        match next { MkSLR(params, rem) => MkSLR(cons(name, params), rem) }
+      TkRParen => MkSLR([name], tl2(tokens))
+      TkColon =>
+        let rest2 = skip_type_annotation(tl2(tokens))
+        if tok_is(hd(rest2), "comma") {
+          let next = parse_lambda_params(tl(rest2))
+          match next { MkSLR(params, rem) => MkSLR(cons(name, params), rem) }
+        }
+        else if tok_is(hd(rest2), "rparen") { MkSLR([name], tl(rest2)) }
+        else { MkSLR([name], rest2) }
+      _ => MkSLR([], tokens)
+    }
+  }
+}
+
+fn parse_record_or_block(tokens: List(Token)) -> PR {
+  if tok_is(hd(tokens), "rbrace") { MkPR(ERecord([]), tl(tokens)) }
+  else if tok_is(hd(tokens), "ident") {
+    if tok_is(hd2(tokens), "colon") {
+      let name = tok_ident_val(hd(tokens))
+      let vr = parse_expr(tl2(tokens))
+      match vr {
+        MkPR(value, rest) =>
+          let fr = parse_record_fields(rest, [MkField(name, value)])
+          match fr { MkLPR(fields, rem) => MkPR(ERecord(fields), rem) }
+      }
+    }
+    else { parse_block_body(tokens) }
+  }
+  else { parse_block_body(tokens) }
+}
+
+fn parse_record_fields(tokens: List(Token), acc: List(RecordField)) -> ListPR {
+  if tok_is(hd(tokens), "rbrace") { MkLPR(acc, tl(tokens)) }
+  else if tok_is(hd(tokens), "comma") {
+    if tok_is(hd2(tokens), "rbrace") { MkLPR(acc, tl2(tokens)) }
+    else if tok_is(hd2(tokens), "ident") {
+      if tok_is(hd3(tokens), "colon") {
+        let name = tok_ident_val(hd2(tokens))
+        let vr = parse_expr(tl3(tokens))
+        match vr {
+          MkPR(value, rest) =>
+            parse_record_fields(rest, append(acc, [MkField(name, value)]))
+        }
+      }
+      else { MkLPR(acc, tokens) }
+    }
+    else { MkLPR(acc, tokens) }
+  }
+  else { MkLPR(acc, tokens) }
+}
+
+fn parse_list_expr(tokens: List(Token)) -> PR {
+  if tok_is(hd(tokens), "rbracket") { MkPR(EList([]), tl(tokens)) }
+  else {
+    let er = parse_list_elements(tokens)
+    match er { MkLPR(elems, rest) => MkPR(EList(elems), rest) }
+  }
+}
+
+fn parse_list_elements(tokens: List(Token)) -> ListPR {
+  let er = parse_expr(tokens)
+  match er {
+    MkPR(expr, rest) =>
+      if tok_is(hd(rest), "comma") {
+        let next = parse_list_elements(tl(rest))
+        match next { MkLPR(exprs, rem) => MkLPR(cons(expr, exprs), rem) }
+      }
+      else if tok_is(hd(rest), "rbracket") { MkLPR([expr], tl(rest)) }
+      else { MkLPR([expr], rest) }
+  }
+}
+
+// ── Code Emitter ──
+
+fn emit_module(decls: List(Decl)) -> String {
+  join(map_decls(decls), "\n\n") <> "\n"
+}
+
+fn map_decls(decls: List(Decl)) -> List(String) {
+  match decls {
+    [] => []
+    [d, ..rest] => cons(emit_decl(d), map_decls(rest))
+  }
+}
+
+fn emit_decl(decl: Decl) -> String {
+  match decl {
+    DFn(name, params, body) =>
+      "function " <> name <> "(" <> join(params, ", ") <> ") {\n" <>
+      "  return " <> emit_expr(body) <> ";\n" <>
+      "}"
+    DPubFn(name, params, body) =>
+      "export function " <> name <> "(" <> join(params, ", ") <> ") {\n" <>
+      "  return " <> emit_expr(body) <> ";\n" <>
+      "}"
+    DType(name, variants) =>
+      emit_type_decl(name, variants)
+  }
+}
+
+fn emit_type_decl(name: String, variants: List(Variant)) -> String {
+  let type_line = "type " <> name <> " = " <> join(map_variant_types(variants), " | ") <> ";"
+  let ctors = join(map_variant_ctors(name, variants), "\n")
+  type_line <> "\n" <> ctors
+}
+
+fn map_variant_types(variants: List(Variant)) -> List(String) {
+  match variants {
+    [] => []
+    [v, ..rest] =>
+      match v {
+        MkVariant(name, n) =>
+          if n == 0 {
+            cons("{ _tag: \"" <> name <> "\" }", map_variant_types(rest))
+          }
+          else {
+            cons("{ _tag: \"" <> name <> "\"; " <> emit_field_types(n, 0) <> " }",
+                 map_variant_types(rest))
+          }
+      }
+  }
+}
+
+fn map_variant_ctors(type_name: String, variants: List(Variant)) -> List(String) {
+  match variants {
+    [] => []
+    [v, ..rest] =>
+      match v {
+        MkVariant(name, n) =>
+          if n == 0 {
+            cons("const " <> name <> ": " <> type_name <> " = { _tag: \"" <> name <> "\" };",
+                 map_variant_ctors(type_name, rest))
+          }
+          else {
+            cons("const " <> name <> " = (" <> emit_field_params(n, 0) <> "): " <> type_name <>
+                 " => ({ _tag: \"" <> name <> "\", " <> emit_field_names(n, 0) <> " });",
+                 map_variant_ctors(type_name, rest))
+          }
+      }
+  }
+}
+
+fn emit_field_types(total: Int, i: Int) -> String {
+  if i >= total { "" }
+  else if i == total - 1 { "_" <> show(i) <> ": unknown" }
+  else { "_" <> show(i) <> ": unknown; " <> emit_field_types(total, i + 1) }
+}
+
+fn emit_field_params(total: Int, i: Int) -> String {
+  if i >= total { "" }
+  else if i == total - 1 { "_" <> show(i) <> ": unknown" }
+  else { "_" <> show(i) <> ": unknown, " <> emit_field_params(total, i + 1) }
+}
+
+fn emit_field_names(total: Int, i: Int) -> String {
+  if i >= total { "" }
+  else if i == total - 1 { "_" <> show(i) }
+  else { "_" <> show(i) <> ", " <> emit_field_names(total, i + 1) }
+}
+
+fn emit_expr(expr: Expr) -> String {
+  match expr {
+    EInt(n) => n
+    EFloat(n) => n
+    EString(s) => "\"" <> s <> "\""
+    EBool(b) => if b { "true" } else { "false" }
+    EVar(name) => name
+    EBinOp(op, left, right) =>
+      emit_expr(left) <> " " <> emit_op(op) <> " " <> emit_expr(right)
+    EUnaryOp(op, operand) => op <> emit_expr(operand)
+    EConcat(a, b) => emit_expr(a) <> " + " <> emit_expr(b)
+    EPipe(left, right) => emit_expr(right) <> "(" <> emit_expr(left) <> ")"
+    EApp(fn_expr, args) =>
+      emit_expr(fn_expr) <> "(" <> join(map_exprs(args), ", ") <> ")"
+    EConstruct(tag, args) => emit_construct(tag, args)
+    ELambda(params, body) =>
+      "(" <> join(params, ", ") <> ") => " <> emit_expr(body)
+    ELet(name, value, body) =>
+      "(() => {\n" <>
+      "  const " <> name <> " = " <> emit_expr(value) <> ";\n" <>
+      "  return " <> emit_expr(body) <> ";\n" <>
+      "})()"
+    EIf(cond, then_expr, else_expr) =>
+      "(" <> emit_expr(cond) <> " ? " <> emit_expr(then_expr) <> " : " <> emit_expr(else_expr) <> ")"
+    EMatch(scrutinee, arms) => emit_match(scrutinee, arms)
+    ERecord(fields) =>
+      "{ " <> join(map_fields(fields), ", ") <> " }"
+    EFieldAccess(obj, field) => emit_expr(obj) <> "." <> field
+    EList(elems) =>
+      "[" <> join(map_exprs(elems), ", ") <> "]"
+    EBlock(exprs) => emit_block(exprs)
+  }
+}
+
+fn emit_op(op: String) -> String {
+  if op == "==" { "===" }
+  else if op == "!=" { "!==" }
+  else { op }
+}
+
+fn map_exprs(exprs: List(Expr)) -> List(String) {
+  match exprs {
+    [] => []
+    [e, ..rest] => cons(emit_expr(e), map_exprs(rest))
+  }
+}
+
+fn map_fields(fields: List(RecordField)) -> List(String) {
+  match fields {
+    [] => []
+    [f, ..rest] =>
+      match f {
+        MkField(name, value) =>
+          cons(name <> ": " <> emit_expr(value), map_fields(rest))
+      }
+  }
+}
+
+fn emit_construct(tag: String, args: List(Expr)) -> String {
+  match args {
+    [] => "{ _tag: \"" <> tag <> "\" }"
+    _ =>
+      "{ _tag: \"" <> tag <> "\", " <>
+      emit_construct_fields(args, 0) <> " }"
+  }
+}
+
+fn emit_construct_fields(args: List(Expr), i: Int) -> String {
+  match args {
+    [] => ""
+    [arg, ..rest] =>
+      match rest {
+        [] => "_" <> show(i) <> ": " <> emit_expr(arg)
+        _ => "_" <> show(i) <> ": " <> emit_expr(arg) <> ", " <> emit_construct_fields(rest, i + 1)
+      }
+  }
+}
+
+fn emit_match(scrutinee: Expr, arms: List(MatchArm)) -> String {
+  let scr = emit_expr(scrutinee)
+  if all_ctor_arms(arms) { emit_tag_switch(scr, arms) }
+  else { emit_if_chain(scr, arms) }
+}
+
+fn all_ctor_arms(arms: List(MatchArm)) -> Bool {
+  match arms {
+    [] => true
+    [a, ..rest] =>
+      if is_ctor_arm(a) { all_ctor_arms(rest) }
+      else { false }
+  }
+}
+
+fn is_ctor_arm(arm: MatchArm) -> Bool {
+  match arm {
+    MkArm(pat, _) =>
+      match pat {
+        PConstructor(_, _) => true
+        _ => false
+      }
+  }
+}
+
+fn emit_tag_switch(scr: String, arms: List(MatchArm)) -> String {
+  "(() => {\n" <>
+  "  switch (" <> scr <> "._tag) {\n" <>
+  join(map_switch_arms(scr, arms), "\n") <> "\n" <>
+  "  }\n" <>
+  "})()"
+}
+
+fn map_switch_arms(scr: String, arms: List(MatchArm)) -> List(String) {
+  match arms {
+    [] => []
+    [a, ..rest] =>
+      cons(emit_one_switch_arm(scr, a), map_switch_arms(scr, rest))
+  }
+}
+
+fn emit_one_switch_arm(scr: String, arm: MatchArm) -> String {
+  match arm {
+    MkArm(pat, body) =>
+      match pat {
+        PConstructor(tag, pats) =>
+          "    case \"" <> tag <> "\": {\n" <>
+          emit_pat_bindings(pats, scr, 0) <>
+          "      return " <> emit_expr(body) <> ";\n" <>
+          "    }"
+        _ =>
+          "    default: {\n" <>
+          "      return " <> emit_expr(body) <> ";\n" <>
+          "    }"
+      }
+  }
+}
+
+fn emit_pat_bindings(pats: List(Pattern), scr: String, i: Int) -> String {
+  match pats {
+    [] => ""
+    [p, ..rest] =>
+      match p {
+        PVar(name) =>
+          "      const " <> name <> " = " <> scr <> "._" <> show(i) <> ";\n" <>
+          emit_pat_bindings(rest, scr, i + 1)
+        _ => emit_pat_bindings(rest, scr, i + 1)
+      }
+  }
+}
+
+fn emit_if_chain(scr: String, arms: List(MatchArm)) -> String {
+  "(() => {\n" <>
+  "  const __scr = " <> scr <> ";\n" <>
+  emit_if_arms("__scr", arms, true) <>
+  "})()"
+}
+
+fn emit_if_arms(scr: String, arms: List(MatchArm), is_first: Bool) -> String {
+  match arms {
+    [] => ""
+    [a, ..rest] =>
+      match a {
+        MkArm(pat, body) =>
+          match rest {
+            [] => emit_last_arm(scr, pat, body, is_first)
+            _ => emit_mid_arm(scr, pat, body, rest, is_first)
+          }
+      }
+  }
+}
+
+fn emit_last_arm(scr: String, pat: Pattern, body: Expr, is_first: Bool) -> String {
+  let cond = emit_pat_cond(pat, scr)
+  if cond == "true" {
+    if is_first {
+      "  {\n" <> emit_arm_binds(pat, scr) <>
+      "    return " <> emit_expr(body) <> ";\n  }\n"
+    }
+    else {
+      "  } else {\n" <> emit_arm_binds(pat, scr) <>
+      "    return " <> emit_expr(body) <> ";\n  }\n"
+    }
+  }
+  else {
+    let pfx = if is_first { "  if (" } else { "  } else if (" }
+    pfx <> cond <> ") {\n" <> emit_arm_binds(pat, scr) <>
+    "    return " <> emit_expr(body) <> ";\n  }\n"
+  }
+}
+
+fn emit_mid_arm(scr: String, pat: Pattern, body: Expr, rest: List(MatchArm), is_first: Bool) -> String {
+  let cond = emit_pat_cond(pat, scr)
+  let pfx = if is_first { "  if (" } else { "  } else if (" }
+  pfx <> cond <> ") {\n" <> emit_arm_binds(pat, scr) <>
+  "    return " <> emit_expr(body) <> ";\n" <>
+  emit_if_arms(scr, rest, false)
+}
+
+fn emit_pat_cond(pat: Pattern, scr: String) -> String {
+  match pat {
+    PVar(_) => "true"
+    PWildcard => "true"
+    PConstructor(tag, _) => scr <> "._tag === \"" <> tag <> "\""
+    PLiteral(expr) => scr <> " === " <> emit_expr(expr)
+    PList(elems) =>
+      match elems {
+        [] => scr <> ".length === 0"
+        _ => scr <> ".length >= " <> show(pat_list_len(elems))
+      }
+  }
+}
+
+fn pat_list_len(pats: List(Pattern)) -> Int {
+  match pats {
+    [] => 0
+    [_, ..rest] => 1 + pat_list_len(rest)
+  }
+}
+
+fn emit_arm_binds(pat: Pattern, scr: String) -> String {
+  match pat {
+    PVar(name) => "    const " <> name <> " = " <> scr <> ";\n"
+    PConstructor(_, args) => emit_ctor_binds(args, scr, 0)
+    PList(elems) => emit_list_binds(elems, scr, 0)
+    PWildcard => ""
+    PLiteral(_) => ""
+  }
+}
+
+fn emit_ctor_binds(pats: List(Pattern), scr: String, i: Int) -> String {
+  match pats {
+    [] => ""
+    [p, ..rest] =>
+      match p {
+        PVar(name) =>
+          "    const " <> name <> " = " <> scr <> "._" <> show(i) <> ";\n" <>
+          emit_ctor_binds(rest, scr, i + 1)
+        _ => emit_ctor_binds(rest, scr, i + 1)
+      }
+  }
+}
+
+fn emit_list_binds(pats: List(Pattern), scr: String, i: Int) -> String {
+  match pats {
+    [] => ""
+    [p, ..rest] =>
+      match p {
+        PVar(name) =>
+          "    const " <> name <> " = " <> scr <> "[" <> show(i) <> "];\n" <>
+          emit_list_binds(rest, scr, i + 1)
+        _ => emit_list_binds(rest, scr, i + 1)
+      }
+  }
+}
+
+fn emit_block(exprs: List(Expr)) -> String {
+  match exprs {
+    [] => "undefined"
+    [single, ..more] =>
+      match more {
+        [] => emit_expr(single)
+        _ =>
+          "(() => {\n" <>
+          emit_block_stmts(exprs) <>
+          "})()"
+      }
+  }
+}
+
+fn emit_block_stmts(exprs: List(Expr)) -> String {
+  match exprs {
+    [] => ""
+    [expr, ..rest] =>
+      match rest {
+        [] => emit_final_stmt(expr)
+        _ => emit_non_final_stmt(expr) <> emit_block_stmts(rest)
+      }
+  }
+}
+
+fn emit_final_stmt(expr: Expr) -> String {
+  match expr {
+    ELet(name, value, body) =>
+      "  const " <> name <> " = " <> emit_expr(value) <> ";\n" <>
+      emit_final_stmt(body)
+    _ => "  return " <> emit_expr(expr) <> ";\n"
+  }
+}
+
+fn emit_non_final_stmt(expr: Expr) -> String {
+  match expr {
+    ELet(name, value, body) =>
+      "  const " <> name <> " = " <> emit_expr(value) <> ";\n" <>
+      emit_non_final_stmt(body)
+    _ => "  " <> emit_expr(expr) <> ";\n"
+  }
+}
+
+// ── Main Entry Point ──
+
+fn main() {
+  let source = read_file(get_arg(1))
+  let tokens = tokenize(source)
+  let decls = parse(tokens)
+  let output = emit_module(decls)
+  println(output)
+}

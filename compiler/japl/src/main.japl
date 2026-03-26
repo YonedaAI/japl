@@ -1,0 +1,11 @@
+// JAPL self-hosted compiler: main entry point
+// Reads a JAPL source file, tokenizes, parses, and emits TypeScript
+// Note: The full implementation is in compiler.japl (single-file bootstrap)
+
+fn main() {
+  let source = read_file(get_arg(1))
+  let tokens = tokenize(source)
+  let decls = parse(tokens)
+  let output = emit_module(decls)
+  println(output)
+}

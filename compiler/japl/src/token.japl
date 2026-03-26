@@ -1,0 +1,69 @@
+// Token types for the JAPL self-hosted compiler
+
+type Token =
+  | TkInt(String)
+  | TkFloat(String)
+  | TkString(String)
+  | TkIdent(String)
+  | TkUpperIdent(String)
+  | TkKeyword(String)
+  | TkOperator(String)
+  | TkLParen
+  | TkRParen
+  | TkLBrace
+  | TkRBrace
+  | TkLBracket
+  | TkRBracket
+  | TkComma
+  | TkColon
+  | TkSemicolon
+  | TkArrow
+  | TkFatArrow
+  | TkPipe
+  | TkBar
+  | TkDot
+  | TkDotDot
+  | TkEof
+
+fn is_keyword(s: String) -> Bool {
+  if s == "fn" { true }
+  else if s == "let" { true }
+  else if s == "type" { true }
+  else if s == "match" { true }
+  else if s == "if" { true }
+  else if s == "else" { true }
+  else if s == "true" { true }
+  else if s == "false" { true }
+  else if s == "module" { true }
+  else if s == "import" { true }
+  else if s == "pub" { true }
+  else { false }
+}
+
+fn token_to_string(tok: Token) -> String {
+  match tok {
+    TkInt(n) => "Int(" <> n <> ")"
+    TkFloat(n) => "Float(" <> n <> ")"
+    TkString(s) => "String(" <> s <> ")"
+    TkIdent(s) => "Ident(" <> s <> ")"
+    TkUpperIdent(s) => "UpperIdent(" <> s <> ")"
+    TkKeyword(s) => "Keyword(" <> s <> ")"
+    TkOperator(s) => "Operator(" <> s <> ")"
+    TkLParen => "LParen"
+    TkRParen => "RParen"
+    TkLBrace => "LBrace"
+    TkRBrace => "RBrace"
+    TkLBracket => "LBracket"
+    TkRBracket => "RBracket"
+    TkComma => "Comma"
+    TkColon => "Colon"
+    TkSemicolon => "Semicolon"
+    TkArrow => "Arrow"
+    TkFatArrow => "FatArrow"
+    TkPipe => "Pipe"
+    TkBar => "Bar"
+    TkDot => "Dot"
+    TkDotDot => "DotDot"
+    TkEof => "EOF"
+  }
+}

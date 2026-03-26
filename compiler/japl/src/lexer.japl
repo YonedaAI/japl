@@ -1,0 +1,148 @@
+// Lexer for the JAPL self-hosted compiler
+// Index-based tokenizer: works on source string with position tracking
+
+fn tokenize(source: String) -> List(Token) {
+  lex(source, 0)
+}
+
+fn lex(source: String, pos: Int) -> List(Token) {
+  if pos >= string_length(source) { [TkEof] }
+  else {
+    let c = char_at(source, pos)
+    if c == "\n" { lex(source, pos + 1) }
+    else if is_whitespace(c) { lex(source, pos + 1) }
+    else if c == "/" {
+      if peek(source, pos + 1) == "/" { lex_skip_comment(source, pos + 2) }
+      else { cons(TkOperator("/"), lex(source, pos + 1)) }
+    }
+    else if is_digit(c) { lex_number(source, pos) }
+    else if is_alpha(c) { lex_ident(source, pos) }
+    else if c == "\"" { lex_string(source, pos + 1) }
+    else { lex_operator(source, pos) }
+  }
+}
+
+fn peek(source: String, pos: Int) -> String {
+  if pos >= string_length(source) { "" }
+  else { char_at(source, pos) }
+}
+
+fn lex_skip_comment(source: String, pos: Int) -> List(Token) {
+  if pos >= string_length(source) { [TkEof] }
+  else if char_at(source, pos) == "\n" { lex(source, pos + 1) }
+  else { lex_skip_comment(source, pos + 1) }
+}
+
+fn lex_number(source: String, start: Int) -> List(Token) {
+  let end = collect_digits(source, start)
+  if peek(source, end) == "." {
+    if is_digit(peek(source, end + 1)) {
+      let frac_end = collect_digits(source, end + 1)
+      let value = substring(source, start, frac_end)
+      cons(TkFloat(value), lex(source, frac_end))
+    }
+    else {
+      let value = substring(source, start, end)
+      cons(TkInt(value), lex(source, end))
+    }
+  }
+  else {
+    let value = substring(source, start, end)
+    cons(TkInt(value), lex(source, end))
+  }
+}
+
+fn collect_digits(source: String, pos: Int) -> Int {
+  if pos >= string_length(source) { pos }
+  else if is_digit(char_at(source, pos)) { collect_digits(source, pos + 1) }
+  else { pos }
+}
+
+fn lex_ident(source: String, start: Int) -> List(Token) {
+  let end = collect_alphanum(source, start)
+  let word = substring(source, start, end)
+  if word == "true" { cons(TkKeyword("true"), lex(source, end)) }
+  else if word == "false" { cons(TkKeyword("false"), lex(source, end)) }
+  else if is_keyword(word) { cons(TkKeyword(word), lex(source, end)) }
+  else if is_upper(char_at(word, 0)) { cons(TkUpperIdent(word), lex(source, end)) }
+  else { cons(TkIdent(word), lex(source, end)) }
+}
+
+fn collect_alphanum(source: String, pos: Int) -> Int {
+  if pos >= string_length(source) { pos }
+  else if is_alphanum(char_at(source, pos)) { collect_alphanum(source, pos + 1) }
+  else { pos }
+}
+
+fn lex_string(source: String, pos: Int) -> List(Token) {
+  let result = collect_string(source, pos, "")
+  cons(TkString(result.value), lex(source, result.end_pos))
+}
+
+fn collect_string(source: String, pos: Int, acc: String) -> { value: String, end_pos: Int } {
+  if pos >= string_length(source) { { value: acc, end_pos: pos } }
+  else {
+    let c = char_at(source, pos)
+    if c == "\"" { { value: acc, end_pos: pos + 1 } }
+    else if c == "\\" {
+      if pos + 1 < string_length(source) {
+        let escaped = char_at(source, pos + 1)
+        collect_string(source, pos + 2, acc <> "\\" <> escaped)
+      }
+      else { { value: acc, end_pos: pos + 1 } }
+    }
+    else { collect_string(source, pos + 1, acc <> c) }
+  }
+}
+
+fn lex_operator(source: String, pos: Int) -> List(Token) {
+  let c = char_at(source, pos)
+  let next = peek(source, pos + 1)
+  if c == "(" { cons(TkLParen, lex(source, pos + 1)) }
+  else if c == ")" { cons(TkRParen, lex(source, pos + 1)) }
+  else if c == "{" { cons(TkLBrace, lex(source, pos + 1)) }
+  else if c == "}" { cons(TkRBrace, lex(source, pos + 1)) }
+  else if c == "[" { cons(TkLBracket, lex(source, pos + 1)) }
+  else if c == "]" { cons(TkRBracket, lex(source, pos + 1)) }
+  else if c == "," { cons(TkComma, lex(source, pos + 1)) }
+  else if c == ";" { cons(TkSemicolon, lex(source, pos + 1)) }
+  else if c == ":" { cons(TkColon, lex(source, pos + 1)) }
+  else if c == "-" {
+    if next == ">" { cons(TkArrow, lex(source, pos + 2)) }
+    else { cons(TkOperator("-"), lex(source, pos + 1)) }
+  }
+  else if c == "=" {
+    if next == ">" { cons(TkFatArrow, lex(source, pos + 2)) }
+    else if next == "=" { cons(TkOperator("=="), lex(source, pos + 2)) }
+    else { cons(TkOperator("="), lex(source, pos + 1)) }
+  }
+  else if c == "!" {
+    if next == "=" { cons(TkOperator("!="), lex(source, pos + 2)) }
+    else { cons(TkOperator("!"), lex(source, pos + 1)) }
+  }
+  else if c == "<" {
+    if next == ">" { cons(TkOperator("<>"), lex(source, pos + 2)) }
+    else if next == "=" { cons(TkOperator("<="), lex(source, pos + 2)) }
+    else { cons(TkOperator("<"), lex(source, pos + 1)) }
+  }
+  else if c == ">" {
+    if next == "=" { cons(TkOperator(">="), lex(source, pos + 2)) }
+    else { cons(TkOperator(">"), lex(source, pos + 1)) }
+  }
+  else if c == "|" {
+    if next == ">" { cons(TkPipe, lex(source, pos + 2)) }
+    else if next == "|" { cons(TkOperator("||"), lex(source, pos + 2)) }
+    else { cons(TkBar, lex(source, pos + 1)) }
+  }
+  else if c == "&" {
+    if next == "&" { cons(TkOperator("&&"), lex(source, pos + 2)) }
+    else { lex(source, pos + 1) }
+  }
+  else if c == "." {
+    if next == "." { cons(TkDotDot, lex(source, pos + 2)) }
+    else { cons(TkDot, lex(source, pos + 1)) }
+  }
+  else if c == "+" { cons(TkOperator("+"), lex(source, pos + 1)) }
+  else if c == "*" { cons(TkOperator("*"), lex(source, pos + 1)) }
+  else { lex(source, pos + 1) }
+}
