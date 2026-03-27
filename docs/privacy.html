@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — YonedaAI</title>
+  <meta name="description" content="Privacy policy for YonedaAI applications and services.">
+  <meta property="og:title" content="Privacy Policy — YonedaAI">
+  <meta property="og:description" content="Privacy policy for YonedaAI applications and services.">
+  <meta property="og:image" content="https://japl-nine.vercel.app/og-image.png">
+  <meta property="og:url" content="https://japl-nine.vercel.app/privacy.html">
+  <meta name="twitter:card" content="summary">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #0a0e17;
+      color: #e2e8f0;
+      line-height: 1.7;
+      font-size: 17px;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 3rem 2rem 5rem;
+    }
+    a { color: #7c5cfc; }
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    .updated {
+      color: #64748b;
+      font-size: 0.9rem;
+      margin-bottom: 2.5rem;
+    }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-top: 2.5rem;
+      margin-bottom: 0.75rem;
+      color: #e2e8f0;
+    }
+    p, ul { margin-bottom: 1rem; }
+    ul { padding-left: 1.5rem; }
+    li { margin-bottom: 0.4rem; }
+    .back {
+      display: inline-block;
+      margin-bottom: 2rem;
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .back:hover { color: #7c5cfc; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back">Back to home</a>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: March 26, 2026</p>
+
+    <p>This privacy policy describes how YonedaAI ("we", "our", "us") handles information in connection with our applications, tools, and services, including PosTree and related integrations.</p>
+
+    <h2>1. Information We Collect</h2>
+    <p>Our tools are designed to run locally on your machine. We collect minimal information:</p>
+    <ul>
+      <li><strong>API Credentials:</strong> When you configure platform integrations (Twitter, LinkedIn, etc.), your API keys are stored locally in a <code>.env</code> file on your device. We never transmit or store your credentials on our servers.</li>
+      <li><strong>Published Content:</strong> When you use our tools to publish content to social media platforms, that content is sent directly from your device to the respective platform's API. We do not intercept, store, or process this content on any intermediary server.</li>
+      <li><strong>Local State:</strong> Publishing state (what was posted, when, where) is stored locally on your device in JSON files.</li>
+    </ul>
+
+    <h2>2. Information We Do Not Collect</h2>
+    <ul>
+      <li>We do not collect personal information</li>
+      <li>We do not use cookies or tracking</li>
+      <li>We do not collect analytics or telemetry</li>
+      <li>We do not store your social media credentials on any server</li>
+      <li>We do not access your social media accounts beyond the actions you explicitly trigger</li>
+    </ul>
+
+    <h2>3. Third-Party Services</h2>
+    <p>When you publish content through our tools, your content is sent directly to third-party platforms. Each platform has its own privacy policy:</p>
+    <ul>
+      <li><a href="https://twitter.com/en/privacy" target="_blank" rel="noopener">Twitter/X Privacy Policy</a></li>
+      <li><a href="https://www.linkedin.com/legal/privacy-policy" target="_blank" rel="noopener">LinkedIn Privacy Policy</a></li>
+      <li><a href="https://www.facebook.com/privacy/policy/" target="_blank" rel="noopener">Facebook Privacy Policy</a></li>
+      <li><a href="https://joinmastodon.org/privacy-policy" target="_blank" rel="noopener">Mastodon Privacy Policy</a></li>
+      <li><a href="https://bsky.social/about/support/privacy-policy" target="_blank" rel="noopener">Bluesky Privacy Policy</a></li>
+      <li><a href="https://dev.to/privacy" target="_blank" rel="noopener">Dev.to Privacy Policy</a></li>
+      <li><a href="https://medium.com/policy/medium-privacy-policy-f03bf92035c9" target="_blank" rel="noopener">Medium Privacy Policy</a></li>
+      <li><a href="https://www.reddit.com/policies/privacy-policy" target="_blank" rel="noopener">Reddit Privacy Policy</a></li>
+    </ul>
+
+    <p>If you use an LLM provider (Claude, OpenAI, Gemini) for content generation, your source content is sent to that provider's API. Refer to their respective privacy policies.</p>
+
+    <h2>4. Data Storage</h2>
+    <p>All data is stored locally on your device:</p>
+    <ul>
+      <li><code>.env</code> — API credentials (never committed to version control)</li>
+      <li><code>.postree-state.json</code> — Publishing history</li>
+      <li><code>posts/</code> — Your post content files</li>
+    </ul>
+
+    <h2>5. Open Source</h2>
+    <p>Our tools are open source. You can inspect the source code to verify our privacy practices:</p>
+    <ul>
+      <li><a href="https://github.com/YonedaAI/PosTree" target="_blank" rel="noopener">PosTree source code</a></li>
+      <li><a href="https://github.com/YonedaAI/japl" target="_blank" rel="noopener">JAPL source code</a></li>
+    </ul>
+
+    <h2>6. Children's Privacy</h2>
+    <p>Our tools are not directed at children under 13. We do not knowingly collect information from children.</p>
+
+    <h2>7. Changes</h2>
+    <p>We may update this privacy policy. Changes will be posted on this page with an updated date.</p>
+
+    <h2>8. Contact</h2>
+    <p>For questions about this privacy policy, contact us at <a href="mailto:matthew@yonedaai.com">matthew@yonedaai.com</a>.</p>
+
+    <p style="margin-top: 3rem; color: #64748b; font-size: 0.85rem;">
+      YonedaAI Research Collective<br>
+      Chicago, IL<br>
+      <a href="https://github.com/YonedaAI">github.com/YonedaAI</a>
+    </p>
+  </div>
+</body>
+</html>

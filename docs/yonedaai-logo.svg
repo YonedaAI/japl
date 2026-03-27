@@ -1,0 +1,38 @@
+<svg width="300" height="300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0e17"/>
+      <stop offset="100%" style="stop-color:#141922"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c5cfc"/>
+      <stop offset="50%" style="stop-color:#4f8ff7"/>
+      <stop offset="100%" style="stop-color:#7c5cfc"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="300" height="300" rx="40" fill="url(#bg)"/>
+
+  <!-- Y symbol — stylized from the Yoneda embedding arrow -->
+  <!-- Two lines converging into one, representing the Yoneda functor -->
+  <g transform="translate(150, 140)" stroke="url(#glow)" stroke-width="6" stroke-linecap="round" fill="none">
+    <!-- Left arm of Y -->
+    <line x1="-55" y1="-65" x2="0" y2="0"/>
+    <!-- Right arm of Y -->
+    <line x1="55" y1="-65" x2="0" y2="0"/>
+    <!-- Stem of Y -->
+    <line x1="0" y1="0" x2="0" y2="55"/>
+    <!-- Arrow tip on stem -->
+    <line x1="-12" y1="43" x2="0" y2="55"/>
+    <line x1="12" y1="43" x2="0" y2="55"/>
+  </g>
+
+  <!-- Small dots at the Y tips representing objects in a category -->
+  <circle cx="95" cy="75" r="5" fill="#7c5cfc"/>
+  <circle cx="205" cy="75" r="5" fill="#4f8ff7"/>
+  <circle cx="150" cy="195" r="5" fill="#7c5cfc"/>
+
+  <!-- Text: YonedaAI -->
+  <text x="150" y="258" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="700" fill="#e2e8f0" text-anchor="middle" letter-spacing="-0.5">YonedaAI</text>
+</svg>
