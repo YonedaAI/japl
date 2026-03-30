@@ -26,3 +26,4 @@ compiler/target/
 # Knowledge base (generated)
 # .knowledge-base.md
 .vercel
+node_modules/
