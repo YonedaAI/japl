@@ -1,2 +1,1 @@
-export { TsEmitter } from './emit.js';
-export { CEmitter } from './emit_c.js';
+export { WatEmitter } from './emit_wat.js';

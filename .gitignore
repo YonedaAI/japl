@@ -1,29 +1,19 @@
-# Rust
-compiler/target/
-**/*.rs.bk
+# Build artifacts
+build/
+.japl-build/
+*.wasm
+*.wat
 
-# LaTeX artifacts
-*.aux
-*.log
-*.toc
-*.out
-*.bbl
-*.blg
-*.nav
-*.snm
-*.vrb
-*.fls
-*.fdb_latexmk
-*.synctex.gz
+# Dependencies
+node_modules/
+dist/
 
-# macOS
+# OS
 .DS_Store
 
 # Editor
 .vscode/
 .idea/
 
-# Knowledge base (generated)
-# .knowledge-base.md
-.vercel
-node_modules/
+# Vercel
+.vercel/

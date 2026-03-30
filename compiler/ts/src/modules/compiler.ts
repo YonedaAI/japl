@@ -1,12 +1,13 @@
 // ─── Multi-File Compiler ───
 // Resolves imports, builds dependency graph, compiles in order.
+// Target: WASM only (WAT text format as intermediate)
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Lexer } from '../lexer/index.js';
 import { Parser } from '../parser/index.js';
 import { lowerModule } from '../ir/lower.js';
-import { TsEmitter } from '../codegen/emit.js';
+import { WatEmitter } from '../codegen/emit_wat.js';
 import * as AST from '../parser/ast.js';
 import * as IR from '../ir/ir.js';
 import { ModuleResolver, ModuleError, ResolvedModule } from './resolver.js';
@@ -16,7 +17,7 @@ export interface CompiledFile {
   sourcePath: string;
   /** Module name (e.g., "Math") */
   moduleName: string;
-  /** Generated TypeScript code */
+  /** Generated WAT code */
   code: string;
   /** Whether this is the entry file */
   isEntry: boolean;
@@ -86,25 +87,9 @@ export class MultiFileCompiler {
     for (const mod of sorted) {
       const ir = lowerModule(mod.ast);
 
-      // For non-entry modules, mark all pub fns as exported
-      // The IR already has exported: true from AST pub: true via lowerDecl
-
-      // Determine import rewrite info: for each import in this module,
-      // compute relative path from this file to the imported module's output
-      const importRewrites = new Map<string, string>();
-      for (const imp of mod.imports) {
-        const importedNode = this.modules.get(imp.resolvedModule.path);
-        if (importedNode) {
-          // All output files are placed in the same flat directory,
-          // so import paths are always ./ModuleName.js
-          importRewrites.set(imp.moduleName, `./${importedNode.moduleName}.js`);
-        }
-      }
-
-      const emitter = new TsEmitter();
+      const emitter = new WatEmitter();
       const code = emitter.emitModule(ir, {
         isEntry: mod.isEntry,
-        importRewrites,
       });
 
       files.push({

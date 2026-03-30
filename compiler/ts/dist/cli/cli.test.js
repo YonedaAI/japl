@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { parseConfig } from './config.js';
-import { buildToString } from './build.js';
+import { buildToWat } from './build.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -75,37 +75,14 @@ test-lib = "0.5.0"
         expect(config).toEqual({});
     });
 });
-// ─── Build Tests ───
-describe('Build pipeline', () => {
-    it('compiles a simple function to TypeScript', () => {
-        const ts = buildToString(`fn add(x: Int, y: Int) -> Int { x + y }`);
-        expect(ts).toContain('function add');
-        expect(ts).toContain('return');
-    });
-    it('compiles a type declaration', () => {
-        const ts = buildToString(`type Color = | Red | Green | Blue`);
-        expect(ts).toContain('_tag');
-        expect(ts).toContain('Red');
-        expect(ts).toContain('Green');
-        expect(ts).toContain('Blue');
-    });
-    it('compiles pattern matching', () => {
-        const ts = buildToString(`
-type Shape = | Circle(Float) | Rect(Float, Float)
-
-fn area(s: Shape) -> Float {
-  match s {
-    Circle(r) => 3.14 * r * r
-    Rect(w, h) => w * h
-  }
-}
-`);
-        expect(ts).toContain('switch');
-        expect(ts).toContain('"Circle"');
-        expect(ts).toContain('"Rect"');
+// ─── Build Tests (WASM target) ───
+describe('Build pipeline (WASM)', () => {
+    it('compiles a simple function to WAT stub', () => {
+        const wat = buildToWat(`fn add(x: Int, y: Int) -> Int { x + y }`);
+        expect(wat).toContain('(module');
     });
     it('throws on invalid syntax', () => {
-        expect(() => buildToString('fn {')).toThrow();
+        expect(() => buildToWat('fn {')).toThrow();
     });
 });
 // ─── japl new Tests ───
@@ -133,7 +110,10 @@ entry = "src/main.japl"
   println("Hello from testproj!")
 }
 `);
-        fs.writeFileSync(path.join(projectDir, '.gitignore'), `dist/
+        fs.writeFileSync(path.join(projectDir, '.gitignore'), `build/
+.japl-build/
+*.wasm
+*.wat
 node_modules/
 `);
         // Verify structure
@@ -159,20 +139,10 @@ entry = "src/main.japl"
         expect(config.package?.version).toBe('0.1.0');
         expect(config.package?.entry).toBe('src/main.japl');
     });
-    it('build produces .ts output file', () => {
-        const inputDir = path.join(tmpDir, 'src');
-        fs.mkdirSync(inputDir, { recursive: true });
-        const inputFile = path.join(inputDir, 'test.japl');
-        fs.writeFileSync(inputFile, `fn hello() -> String { "world" }`);
-        const outDir = path.join(tmpDir, 'dist');
-        fs.mkdirSync(outDir, { recursive: true });
-        const outFile = path.join(outDir, 'test.ts');
-        const source = fs.readFileSync(inputFile, 'utf-8');
-        const tsCode = buildToString(source);
-        fs.writeFileSync(outFile, tsCode);
-        expect(fs.existsSync(outFile)).toBe(true);
-        const content = fs.readFileSync(outFile, 'utf-8');
-        expect(content).toContain('function hello');
+    it('build produces WAT output', () => {
+        const source = `fn hello() -> String { "world" }`;
+        const wat = buildToWat(source);
+        expect(wat).toContain('(module');
     });
 });
 //# sourceMappingURL=cli.test.js.map

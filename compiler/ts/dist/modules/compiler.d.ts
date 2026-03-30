@@ -3,7 +3,7 @@ export interface CompiledFile {
     sourcePath: string;
     /** Module name (e.g., "Math") */
     moduleName: string;
-    /** Generated TypeScript code */
+    /** Generated WAT code */
     code: string;
     /** Whether this is the entry file */
     isEntry: boolean;

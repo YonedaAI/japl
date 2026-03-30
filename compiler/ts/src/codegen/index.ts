@@ -1,2 +1,2 @@
-export { TsEmitter } from './emit.js';
-export { CEmitter } from './emit_c.js';
+// WASM is the only compilation target
+export { WatEmitter } from './emit_wat.js';

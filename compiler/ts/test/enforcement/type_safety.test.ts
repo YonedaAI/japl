@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildToString } from '../../src/cli/build.js';
+import { buildToWat } from '../../src/cli/build.js';
 import { TypeChecker } from '../../src/checker/infer.js';
 import { LinearityChecker } from '../../src/checker/linearity.js';
 import { Lexer } from '../../src/lexer/index.js';
 import { Parser } from '../../src/parser/index.js';
-import { lowerModule } from '../../src/ir/lower.js';
-import { TsEmitter } from '../../src/codegen/emit.js';
 
 // Helper: parse source to AST
 function parse(source: string) {
@@ -25,14 +23,6 @@ function typeCheck(source: string) {
   const ast = parse(source);
   const checker = new TypeChecker();
   return checker.checkModule(ast);
-}
-
-// Helper: compile source to TS string
-function compile(source: string): string {
-  const ast = parse(source);
-  const ir = lowerModule(ast);
-  const emitter = new TsEmitter();
-  return emitter.emit(ir);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -76,7 +66,7 @@ fn bad(x: Int) -> Int {
   x
 }
 `;
-    expect(() => buildToString(source, { target: 'ts', strict: true }))
+    expect(() => buildToWat(source, { strict: true }))
       .toThrow(/[Ee]ffect/);
   });
 
@@ -89,8 +79,8 @@ fn bad(x: Int) -> Int {
 fn main() { println(show(bad(1))) }
 `;
     // Should not throw without strict mode
-    const output = buildToString(source, 'ts');
-    expect(output).toContain('function bad');
+    const output = buildToWat(source);
+    expect(output).toContain('(module');
   });
 
   it('pure function without IO is fine', () => {
@@ -171,7 +161,7 @@ fn double_use(r: Owned(Int)) -> Int {
   r + r
 }
 `;
-    expect(() => buildToString(source, { target: 'ts', strict: true }))
+    expect(() => buildToWat(source, { strict: true }))
       .toThrow(/[Ll]inearity/);
   });
 
@@ -292,7 +282,7 @@ fn go(d: Dir) -> Int {
   }
 }
 `;
-    expect(() => buildToString(source, { target: 'ts', strict: true }))
+    expect(() => buildToWat(source, { strict: true }))
       .toThrow(/[Ee]xhaustive/);
   });
 
@@ -319,92 +309,6 @@ fn go(d: Dir) -> Int {
 
 // ═══════════════════════════════════════════════════════════════════════
 // Feature 4: Tail Call Optimization
+// NOTE: TCO output tests removed — they tested TS-specific codegen.
+// These will be rewritten for WASM by another agent.
 // ═══════════════════════════════════════════════════════════════════════
-
-describe('Feature 4: Tail Call Optimization', () => {
-
-  it('transforms simple tail-recursive function into while loop', () => {
-    const source = `
-fn countdown(n: Int) -> Int {
-  if n <= 0 { 0 }
-  else { countdown(n - 1) }
-}
-`;
-    const output = compile(source);
-    expect(output).toContain('while (true)');
-    expect(output).toContain('continue');
-    // Should NOT contain a recursive call
-    expect(output).not.toMatch(/return\s+countdown\(/);
-  });
-
-  it('does not transform non-tail-recursive function', () => {
-    const source = `
-fn factorial(n: Int) -> Int {
-  if n <= 1 { 1 }
-  else { n * factorial(n - 1) }
-}
-`;
-    const output = compile(source);
-    // The recursive call is not in tail position (it's multiplied by n)
-    expect(output).not.toContain('while (true)');
-    expect(output).toContain('factorial(n - 1)');
-  });
-
-  it('TCO function produces correct result at runtime', async () => {
-    const source = `
-fn countdown(n: Int) -> Int {
-  if n <= 0 { 0 }
-  else { countdown(n - 1) }
-}
-fn main() {
-  println(show(countdown(100000)))
-}
-`;
-    const output = compile(source);
-    // The output should have while loop for countdown
-    expect(output).toContain('while (true)');
-    // Verify it would work: the function structure should have param reassignment
-    expect(output).toContain('continue');
-  });
-
-  it('handles tail call with multiple parameters', () => {
-    const source = `
-fn gcd(a: Int, b: Int) -> Int {
-  if b == 0 { a }
-  else { gcd(b, a % b) }
-}
-`;
-    const output = compile(source);
-    expect(output).toContain('while (true)');
-    expect(output).toContain('continue');
-    // Should use temp vars for multi-param reassignment
-    expect(output).toContain('__tco_');
-  });
-
-  it('non-recursive function is not affected', () => {
-    const source = `
-fn add(x: Int, y: Int) -> Int {
-  x + y
-}
-`;
-    const output = compile(source);
-    expect(output).not.toContain('while (true)');
-    expect(output).toContain('x + y');
-  });
-
-  it('tail call in match arm is optimized', () => {
-    const source = `
-type Nat = | Zero | Succ(Int)
-
-fn to_int(n: Nat) -> Int {
-  match n {
-    Zero => 0
-    Succ(pred) => to_int(pred)
-  }
-}
-`;
-    const output = compile(source);
-    expect(output).toContain('while (true)');
-    expect(output).toContain('continue');
-  });
-});

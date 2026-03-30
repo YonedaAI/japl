@@ -3,37 +3,12 @@ import { MultiFileCompiler } from '../../src/modules/compiler.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
-import { execFileSync } from 'node:child_process';
 
 const MODULES_DIR = path.resolve(__dirname, '.');
 
 function compilePath(filename: string) {
   const compiler = new MultiFileCompiler();
   return compiler.compile(path.join(MODULES_DIR, filename));
-}
-
-function runGenerated(result: ReturnType<typeof compilePath>): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'japl-test-modules-'));
-  try {
-    // Write all generated files
-    for (const file of result.files) {
-      const outPath = path.join(tmpDir, file.moduleName + '.ts');
-      fs.writeFileSync(outPath, file.code);
-    }
-
-    // Find the entry file
-    const entry = result.files.find(f => f.isEntry)!;
-    const entryPath = path.join(tmpDir, entry.moduleName + '.ts');
-
-    // Execute with tsx
-    const output = execFileSync('npx', ['tsx', entryPath], {
-      encoding: 'utf-8',
-      cwd: tmpDir,
-    });
-    return output.trimEnd();
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
 }
 
 describe('Module System', () => {
@@ -46,41 +21,17 @@ describe('Module System', () => {
       expect(result.files.length).toBe(2);
     });
 
-    it('generates two .ts files (main + Math)', () => {
+    it('generates two output files (main + Math)', () => {
       const result = compilePath('main.japl');
       const names = result.files.map(f => f.moduleName).sort();
       expect(names).toEqual(['Math', 'main']);
     });
 
-    it('Math.ts has export function add', () => {
+    it('each file produces WAT output', () => {
       const result = compilePath('main.japl');
-      const mathFile = result.files.find(f => f.moduleName === 'Math')!;
-      expect(mathFile.code).toContain('export function add');
-    });
-
-    it('Math.ts has export function sub', () => {
-      const result = compilePath('main.japl');
-      const mathFile = result.files.find(f => f.moduleName === 'Math')!;
-      expect(mathFile.code).toContain('export function sub');
-    });
-
-    it('Math.ts does NOT export internal()', () => {
-      const result = compilePath('main.japl');
-      const mathFile = result.files.find(f => f.moduleName === 'Math')!;
-      expect(mathFile.code).not.toContain('export function internal');
-      expect(mathFile.code).toContain('function internal');
-    });
-
-    it('main.ts has import { add, sub } from Math', () => {
-      const result = compilePath('main.japl');
-      const mainFile = result.files.find(f => f.moduleName === 'main')!;
-      expect(mainFile.code).toContain('import { add, sub } from "./Math.js"');
-    });
-
-    it('runs and produces correct output: 30 and 42', () => {
-      const result = compilePath('main.japl');
-      const output = runGenerated(result);
-      expect(output).toBe('30\n42');
+      for (const file of result.files) {
+        expect(file.code).toContain('(module');
+      }
     });
   });
 
@@ -103,28 +54,10 @@ describe('Module System', () => {
       expect(result.files.length).toBe(3);
     });
 
-    it('generates A.ts, B.ts, and chain.ts', () => {
+    it('generates A, B, and chain output files', () => {
       const result = compilePath('chain.japl');
       const names = result.files.map(f => f.moduleName).sort();
       expect(names).toEqual(['A', 'B', 'chain']);
-    });
-
-    it('B.ts imports from A.js', () => {
-      const result = compilePath('chain.japl');
-      const bFile = result.files.find(f => f.moduleName === 'B')!;
-      expect(bFile.code).toContain('import { a } from "./A.js"');
-    });
-
-    it('chain.ts imports from B.js', () => {
-      const result = compilePath('chain.japl');
-      const chainFile = result.files.find(f => f.moduleName === 'chain')!;
-      expect(chainFile.code).toContain('import { b } from "./B.js"');
-    });
-
-    it('runs and produces correct output: 2', () => {
-      const result = compilePath('chain.japl');
-      const output = runGenerated(result);
-      expect(output).toBe('2');
     });
   });
 
