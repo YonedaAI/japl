@@ -1,0 +1,10 @@
+[package]
+name = "japl-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wasmtime = "43"
+wasmtime-wasi = "43"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
