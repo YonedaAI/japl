@@ -1,0 +1,62 @@
+// json_demo.japl — JSON encoding in pure JAPL
+// Demonstrates string building to construct valid JSON
+//
+// Note: show() uses a shared buffer, so multiple show() calls in one
+// expression see the last value. We build strings incrementally to
+// ensure each show() result is consumed before the next call.
+
+fn json_bool(b: Int) -> String {
+  if b == 1 { "true" } else { "false" }
+}
+
+fn json_null() -> String {
+  "null"
+}
+
+fn main() {
+  println("=== JAPL JSON Demo ===")
+
+  // Build: {"name":"Alice","age":30}
+  let u1 = "{\"name\":\"Alice\",\"age\":"
+  let u2 = u1 <> show(30)
+  let user = u2 <> "}"
+  println(user)
+
+  // Build: [1,2,3]  (incremental to avoid show buffer reuse)
+  let a1 = "[" <> show(1)
+  let a2 = a1 <> "," <> show(2)
+  let a3 = a2 <> "," <> show(3)
+  let arr = a3 <> "]"
+  println(arr)
+
+  // Build: [true,false,true]
+  let bools = "[" <> json_bool(1) <> "," <> json_bool(0) <> "," <> json_bool(1) <> "]"
+  println(bools)
+
+  // Build: {"name":"Alice","age":30}
+  let alice1 = "{\"name\":\"Alice\",\"age\":" <> show(30)
+  let alice = alice1 <> "}"
+
+  // Build: {"name":"Bob","age":25}
+  let bob1 = "{\"name\":\"Bob\",\"age\":" <> show(25)
+  let bob = bob1 <> "}"
+
+  // Build: [alice, bob, null]
+  let arr1 = "[" <> alice
+  let arr2 = arr1 <> "," <> bob
+  let arr3 = arr2 <> "," <> json_null() <> "]"
+
+  // Build: {"users":[...],"count":2}
+  let n1 = "{\"users\":" <> arr3
+  let n2 = n1 <> ",\"count\":" <> show(2)
+  let nested = n2 <> "}"
+  println(nested)
+
+  // Build: {"debug":true,"port":8080,"host":"localhost"}
+  let c1 = "{\"debug\":" <> json_bool(1)
+  let c2 = c1 <> ",\"port\":" <> show(8080)
+  let config = c2 <> ",\"host\":\"localhost\"}"
+  println(config)
+
+  println("=== Done ===")
+}

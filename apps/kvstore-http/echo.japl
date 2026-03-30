@@ -1,0 +1,25 @@
+// Simple TCP echo server in JAPL
+// Listens on :9999, accepts one connection, reads bytes, echoes them back.
+// Test with: echo "hello" | nc localhost 9999
+
+foreign "japl" fn tcp_listen(port: Int) -> Int
+foreign "japl" fn tcp_accept(listener: Int) -> Int
+foreign "japl" fn tcp_read(conn: Int, buf: Int, len: Int) -> Int
+foreign "japl" fn tcp_write(conn: Int, buf: Int, len: Int) -> Int
+foreign "japl" fn tcp_close(id: Int)
+foreign "japl" fn bytes_alloc(len: Int) -> Int
+
+fn main() {
+  let _ = println("Echo server on :9999")
+  let listener = tcp_listen(9999)
+  let conn = tcp_accept(listener)
+  let _ = println("Client connected")
+  let buf = bytes_alloc(256)
+  let n = tcp_read(conn, buf, 256)
+  let _ = println("Read bytes: " <> show(n))
+  let _ = tcp_write(conn, buf, n)
+  let _ = println("Echoed back")
+  let _ = tcp_close(conn)
+  let _ = tcp_close(listener)
+  println("Done")
+}

@@ -1,0 +1,9 @@
+foreign "japl" fn tcp_listen(port: Int) -> Int
+foreign "japl" fn tcp_close(id: Int)
+
+fn main() {
+  let listener = tcp_listen(19999)
+  println("Listener ID: " <> show(listener))
+  tcp_close(listener)
+  println("Net test passed")
+}

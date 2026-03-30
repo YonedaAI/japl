@@ -346,8 +346,14 @@ export class Parser {
         this.expect(TokenKind.LParen);
         const params = this.parseParamList();
         this.expect(TokenKind.RParen);
-        this.expect(TokenKind.Arrow);
-        const returnType = this.parseTypeExpr();
+        let returnType;
+        if (this.match(TokenKind.Arrow)) {
+            returnType = this.parseTypeExpr();
+        }
+        else {
+            // No return type → Unit
+            returnType = { kind: "tnamed", name: "Unit", args: [], span: this.spanFrom(startPos) };
+        }
         return { kind: "foreign", module, name, jsName, params, returnType, span: this.spanFrom(startPos) };
     }
     // ─── Helper: function signature (for traits) ───

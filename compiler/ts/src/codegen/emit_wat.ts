@@ -32,6 +32,8 @@ export class WatEmitter {
   private lambdaNameMap: Map<string, string> = new Map();
   // Track lambda captures: lambda name -> captured variable names
   private lambdaCaptureMap: Map<string, string[]> = new Map();
+  // Track record field layouts for variables: var name -> sorted field names
+  private varRecordFields: Map<string, string[]> = new Map();
   // Heap start (after string data segments)
   private heapStart: number = 0;
   // Function table entries for call_indirect (higher-order functions)
@@ -44,6 +46,31 @@ export class WatEmitter {
   private usesLLM: boolean = false;
   // Track all needed call_indirect type signatures
   private neededFnSigs: Set<number> = new Set();
+  // Whether the program uses any host functions (foreign "japl")
+  private usesHostFunctions: boolean = false;
+  // Set of host function names actually used in this program
+  private usedHostFunctions: Set<string> = new Set();
+
+  // Host function definitions: name -> { params (wasm types), result (wasm type or ''), multiResult }
+  private static HOST_FUNCTIONS: Record<string, { params: string[]; result: string }> = {
+    'tcp_listen':     { params: ['i32'], result: 'i64' },
+    'tcp_accept':     { params: ['i64'], result: 'i64' },
+    'tcp_connect':    { params: ['i32', 'i32', 'i32'], result: 'i64' },
+    'tcp_read':       { params: ['i64', 'i32', 'i32'], result: 'i32' },
+    'tcp_write':      { params: ['i64', 'i32', 'i32'], result: 'i32' },
+    'tcp_close':      { params: ['i64'], result: '' },
+    'time_now':       { params: [], result: 'i64' },
+    'time_sleep':     { params: ['i64'], result: '' },
+    'env_get':        { params: ['i32', 'i32'], result: 'i32 i32' },
+    'env_args_count': { params: [], result: 'i32' },
+    'crypto_sha256':  { params: ['i32', 'i32', 'i32'], result: '' },
+    'crypto_random':  { params: ['i32', 'i32'], result: '' },
+    'bytes_alloc':    { params: ['i32'], result: 'i32' },
+    'file_read':      { params: ['i32', 'i32'], result: 'i32 i32' },
+    'file_write':     { params: ['i32', 'i32', 'i32', 'i32'], result: 'i32' },
+    'file_exists':    { params: ['i32', 'i32'], result: 'i32' },
+    'print_bytes':    { params: ['i32', 'i32'], result: '' },
+  };
 
   emit(module: IR.IrModule): string {
     this.output = [];
@@ -61,6 +88,8 @@ export class WatEmitter {
     this.tableFunctionIndex.clear();
     this.usesProcesses = false;
     this.usesLLM = false;
+    this.usesHostFunctions = false;
+    this.usedHostFunctions = new Set();
     this.neededFnSigs = new Set();
 
     // Register type declarations (variants and record types)
@@ -91,6 +120,28 @@ export class WatEmitter {
     for (const [name, info] of this.variantRegistry) {
       this.userFunctions.add(name);
       this.userFunctionParamCounts.set(name, info.fieldCount);
+    }
+
+    // Register foreign "japl" declarations as host functions
+    for (const decl of module.decls) {
+      if (decl.kind === 'foreign' && decl.module === 'japl') {
+        const hostInfo = WatEmitter.HOST_FUNCTIONS[decl.name];
+        if (hostInfo) {
+          this.usedHostFunctions.add(decl.name);
+          this.usesHostFunctions = true;
+          // Register as a known function so calls resolve
+          this.userFunctions.add(decl.name);
+          this.userFunctionParamCounts.set(decl.name, decl.params.length);
+          // Set return type based on host function definition
+          // Note: the emitter always widens i32 host results to i64, so we
+          // report non-void host functions as returning i64 for consistency.
+          if (hostInfo.result === '') {
+            this.userFunctionReturnTypes.set(decl.name, 'void');
+          } else {
+            this.userFunctionReturnTypes.set(decl.name, 'i64');
+          }
+        }
+      }
     }
 
     // Pre-compute return types for all user functions
@@ -142,6 +193,11 @@ export class WatEmitter {
       this.emitLLMImport();
     }
 
+    // JAPL host function imports (foreign "japl")
+    if (this.usesHostFunctions) {
+      this.emitHostFunctionImports();
+    }
+
     // Memory
     this.line('(memory (export "memory") 1)');
     this.line('');
@@ -163,7 +219,7 @@ export class WatEmitter {
 
     // Heap pointer global (placed after all string data)
     this.heapStart = (this.memoryOffset + 7) & ~7; // align to 8 bytes
-    if (this.usesProcesses || this.usesLLM) {
+    if (this.usesProcesses || this.usesLLM || this.usesHostFunctions) {
       this.line(`(global $heap_ptr (export "heap_ptr") (mut i32) (i32.const ${this.heapStart}))`);
     } else {
       this.line(`(global $heap_ptr (mut i32) (i32.const ${this.heapStart}))`);
@@ -258,6 +314,25 @@ export class WatEmitter {
 
   private emitLLMImport(): void {
     this.line('(import "japl" "llm" (func $japl_llm (param i32 i32) (result i32 i32)))');
+    this.line('');
+  }
+
+  // ─── JAPL Host Function Imports ───
+
+  private emitHostFunctionImports(): void {
+    // Also need println import for host function programs
+    this.line(';; Host function imports (foreign "japl")');
+    for (const name of this.usedHostFunctions) {
+      const info = WatEmitter.HOST_FUNCTIONS[name];
+      if (!info) continue;
+      const paramStr = info.params.length > 0
+        ? ` (param ${info.params.join(' ')})`
+        : '';
+      const resultStr = info.result
+        ? ` (result ${info.result})`
+        : '';
+      this.line(`(import "japl" "${name}" (func $japl_${name}${paramStr}${resultStr}))`);
+    }
     this.line('');
   }
 
@@ -526,8 +601,10 @@ export class WatEmitter {
 
   private emitShowI64(): void {
     // $show_i64: converts i64 to decimal string in memory, returns i32 pointer
-    // Uses scratch space at memoryOffset for the result
-    // Strategy: extract digits in reverse, then reverse into final string
+    // Allocates from the heap for each call so multiple show() calls in one
+    // expression don't clobber each other's results.
+    // Strategy: extract digits in reverse into a scratch buffer, then copy into
+    // a heap-allocated length-prefixed string.
     this.line('(func $show_i64 (param $val i64) (result i32)');
     this.indent++;
     this.line('(local $buf_start i32)');
@@ -543,14 +620,15 @@ export class WatEmitter {
     this.line('(local.set $pos (i32.const 0))');
     this.line('(local.set $is_neg (i32.const 0))');
 
-    // Handle zero
+    // Handle zero: allocate from heap
     this.line('(if (i64.eqz (local.get $val))');
     this.line('  (then');
     this.indent++;
-    // Write "0" string: length=1, char='0'
-    this.line(`(i32.store (i32.const 280) (i32.const 1))`);
-    this.line(`(i32.store8 (i32.const 284) (i32.const 48))`);
-    this.line('(return (i32.const 280))');
+    // Allocate 5 bytes (4 for length + 1 for '0') from heap
+    this.line('(local.set $str_ptr (call $alloc (i32.const 5)))');
+    this.line('(i32.store (local.get $str_ptr) (i32.const 1))');
+    this.line('(i32.store8 (i32.add (local.get $str_ptr) (i32.const 4)) (i32.const 48))');
+    this.line('(return (local.get $str_ptr))');
     this.indent--;
     this.line('  )');
     this.line(')');
@@ -565,7 +643,7 @@ export class WatEmitter {
     this.line('  )');
     this.line(')');
 
-    // Extract digits (stored in reverse order at buf_start)
+    // Extract digits (stored in reverse order at buf_start scratch area)
     this.line('(local.set $tmp (local.get $val))');
     this.line('(block $done');
     this.line('  (loop $extract');
@@ -584,8 +662,8 @@ export class WatEmitter {
     // Calculate total length including sign
     this.line('(local.set $len (i32.add (local.get $pos) (local.get $is_neg)))');
 
-    // Build string at 288 (after the zero string)
-    this.line('(local.set $str_ptr (i32.const 288))');
+    // Allocate from heap: 4 bytes for length + len bytes for characters
+    this.line('(local.set $str_ptr (call $alloc (i32.add (i32.const 4) (local.get $len))))');
     // Write length
     this.line('(i32.store (local.get $str_ptr) (local.get $len))');
 
@@ -981,12 +1059,18 @@ export class WatEmitter {
       case 'let': {
         const lines: string[] = [];
         const valueType = this.inferExprType(expr.value);
-        lines.push(...this.emitExpr(expr.value));
+        // Emit value in void context if type is void, to avoid pushing unused values
+        lines.push(...this.emitExpr(expr.value, valueType === 'void'));
         if (valueType === 'void') {
           // Value is void (e.g., send, println) - nothing to store
           // Skip the local.set
         } else {
           lines.push(`local.set $${expr.name}`);
+        }
+        // Track record field layout for variable (used by field_access resolution)
+        if (expr.value.kind === 'record') {
+          const sorted = [...expr.value.fields].map(f => f[0]).sort();
+          this.varRecordFields.set(expr.name, sorted);
         }
         lines.push(...this.emitExpr(expr.body, isVoid));
         return lines;
@@ -1242,6 +1326,45 @@ export class WatEmitter {
         return lines;
       }
 
+      // Host function call (foreign "japl")
+      if (this.usedHostFunctions.has(fnName)) {
+        const hostInfo = WatEmitter.HOST_FUNCTIONS[fnName];
+        if (hostInfo) {
+          for (let i = 0; i < expr.args.length; i++) {
+            lines.push(...this.emitExpr(expr.args[i]));
+            // Convert i64 -> i32 if host function expects i32
+            const expectedType = hostInfo.params[i] ?? 'i64';
+            const actualType = this.inferExprType(expr.args[i]);
+            if (expectedType === 'i32' && actualType === 'i64') {
+              lines.push('i32.wrap_i64');
+            } else if (expectedType === 'i64' && actualType === 'i32') {
+              lines.push('i64.extend_i32_u');
+            }
+          }
+          lines.push(`call $japl_${fnName}`);
+          // Convert result type: if caller expects i64 and host returns i32, extend
+          const resultType = hostInfo.result;
+          if (isVoid && resultType !== '') {
+            // Drop the result if not used
+            if (resultType.includes(' ')) {
+              const parts = resultType.split(' ');
+              for (let i = 0; i < parts.length; i++) {
+                lines.push('drop');
+              }
+            } else {
+              lines.push('drop');
+            }
+          } else if (!isVoid && resultType === 'i32') {
+            // Widen i32 result to i64 for JAPL's Int type
+            lines.push('i64.extend_i32_u');
+          } else if (!isVoid && resultType === '') {
+            // Void host function but result expected — push 0
+            lines.push('i64.const 0');
+          }
+          return lines;
+        }
+      }
+
       // Check if this is a lambda reference
       const lambdaName = this.lambdaNameMap.get(fnName);
       const callTarget = lambdaName ?? fnName;
@@ -1304,6 +1427,11 @@ export class WatEmitter {
       // User function call (or lambda call)
       for (const arg of expr.args) {
         lines.push(...this.emitExpr(arg));
+        // All user function params are i64; widen i32 values (strings, bools) at call boundary
+        const argType = this.inferExprType(arg);
+        if (argType === 'i32') {
+          lines.push('i64.extend_i32_u');
+        }
       }
       lines.push(`call $${callTarget}`);
 
@@ -1478,6 +1606,13 @@ export class WatEmitter {
 
       const bodyLines = this.emitExpr(arm.body, isVoid);
       for (const l of bodyLines) lines.push('    ' + l);
+      // Widen i32 body to match i64 result type if needed
+      if (!isVoid && resultType === 'i64') {
+        const bodyType = this.inferExprType(arm.body);
+        if (bodyType === 'i32') {
+          lines.push('    i64.extend_i32_u');
+        }
+      }
 
       lines.push('  )');
       lines.push('  (else');
@@ -1599,9 +1734,15 @@ export class WatEmitter {
       const idx = sorted.indexOf(fieldName);
       if (idx >= 0) return idx;
     }
-    // If it's a var, try to look up in record type registry
-    // This is a best-effort approach; the field name itself determines position
-    // For known record types, look through all registered types
+    // If it's a var, try to look up the tracked record field layout
+    if (expr.kind === 'var') {
+      const varFields = this.varRecordFields.get(expr.name);
+      if (varFields) {
+        const idx = varFields.indexOf(fieldName);
+        if (idx >= 0) return idx;
+      }
+    }
+    // Try record type registry for declared record types
     for (const [, fields] of this.recordTypeRegistry) {
       const idx = fields.indexOf(fieldName);
       if (idx >= 0) return idx;

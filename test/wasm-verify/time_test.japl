@@ -1,0 +1,7 @@
+foreign "japl" fn time_now() -> Int
+
+fn main() {
+  let start = time_now()
+  println("Time: " <> show(start))
+  println("Time test passed")
+}

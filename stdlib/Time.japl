@@ -1,0 +1,5 @@
+foreign "japl" fn time_now() -> Int
+foreign "japl" fn time_sleep(ms: Int)
+
+pub fn now() -> Int { time_now() }
+pub fn sleep(ms: Int) { time_sleep(ms) }

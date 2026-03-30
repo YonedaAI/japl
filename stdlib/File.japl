@@ -1,0 +1,7 @@
+foreign "japl" fn file_read(path_ptr: Int, path_len: Int) -> Int
+foreign "japl" fn file_write(path_ptr: Int, path_len: Int, data_ptr: Int, data_len: Int) -> Int
+foreign "japl" fn file_exists(path_ptr: Int, path_len: Int) -> Int
+
+pub fn exists(path_ptr: Int, path_len: Int) -> Int {
+  file_exists(path_ptr, path_len)
+}

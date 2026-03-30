@@ -1,0 +1,23 @@
+type MapEntry = | Entry(Int, Int, MapEntry) | Empty
+
+pub fn map_new() -> MapEntry { Empty }
+
+pub fn map_put(m: MapEntry, key: Int, val: Int) -> MapEntry {
+  Entry(key, val, m)
+}
+
+pub fn map_get(m: MapEntry, key: Int) -> Int {
+  match m {
+    Empty => 0 - 1
+    Entry(k, v, rest) =>
+      if k == key { v }
+      else { map_get(rest, key) }
+  }
+}
+
+pub fn map_size(m: MapEntry) -> Int {
+  match m {
+    Empty => 0
+    Entry(_, _, rest) => 1 + map_size(rest)
+  }
+}

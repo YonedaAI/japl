@@ -1,0 +1,26 @@
+type MapEntry = | Entry(Int, Int, MapEntry) | Empty
+
+fn map_new() -> MapEntry { Empty }
+fn map_put(m: MapEntry, key: Int, val: Int) -> MapEntry { Entry(key, val, m) }
+fn map_get(m: MapEntry, key: Int) -> Int {
+  match m {
+    Empty => 0 - 1
+    Entry(k, v, rest) => if k == key { v } else { map_get(rest, key) }
+  }
+}
+fn map_size(m: MapEntry) -> Int {
+  match m {
+    Empty => 0
+    Entry(_, _, rest) => 1 + map_size(rest)
+  }
+}
+
+fn main() {
+  let m = map_new()
+  let m = map_put(m, 1, 100)
+  let m = map_put(m, 2, 200)
+  let m = map_put(m, 3, 300)
+  println("Size: " <> show(map_size(m)))
+  println("Get 2: " <> show(map_get(m, 2)))
+  println("Get 9: " <> show(map_get(m, 9)))
+}

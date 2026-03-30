@@ -1,0 +1,13 @@
+foreign "japl" fn crypto_sha256(data_ptr: Int, data_len: Int, out_ptr: Int)
+foreign "japl" fn crypto_random(buf_ptr: Int, buf_len: Int)
+foreign "japl" fn bytes_alloc(len: Int) -> Int
+
+pub fn sha256(data_ptr: Int, data_len: Int, out_ptr: Int) {
+  crypto_sha256(data_ptr, data_len, out_ptr)
+}
+
+pub fn random_bytes(buf_ptr: Int, buf_len: Int) {
+  crypto_random(buf_ptr, buf_len)
+}
+
+pub fn alloc(len: Int) -> Int { bytes_alloc(len) }

@@ -1,7 +1,14 @@
+use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc;
 
 pub type ProcessId = u64;
+
+pub enum Resource {
+    TcpListener(TcpListener),
+    TcpStream(TcpStream),
+}
 
 pub struct ProcessState {
     pub pid: ProcessId,
@@ -9,6 +16,8 @@ pub struct ProcessState {
     pub receiver: mpsc::Receiver<ProcessMessage>,
     pub scheduler_tx: mpsc::Sender<SchedulerCommand>,
     pub wasi: wasmtime_wasi::p1::WasiP1Ctx,
+    pub resources: HashMap<u64, Resource>,
+    pub next_resource_id: u64,
 }
 
 /// Messages delivered to a process
@@ -57,6 +66,28 @@ impl ProcessState {
             receiver,
             scheduler_tx,
             wasi,
+            resources: HashMap::new(),
+            next_resource_id: 0,
         }
+    }
+
+    pub fn register_resource(&mut self, r: Resource) -> u64 {
+        let id = self.next_resource_id;
+        self.next_resource_id += 1;
+        self.resources.insert(id, r);
+        id
+    }
+
+    #[allow(dead_code)]
+    pub fn get_resource(&self, id: u64) -> Option<&Resource> {
+        self.resources.get(&id)
+    }
+
+    pub fn get_resource_mut(&mut self, id: u64) -> Option<&mut Resource> {
+        self.resources.get_mut(&id)
+    }
+
+    pub fn close_resource(&mut self, id: u64) {
+        self.resources.remove(&id);
     }
 }

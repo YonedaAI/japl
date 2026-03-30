@@ -1077,7 +1077,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "rand",
  "serde_json",
+ "sha2",
  "ureq",
  "wasmtime",
  "wasmtime-wasi",

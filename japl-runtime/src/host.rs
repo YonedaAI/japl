@@ -1,8 +1,9 @@
+use std::io::{Read, Write};
 use std::sync::mpsc;
 use std::time::Duration;
 use wasmtime::*;
 
-use crate::process::{ProcessMessage, ProcessState, SchedulerCommand};
+use crate::process::{ProcessMessage, ProcessState, Resource, SchedulerCommand};
 
 /// Register JAPL host functions on the linker.
 pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Result<()> {
@@ -175,6 +176,306 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
                 }
             }
         }
+    })?;
+
+    // =========================================================================
+    // TCP Functions
+    // =========================================================================
+
+    // japl.tcp_listen(port: i32) -> i64 (listener_id, or -1 on error)
+    linker.func_wrap("japl", "tcp_listen", |mut caller: Caller<'_, ProcessState>, port: i32| -> i64 {
+        use std::net::TcpListener;
+        match TcpListener::bind(format!("0.0.0.0:{}", port)) {
+            Ok(listener) => {
+                listener.set_nonblocking(false).ok();
+                let id = caller.data_mut().register_resource(Resource::TcpListener(listener));
+                id as i64
+            }
+            Err(_) => -1,
+        }
+    })?;
+
+    // japl.tcp_accept(listener_id: i64) -> i64 (conn_id, or -1)
+    linker.func_wrap("japl", "tcp_accept", |mut caller: Caller<'_, ProcessState>, listener_id: i64| -> i64 {
+        // We need to extract the listener, accept, then put it back and register the stream.
+        // Since we can't hold a mutable ref to two things at once, remove-then-reinsert.
+        let listener = caller.data_mut().resources.remove(&(listener_id as u64));
+        match listener {
+            Some(Resource::TcpListener(l)) => {
+                let result = l.accept();
+                // Put listener back
+                caller.data_mut().resources.insert(listener_id as u64, Resource::TcpListener(l));
+                match result {
+                    Ok((stream, _addr)) => {
+                        let id = caller.data_mut().register_resource(Resource::TcpStream(stream));
+                        id as i64
+                    }
+                    Err(_) => -1,
+                }
+            }
+            Some(other) => {
+                // Not a listener, put it back
+                caller.data_mut().resources.insert(listener_id as u64, other);
+                -1
+            }
+            None => -1,
+        }
+    })?;
+
+    // japl.tcp_connect(host_ptr: i32, host_len: i32, port: i32) -> i64
+    linker.func_wrap("japl", "tcp_connect", |mut caller: Caller<'_, ProcessState>, host_ptr: i32, host_len: i32, port: i32| -> i64 {
+        let host = {
+            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = memory.data(&caller);
+            let start = host_ptr as usize;
+            let end = start + host_len as usize;
+            if end > data.len() {
+                return -1;
+            }
+            std::str::from_utf8(&data[start..end]).unwrap_or("").to_string()
+        };
+        match std::net::TcpStream::connect(format!("{}:{}", host, port)) {
+            Ok(stream) => {
+                let id = caller.data_mut().register_resource(Resource::TcpStream(stream));
+                id as i64
+            }
+            Err(_) => -1,
+        }
+    })?;
+
+    // japl.tcp_read(conn_id: i64, buf_ptr: i32, buf_len: i32) -> i32 (bytes_read, or -1)
+    linker.func_wrap("japl", "tcp_read", |mut caller: Caller<'_, ProcessState>, conn_id: i64, buf_ptr: i32, buf_len: i32| -> i32 {
+        // Remove stream to get mutable access without borrow conflicts
+        let stream = caller.data_mut().resources.remove(&(conn_id as u64));
+        match stream {
+            Some(Resource::TcpStream(mut s)) => {
+                let mut tmp = vec![0u8; buf_len as usize];
+                let result = match s.read(&mut tmp) {
+                    Ok(n) => {
+                        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+                        let mem = memory.data_mut(&mut caller);
+                        mem[buf_ptr as usize..buf_ptr as usize + n].copy_from_slice(&tmp[..n]);
+                        n as i32
+                    }
+                    Err(_) => -1,
+                };
+                // Put stream back
+                caller.data_mut().resources.insert(conn_id as u64, Resource::TcpStream(s));
+                result
+            }
+            Some(other) => {
+                caller.data_mut().resources.insert(conn_id as u64, other);
+                -1
+            }
+            None => -1,
+        }
+    })?;
+
+    // japl.tcp_write(conn_id: i64, buf_ptr: i32, buf_len: i32) -> i32 (bytes_written, or -1)
+    linker.func_wrap("japl", "tcp_write", |mut caller: Caller<'_, ProcessState>, conn_id: i64, buf_ptr: i32, buf_len: i32| -> i32 {
+        let bytes = {
+            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = memory.data(&caller);
+            let start = buf_ptr as usize;
+            let end = start + buf_len as usize;
+            if end > data.len() {
+                return -1;
+            }
+            data[start..end].to_vec()
+        };
+        let stream = caller.data_mut().resources.remove(&(conn_id as u64));
+        match stream {
+            Some(Resource::TcpStream(mut s)) => {
+                let result = match s.write(&bytes) {
+                    Ok(n) => n as i32,
+                    Err(_) => -1,
+                };
+                caller.data_mut().resources.insert(conn_id as u64, Resource::TcpStream(s));
+                result
+            }
+            Some(other) => {
+                caller.data_mut().resources.insert(conn_id as u64, other);
+                -1
+            }
+            None => -1,
+        }
+    })?;
+
+    // japl.tcp_close(resource_id: i64)
+    linker.func_wrap("japl", "tcp_close", |mut caller: Caller<'_, ProcessState>, id: i64| {
+        caller.data_mut().close_resource(id as u64);
+    })?;
+
+    // =========================================================================
+    // Time Functions
+    // =========================================================================
+
+    // japl.time_now() -> i64 (unix milliseconds)
+    linker.func_wrap("japl", "time_now", || -> i64 {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64
+    })?;
+
+    // japl.time_sleep(millis: i64)
+    linker.func_wrap("japl", "time_sleep", |millis: i64| {
+        std::thread::sleep(std::time::Duration::from_millis(millis as u64));
+    })?;
+
+    // =========================================================================
+    // Environment Functions
+    // =========================================================================
+
+    // japl.env_get(key_ptr: i32, key_len: i32) -> (i32, i32) (val_ptr, val_len)
+    linker.func_wrap("japl", "env_get", |mut caller: Caller<'_, ProcessState>, key_ptr: i32, key_len: i32| -> (i32, i32) {
+        let key = {
+            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = memory.data(&caller);
+            let start = key_ptr as usize;
+            let end = start + key_len as usize;
+            if end > data.len() {
+                return (0, 0);
+            }
+            std::str::from_utf8(&data[start..end]).unwrap_or("").to_string()
+        };
+
+        match std::env::var(&key) {
+            Ok(val) => {
+                let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+                let heap_ptr = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+                let ptr = heap_ptr.get(&mut caller).i32().unwrap() as usize;
+                let bytes = val.as_bytes();
+                let mem = memory.data_mut(&mut caller);
+                if ptr + bytes.len() > mem.len() {
+                    return (0, 0);
+                }
+                mem[ptr..ptr + bytes.len()].copy_from_slice(bytes);
+                let new_heap = ((ptr + bytes.len() + 7) & !7) as i32;
+                let _ = heap_ptr.set(&mut caller, Val::I32(new_heap));
+                (ptr as i32, bytes.len() as i32)
+            }
+            Err(_) => (0, 0),
+        }
+    })?;
+
+    // japl.env_args_count() -> i32
+    linker.func_wrap("japl", "env_args_count", || -> i32 {
+        std::env::args().count() as i32
+    })?;
+
+    // =========================================================================
+    // Crypto Functions
+    // =========================================================================
+
+    // japl.crypto_sha256(data_ptr: i32, data_len: i32, out_ptr: i32)
+    linker.func_wrap("japl", "crypto_sha256", |mut caller: Caller<'_, ProcessState>, data_ptr: i32, data_len: i32, out_ptr: i32| {
+        use sha2::{Sha256, Digest};
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let input = memory.data(&caller)[data_ptr as usize..(data_ptr + data_len) as usize].to_vec();
+        let hash = Sha256::digest(&input);
+        let mem = memory.data_mut(&mut caller);
+        mem[out_ptr as usize..out_ptr as usize + 32].copy_from_slice(&hash);
+    })?;
+
+    // japl.crypto_random(buf_ptr: i32, buf_len: i32)
+    linker.func_wrap("japl", "crypto_random", |mut caller: Caller<'_, ProcessState>, buf_ptr: i32, buf_len: i32| {
+        use rand::RngCore;
+        let mut rng = rand::thread_rng();
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let mem = memory.data_mut(&mut caller);
+        let buf = &mut mem[buf_ptr as usize..(buf_ptr + buf_len) as usize];
+        rng.fill_bytes(buf);
+    })?;
+
+    // =========================================================================
+    // File I/O Functions
+    // =========================================================================
+
+    // japl.file_read(path_ptr: i32, path_len: i32) -> (i32, i32) (data_ptr, data_len)
+    linker.func_wrap("japl", "file_read", |mut caller: Caller<'_, ProcessState>, path_ptr: i32, path_len: i32| -> (i32, i32) {
+        let path = {
+            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = memory.data(&caller);
+            let start = path_ptr as usize;
+            let end = start + path_len as usize;
+            if end > data.len() {
+                return (0, 0);
+            }
+            std::str::from_utf8(&data[start..end]).unwrap_or("").to_string()
+        };
+
+        match std::fs::read(&path) {
+            Ok(contents) => {
+                let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+                let heap_ptr = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+                let ptr = heap_ptr.get(&mut caller).i32().unwrap() as usize;
+                let mem = memory.data_mut(&mut caller);
+                if ptr + contents.len() > mem.len() {
+                    return (0, 0);
+                }
+                mem[ptr..ptr + contents.len()].copy_from_slice(&contents);
+                let new_heap = ((ptr + contents.len() + 7) & !7) as i32;
+                let _ = heap_ptr.set(&mut caller, Val::I32(new_heap));
+                (ptr as i32, contents.len() as i32)
+            }
+            Err(_) => (0, 0),
+        }
+    })?;
+
+    // japl.file_write(path_ptr: i32, path_len: i32, data_ptr: i32, data_len: i32) -> i32
+    linker.func_wrap("japl", "file_write", |mut caller: Caller<'_, ProcessState>, path_ptr: i32, path_len: i32, data_ptr: i32, data_len: i32| -> i32 {
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let data = memory.data(&caller);
+        let path_start = path_ptr as usize;
+        let path_end = path_start + path_len as usize;
+        let data_start = data_ptr as usize;
+        let data_end = data_start + data_len as usize;
+        if path_end > data.len() || data_end > data.len() {
+            return -1;
+        }
+        let path = std::str::from_utf8(&data[path_start..path_end]).unwrap_or("").to_string();
+        let contents = data[data_start..data_end].to_vec();
+
+        match std::fs::write(&path, &contents) {
+            Ok(_) => 0,
+            Err(_) => -1,
+        }
+    })?;
+
+    // japl.file_exists(path_ptr: i32, path_len: i32) -> i32 (0 or 1)
+    linker.func_wrap("japl", "file_exists", |mut caller: Caller<'_, ProcessState>, path_ptr: i32, path_len: i32| -> i32 {
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let data = memory.data(&caller);
+        let start = path_ptr as usize;
+        let end = start + path_len as usize;
+        if end > data.len() {
+            return 0;
+        }
+        let path = std::str::from_utf8(&data[start..end]).unwrap_or("");
+        if std::path::Path::new(path).exists() { 1 } else { 0 }
+    })?;
+
+    // =========================================================================
+    // Bytes Helper Functions
+    // =========================================================================
+
+    // japl.bytes_alloc(len: i32) -> i32 (pointer)
+    linker.func_wrap("japl", "bytes_alloc", |mut caller: Caller<'_, ProcessState>, len: i32| -> i32 {
+        let heap_ptr = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+        let ptr = heap_ptr.get(&mut caller).i32().unwrap();
+        let new_heap = ((ptr + len + 7) & !7) as i32;
+        let _ = heap_ptr.set(&mut caller, Val::I32(new_heap));
+        ptr
+    })?;
+
+    // japl.print_bytes(ptr: i32, len: i32)
+    linker.func_wrap("japl", "print_bytes", |mut caller: Caller<'_, ProcessState>, ptr: i32, len: i32| {
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let data = &memory.data(&caller)[ptr as usize..(ptr + len) as usize];
+        std::io::stdout().write_all(data).ok();
+        std::io::stdout().flush().ok();
     })?;
 
     Ok(())

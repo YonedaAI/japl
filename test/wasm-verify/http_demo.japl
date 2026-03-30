@@ -1,0 +1,88 @@
+// http_demo.japl — demonstrates HTTP routing patterns in pure JAPL
+// Showcases: variant types, pattern matching, if/else routing, string building
+
+type Method = | GET | POST | PUT | DELETE
+
+fn method_tag(m: Method) -> Int {
+  match m { GET => 0, POST => 1, PUT => 2, DELETE => 3 }
+}
+
+fn method_name(m: Method) -> String {
+  match m { GET => "GET", POST => "POST", PUT => "PUT", DELETE => "DELETE" }
+}
+
+// Path constants (Int-encoded; string equality not yet in codegen)
+// 1 = /hello, 2 = /health, 3 = /users, 0 = unknown
+
+fn path_name(p: Int) -> String {
+  if p == 1 { "/hello" }
+  else if p == 2 { "/health" }
+  else if p == 3 { "/users" }
+  else { "/unknown" }
+}
+
+fn status_text(code: Int) -> String {
+  if code == 200 { "200 OK" }
+  else if code == 201 { "201 Created" }
+  else if code == 404 { "404 Not Found" }
+  else if code == 400 { "400 Bad Request" }
+  else { show(code) }
+}
+
+// Router: returns status code
+fn route_status(method_t: Int, path: Int) -> Int {
+  if method_t == 0 {
+    if path == 1 { 200 }
+    else if path == 2 { 200 }
+    else if path == 3 { 200 }
+    else { 404 }
+  } else if method_t == 1 {
+    if path == 3 { 201 }
+    else { 404 }
+  } else { 404 }
+}
+
+// Router: returns response body
+fn route_body(method_t: Int, path: Int) -> String {
+  if method_t == 0 {
+    if path == 1 { "Hello from JAPL HTTP!" }
+    else if path == 2 { "ok" }
+    else if path == 3 { "[{\"name\":\"Alice\"},{\"name\":\"Bob\"}]" }
+    else { "Not Found" }
+  } else if method_t == 1 {
+    if path == 3 { "{\"id\":3,\"name\":\"Charlie\"}" }
+    else { "Not Found" }
+  } else { "Not Found" }
+}
+
+// Handle request: takes variant Method + int path (no String params)
+fn handle(m: Method, path: Int) {
+  let mt = method_tag(m)
+  let status = route_status(mt, path)
+  let body = route_body(mt, path)
+  println(method_name(m) <> " " <> path_name(path) <> " => " <> status_text(status))
+  println("  Body: " <> body)
+}
+
+fn main() {
+  println("=== JAPL HTTP Router Demo ===")
+  println("")
+
+  handle(GET, 1)
+  handle(GET, 2)
+  handle(GET, 3)
+  handle(POST, 3)
+  handle(DELETE, 99)
+
+  println("")
+
+  // Demonstrate HTTP response formatting inline
+  let status = 200
+  let body = "Hello from JAPL HTTP!"
+  let resp = "HTTP/1.1 " <> status_text(status) <> "\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n" <> body
+  println("-- Full HTTP Response --")
+  println(resp)
+
+  println("")
+  println("=== Done ===")
+}

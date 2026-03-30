@@ -1,0 +1,117 @@
+// Http.japl — HTTP server types and helpers for JAPL
+//
+// STATUS: Partial — types and routing logic defined.
+// BLOCKED ON:
+//   1. String function parameters (codegen emits i32 instead of i64)
+//   2. Record field access (always returns first field)
+//   3. String equality comparison
+//   4. TCP host functions (tcp_listen, tcp_accept, tcp_read, tcp_write, tcp_close)
+//
+// Once those are resolved, this module provides a complete HTTP server API.
+
+type Method = | GET | POST | PUT | DELETE
+
+type Request = {
+  method: Method,
+  path: String,
+  body: String,
+  headers: String
+}
+
+type Response = {
+  status: Int,
+  body: String,
+  content_type: String
+}
+
+type Route = {
+  method: Method,
+  path: String,
+  handler: fn(Request) -> Response
+}
+
+// --- Method utilities ---
+
+fn method_tag(m: Method) -> Int {
+  match m { GET => 0, POST => 1, PUT => 2, DELETE => 3 }
+}
+
+fn method_name(m: Method) -> String {
+  match m { GET => "GET", POST => "POST", PUT => "PUT", DELETE => "DELETE" }
+}
+
+fn method_eq(a: Method, b: Method) -> Int {
+  if method_tag(a) == method_tag(b) { 1 } else { 0 }
+}
+
+// --- Response helpers ---
+// These require String params to compile; currently blocked by codegen.
+// Uncomment once String param codegen is fixed:
+//
+// pub fn ok(body: String) -> Response {
+//   { status: 200, body: body, content_type: "text/plain" }
+// }
+//
+// pub fn json_ok(body: String) -> Response {
+//   { status: 200, body: body, content_type: "application/json" }
+// }
+//
+// pub fn created(body: String) -> Response {
+//   { status: 201, body: body, content_type: "application/json" }
+// }
+//
+// pub fn not_found() -> Response {
+//   { status: 404, body: "Not Found", content_type: "text/plain" }
+// }
+//
+// pub fn bad_request(msg: String) -> Response {
+//   { status: 400, body: msg, content_type: "text/plain" }
+// }
+
+// --- HTTP formatting ---
+// Blocked on String params. Target API:
+//
+// pub fn format_response(resp: Response) -> String {
+//   "HTTP/1.1 " <> show(resp.status) <> " OK\r\n" <>
+//   "Content-Type: " <> resp.content_type <> "\r\n" <>
+//   "Content-Length: " <> show(string_length(resp.body)) <> "\r\n" <>
+//   "Connection: close\r\n" <>
+//   "\r\n" <>
+//   resp.body
+// }
+
+// --- Status text helper (works today) ---
+
+fn status_text(code: Int) -> String {
+  if code == 200 { "200 OK" }
+  else if code == 201 { "201 Created" }
+  else if code == 404 { "404 Not Found" }
+  else if code == 400 { "400 Bad Request" }
+  else if code == 500 { "500 Internal Server Error" }
+  else { show(code) }
+}
+
+// --- TCP server loop (placeholder, requires host functions) ---
+//
+// pub fn serve(port: Int, routes: List(Route)) {
+//   let sock = tcp_listen(port)
+//   println("Listening on port " <> show(port))
+//   serve_loop(sock, routes)
+// }
+//
+// fn serve_loop(sock: Int, routes: List(Route)) {
+//   let client = tcp_accept(sock)
+//   let raw = tcp_read(client)
+//   let req = parse_request(raw)
+//   let resp = match_route(routes, req)
+//   tcp_write(client, format_response(resp))
+//   tcp_close(client)
+//   serve_loop(sock, routes)
+// }
+
+fn main() {
+  println("Http.japl — HTTP module loaded")
+  println("Method tags: GET=" <> show(method_tag(GET)) <> " POST=" <> show(method_tag(POST)))
+  println("Status: " <> status_text(200))
+  println("Status: " <> status_text(404))
+}
