@@ -1,0 +1,8 @@
+fn main() {
+  let name = "JAPL"
+  let version = 42
+  println("Hello from ${name}, version ${show(version)}!")
+  println("math: ${show(2 + 3)}")
+  let greeting = "hi"
+  println("${greeting} world")
+}

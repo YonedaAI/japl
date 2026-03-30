@@ -1,0 +1,27 @@
+type Pair = | MkPair(Int, Int)
+
+fn fib_pair(n: Int) -> Pair {
+  if n <= 0 { MkPair(0, 1) }
+  else {
+    let prev = fib_pair(n - 1)
+    match prev {
+      MkPair(a, b) => MkPair(b, a + b)
+    }
+  }
+}
+
+fn fib(n: Int) -> Int {
+  match fib_pair(n) {
+    MkPair(result, _) => result
+  }
+}
+
+fn main() {
+  println("Fibonacci sequence:")
+  println("fib(0) = " <> show(fib(0)))
+  println("fib(1) = " <> show(fib(1)))
+  println("fib(5) = " <> show(fib(5)))
+  println("fib(10) = " <> show(fib(10)))
+  println("fib(20) = " <> show(fib(20)))
+  println("fib(30) = " <> show(fib(30)))
+}

@@ -1,0 +1,27 @@
+type Json =
+  | JNull
+  | JBool(Bool)
+  | JInt(Int)
+  | JString(String)
+  | JArray(Json, Json, Json)
+
+fn to_string(j: Json) -> String {
+  match j {
+    JNull => "null"
+    JBool(b) => if b { "true" } else { "false" }
+    JInt(n) => show(n)
+    JString(s) => "\"" <> s <> "\""
+    JArray(a, b, c) => "[" <> to_string(a) <> ", " <> to_string(b) <> ", " <> to_string(c) <> "]"
+  }
+}
+
+fn main() {
+  let data = JArray(
+    JString("hello"),
+    JInt(42),
+    JBool(True)
+  )
+  println(to_string(data))
+  println(to_string(JNull))
+  println(to_string(JArray(JInt(1), JInt(2), JInt(3))))
+}

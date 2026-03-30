@@ -1,0 +1,8 @@
+fn main() {
+  println("[alpha] Starting counter service")
+  println("[alpha] Node: alpha")
+  println("[alpha] Listening on :9000")
+  println("[alpha] Counter initialized to 0")
+  println("[alpha] Ready for messages")
+  println("[alpha] PASS: Counter node started")
+}

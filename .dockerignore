@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+*.pdf
+papers/
+reviews/
+posts/
+docs/
+images/
+plans/
+apps/
+.vercel
+compiler/c/
+compiler/rust/
+compiler/japl/

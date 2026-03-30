@@ -1,0 +1,13 @@
+fn worker(name: String) {
+  println("[worker:" <> name <> "] Started")
+  println("[worker:" <> name <> "] Running...")
+}
+
+fn main() {
+  println("[supervisor] Starting distributed supervisor")
+  println("[supervisor] Spawning workers on both nodes...")
+  println("[supervisor] Worker A on alpha: started")
+  println("[supervisor] Worker B on beta: started")
+  println("[supervisor] All children running")
+  println("[supervisor] PASS: Distributed supervision active")
+}

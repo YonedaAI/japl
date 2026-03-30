@@ -143,6 +143,15 @@ export class TypeChecker {
     if (declaredEffects) {
       const err = this.effectChecker.checkPurity(declaredEffects, bodyEffects, decl.span);
       if (err) this.errors.push(err);
+    } else if (decl.returnType && !decl.effects && bodyEffects.effects.size > 0) {
+      // Function has return type annotation but no effect annotation → implicitly pure
+      // Flag if the body has effects (e.g. IO)
+      const effNames = [...bodyEffects.effects].map(e => e.toUpperCase()).join(', ');
+      this.errors.push(new TypeError(
+        `Function '${decl.name}' is declared pure (no effect annotation) but has effects: ${effNames}. Add an effect annotation like ![${effNames}]`,
+        decl.span,
+        ["Add an effect annotation or remove the effectful operations"],
+      ));
     }
 
     this.env.popScope();
@@ -456,7 +465,76 @@ export class TypeChecker {
       this.env.popScope();
     }
 
+    // Exhaustiveness check
+    this.checkExhaustiveness(expr, scrutType);
+
     return [resultType, effects];
+  }
+
+  private checkExhaustiveness(expr: Extract<AST.Expr, { kind: "match" }>, scrutType: Type): void {
+    const resolved = this.unifier.resolve(scrutType);
+
+    // Check for wildcard or variable patterns that cover everything
+    const hasWildcard = expr.arms.some(arm =>
+      arm.pattern.kind === 'pwildcard' || arm.pattern.kind === 'pvar'
+    );
+    if (hasWildcard) return; // Wildcard covers all cases
+
+    // For named types (user-defined sum types), check constructor coverage
+    if (resolved.kind === 'named') {
+      const typeDef = this.env.lookupType(resolved.name);
+      if (typeDef && typeDef.variants.length > 0) {
+        const coveredTags = new Set(
+          expr.arms
+            .map(arm => arm.pattern)
+            .filter((p): p is Extract<AST.Pattern, { kind: 'pconstructor' }> => p.kind === 'pconstructor')
+            .map(p => p.name)
+        );
+        const missing = typeDef.variants.filter(v => !coveredTags.has(v.name));
+        if (missing.length > 0) {
+          this.errors.push(new TypeError(
+            `Non-exhaustive pattern match: missing ${missing.map(v => v.name).join(', ')}`,
+            expr.span,
+          ));
+        }
+      }
+    }
+
+    // For built-in Option type
+    if (resolved.kind === 'option') {
+      const coveredTags = new Set(
+        expr.arms
+          .map(arm => arm.pattern)
+          .filter((p): p is Extract<AST.Pattern, { kind: 'pconstructor' }> => p.kind === 'pconstructor')
+          .map(p => p.name)
+      );
+      const optionVariants = ['Some', 'None'];
+      const missing = optionVariants.filter(v => !coveredTags.has(v));
+      if (missing.length > 0) {
+        this.errors.push(new TypeError(
+          `Non-exhaustive pattern match: missing ${missing.join(', ')}`,
+          expr.span,
+        ));
+      }
+    }
+
+    // For built-in Result type
+    if (resolved.kind === 'result') {
+      const coveredTags = new Set(
+        expr.arms
+          .map(arm => arm.pattern)
+          .filter((p): p is Extract<AST.Pattern, { kind: 'pconstructor' }> => p.kind === 'pconstructor')
+          .map(p => p.name)
+      );
+      const resultVariants = ['Ok', 'Err'];
+      const missing = resultVariants.filter(v => !coveredTags.has(v));
+      if (missing.length > 0) {
+        this.errors.push(new TypeError(
+          `Non-exhaustive pattern match: missing ${missing.join(', ')}`,
+          expr.span,
+        ));
+      }
+    }
   }
 
   private inferPattern(pat: AST.Pattern, scrutinee: Type): void {

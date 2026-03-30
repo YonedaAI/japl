@@ -125,8 +125,8 @@ describe("Codegen: end-to-end", () => {
                 }],
         };
         const out = emitter.emit(ir);
-        expect(out).toContain("spawn(() => worker())");
-        expect(out).toContain('import { spawn } from "@japl/runtime"');
+        expect(out).toContain("spawn(async () => worker)");
+        expect(out).toContain("function spawn(fn)");
     });
     // 14. String concat
     it("compiles string concat", () => {
@@ -235,7 +235,7 @@ describe("Codegen: end-to-end", () => {
         };
         const out = emitter.emit(ir);
         expect(out).toContain('send(pid, "hello")');
-        expect(out).toContain('import { send } from "@japl/runtime"');
+        expect(out).toContain("function send(pid, msg)");
     });
     // 28. Pipe with partial application
     it("compiles pipe with partial application", () => {
@@ -257,6 +257,26 @@ describe("Codegen: end-to-end", () => {
     it("uses strict inequality", () => {
         const out = compile(`fn neq(a, b) { a != b }`);
         expect(out).toContain("a !== b");
+    });
+    // 32. Hex literal (parser converts to decimal number)
+    it("emits hex literal as number", () => {
+        const out = compile(`fn main() { let x = 0xFF; x }`);
+        expect(out).toContain("255");
+    });
+    // 33. Binary literal (parser converts to decimal number)
+    it("emits binary literal as number", () => {
+        const out = compile(`fn main() { let x = 0b1010; x }`);
+        expect(out).toContain("10");
+    });
+    // 34. Scientific notation
+    it("emits scientific notation", () => {
+        const out = compile(`fn main() { let x = 1.5e10; x }`);
+        expect(out).toContain("15000000000");
+    });
+    // 35. Underscore-separated literal (parser strips underscores)
+    it("emits underscore-separated literal as number", () => {
+        const out = compile(`fn main() { let x = 1_000_000; x }`);
+        expect(out).toContain("1000000");
     });
 });
 //# sourceMappingURL=codegen.test.js.map

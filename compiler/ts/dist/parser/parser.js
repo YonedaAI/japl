@@ -1,4 +1,5 @@
 import { TokenKind, tokenKindName } from '../lexer/token.js';
+import { Lexer } from '../lexer/lexer.js';
 export class ParseError extends Error {
     message;
     span;
@@ -319,14 +320,28 @@ export class Parser {
     parseForeignDecl() {
         const startPos = this.pos;
         this.expect(TokenKind.Foreign);
+        // Optional module string: foreign "node:fs" fn ...
+        let module;
+        if (this.check(TokenKind.String)) {
+            const raw = this.advance().value;
+            // Strip surrounding quotes from the lexer token value
+            module = raw.replace(/^"|"$/g, "");
+        }
         this.expect(TokenKind.Fn);
         const name = this.expect(TokenKind.Ident).value;
+        // Optional JS name alias: foreign "node:fs" fn read_file as "readFileSync"(...)
+        let jsName;
+        if (this.check(TokenKind.As)) {
+            this.advance();
+            const raw = this.expect(TokenKind.String).value;
+            jsName = raw.replace(/^"|"$/g, "");
+        }
         this.expect(TokenKind.LParen);
         const params = this.parseParamList();
         this.expect(TokenKind.RParen);
         this.expect(TokenKind.Arrow);
         const returnType = this.parseTypeExpr();
-        return { kind: "foreign", name, params, returnType, span: this.spanFrom(startPos) };
+        return { kind: "foreign", module, name, jsName, params, returnType, span: this.spanFrom(startPos) };
     }
     // ─── Helper: function signature (for traits) ───
     parseFnSig() {
@@ -422,14 +437,18 @@ export class Parser {
         switch (tok.kind) {
             case TokenKind.Int: {
                 this.advance();
-                return { kind: "int", value: Number(tok.value), span: tok.span };
+                return { kind: "int", value: Number(tok.value.replace(/_/g, '')), span: tok.span };
             }
             case TokenKind.Float: {
                 this.advance();
-                return { kind: "float", value: Number(tok.value), span: tok.span };
+                return { kind: "float", value: Number(tok.value.replace(/_/g, '')), span: tok.span };
             }
             case TokenKind.String: {
                 this.advance();
+                // Check for string interpolation: "...${expr}..."
+                if (tok.value.includes('${')) {
+                    return this.desugarInterpolation(tok.value, tok.span);
+                }
                 return { kind: "string", value: tok.value, span: tok.span };
             }
             case TokenKind.True: {
@@ -471,12 +490,99 @@ export class Parser {
             case TokenKind.Receive: {
                 return this.parseReceiveExpr();
             }
+            case TokenKind.Spawn: {
+                // spawn(expr) → { kind: "spawn", expr }
+                this.advance(); // consume 'spawn'
+                this.expect(TokenKind.LParen);
+                const spawnExpr = this.parseExpr();
+                this.expect(TokenKind.RParen);
+                return { kind: "spawn", expr: spawnExpr, span: this.spanFrom(tok.span.start) };
+            }
+            case TokenKind.Send: {
+                // send(target, message) → { kind: "send", target, message }
+                this.advance(); // consume 'send'
+                this.expect(TokenKind.LParen);
+                const target = this.parseExpr();
+                this.expect(TokenKind.Comma);
+                const message = this.parseExpr();
+                this.expect(TokenKind.RParen);
+                return { kind: "send", target, message, span: this.spanFrom(tok.span.start) };
+            }
             case TokenKind.Return: {
                 return this.parseReturnExpr();
             }
             default:
                 throw this.error(`Unexpected token ${tokenKindName(tok.kind)} '${tok.value}'`);
         }
+    }
+    desugarInterpolation(raw, span) {
+        // raw is e.g. "hello ${name}, age ${show(version)}!"
+        // (includes surrounding quotes from lexer)
+        const inner = raw.slice(1, -1); // strip surrounding quotes
+        const parts = [];
+        let i = 0;
+        let textStart = 0;
+        while (i < inner.length) {
+            if (inner[i] === '\\') {
+                // skip escaped characters
+                i += 2;
+                continue;
+            }
+            if (inner[i] === '$' && i + 1 < inner.length && inner[i + 1] === '{') {
+                // Emit text before this interpolation
+                if (i > textStart) {
+                    const text = inner.slice(textStart, i);
+                    parts.push({ kind: "string", value: `"${text}"`, span });
+                }
+                // Find matching closing brace (handle nested braces)
+                let depth = 1;
+                let j = i + 2;
+                while (j < inner.length && depth > 0) {
+                    if (inner[j] === '{')
+                        depth++;
+                    else if (inner[j] === '}')
+                        depth--;
+                    if (depth > 0)
+                        j++;
+                }
+                // inner[i+2..j] is the expression source
+                const exprSource = inner.slice(i + 2, j);
+                // Parse the expression using a sub-parser
+                const subLexer = new Lexer(exprSource);
+                const subTokens = subLexer.tokenize();
+                const subParser = new Parser(subTokens);
+                const exprAst = subParser.parseExpr();
+                parts.push(exprAst);
+                i = j + 1; // skip past closing }
+                textStart = i;
+            }
+            else {
+                i++;
+            }
+        }
+        // Remaining text after last interpolation
+        if (textStart < inner.length) {
+            const text = inner.slice(textStart);
+            parts.push({ kind: "string", value: `"${text}"`, span });
+        }
+        if (parts.length === 0) {
+            return { kind: "string", value: '""', span };
+        }
+        if (parts.length === 1) {
+            return parts[0];
+        }
+        // Build left-associative concat chain
+        let result = parts[0];
+        for (let k = 1; k < parts.length; k++) {
+            result = {
+                kind: "binop",
+                op: "<>",
+                left: result,
+                right: parts[k],
+                span,
+            };
+        }
+        return result;
     }
     parseConstructorExpr() {
         const startPos = this.pos;
@@ -581,6 +687,10 @@ export class Parser {
         this.expect(TokenKind.LParen);
         const params = this.parseParamList();
         this.expect(TokenKind.RParen);
+        // Optional return type annotation: -> Type
+        if (this.match(TokenKind.Arrow)) {
+            this.parseTypeExpr(); // consume and discard for now (codegen doesn't use it)
+        }
         this.expect(TokenKind.LBrace);
         const body = this.parseBlockBody();
         return { kind: "lambda", params, body, span: this.spanFrom(startPos) };
@@ -724,11 +834,11 @@ export class Parser {
             }
             case TokenKind.Int: {
                 this.advance();
-                return { kind: "pliteral", value: { kind: "int", value: Number(tok.value), span: tok.span }, span: tok.span };
+                return { kind: "pliteral", value: { kind: "int", value: Number(tok.value.replace(/_/g, '')), span: tok.span }, span: tok.span };
             }
             case TokenKind.Float: {
                 this.advance();
-                return { kind: "pliteral", value: { kind: "float", value: Number(tok.value), span: tok.span }, span: tok.span };
+                return { kind: "pliteral", value: { kind: "float", value: Number(tok.value.replace(/_/g, '')), span: tok.span }, span: tok.span };
             }
             case TokenKind.String: {
                 this.advance();

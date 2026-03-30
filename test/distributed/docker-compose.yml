@@ -1,0 +1,38 @@
+networks:
+  net-alpha:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+  net-beta:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+  bridge:
+    driver: bridge
+
+services:
+  alpha:
+    build:
+      context: ../..
+      dockerfile: test/distributed/Dockerfile
+    container_name: japl-alpha
+    hostname: alpha
+    networks:
+      net-alpha:
+        ipv4_address: 172.28.0.2
+      bridge:
+    command: ["--node", "alpha", "--listen", ":9000", "--cookie", "yoneda", "programs/counter.japl"]
+
+  beta:
+    build:
+      context: ../..
+      dockerfile: test/distributed/Dockerfile
+    container_name: japl-beta
+    hostname: beta
+    networks:
+      net-beta:
+        ipv4_address: 172.29.0.2
+      bridge:
+    command: ["--node", "beta", "--connect", "alpha:9000", "--cookie", "yoneda", "programs/client.japl"]

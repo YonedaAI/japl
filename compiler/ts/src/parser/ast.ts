@@ -13,7 +13,7 @@ export type Decl =
   | { kind: "import"; path: string[]; items: string[]; span: Span }
   | { kind: "test"; name: string; body: Expr; span: Span }
   | { kind: "supervisor"; name: string; strategy: string; children: Expr[]; span: Span }
-  | { kind: "foreign"; name: string; params: Param[]; returnType: TypeExpr; span: Span };
+  | { kind: "foreign"; module?: string; name: string; jsName?: string; params: Param[]; returnType: TypeExpr; span: Span };
 
 export type Param = { name: string; type?: TypeExpr; span: Span };
 export type Variant = { name: string; fields: TypeExpr[]; span: Span };

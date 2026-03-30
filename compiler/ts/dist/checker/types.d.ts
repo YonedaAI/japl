@@ -3,6 +3,8 @@ export type Type = {
 } | {
     kind: "float";
 } | {
+    kind: "byte";
+} | {
     kind: "string";
 } | {
     kind: "bool";
@@ -59,6 +61,7 @@ export type TypeScheme = {
 };
 export declare const INT: Type;
 export declare const FLOAT: Type;
+export declare const BYTE: Type;
 export declare const STRING: Type;
 export declare const BOOL: Type;
 export declare const UNIT: Type;

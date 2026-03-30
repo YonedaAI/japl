@@ -1,61 +1,31 @@
-module Result
+type Result =
+  | Ok(Int)
+  | Err(String)
 
-type Result(a, e) =
-  | Ok(a)
-  | Err(e)
-
-pub fn map(r: Result(a, e), f: fn(a) -> b) -> Result(b, e) {
+pub fn map_result(r: Result, f: fn(Int) -> Int) -> Result {
   match r {
     Ok(x) => Ok(f(x))
     Err(e) => Err(e)
   }
 }
 
-pub fn flat_map(r: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e) {
-  match r {
-    Ok(x) => f(x)
-    Err(e) => Err(e)
-  }
-}
-
-pub fn map_err(r: Result(a, e), f: fn(e) -> e2) -> Result(a, e2) {
-  match r {
-    Ok(x) => Ok(x)
-    Err(e) => Err(f(e))
-  }
-}
-
-pub fn unwrap_or(r: Result(a, e), default: a) -> a {
+pub fn unwrap_or_result(r: Result, fallback: Int) -> Int {
   match r {
     Ok(x) => x
-    Err(_) => default
+    Err(_) => fallback
   }
 }
 
-pub fn is_ok(r: Result(a, e)) -> Bool {
+pub fn is_ok(r: Result) -> Bool {
   match r {
     Ok(_) => true
     Err(_) => false
   }
 }
 
-pub fn is_err(r: Result(a, e)) -> Bool {
+pub fn is_err(r: Result) -> Bool {
   match r {
     Ok(_) => false
     Err(_) => true
-  }
-}
-
-pub fn and_then(r: Result(a, e), f: fn(a) -> Result(b, e)) -> Result(b, e) {
-  match r {
-    Ok(x) => f(x)
-    Err(e) => Err(e)
-  }
-}
-
-pub fn or_else(r: Result(a, e), f: fn(e) -> Result(a, e2)) -> Result(a, e2) {
-  match r {
-    Ok(x) => Ok(x)
-    Err(e) => f(e)
   }
 }

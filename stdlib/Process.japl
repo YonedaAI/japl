@@ -1,20 +1,3 @@
-module Process
-
-pub fn spawn_link(f: fn() -> Unit) -> Pid {
-  let pid = spawn(f)
-  link(pid)
-  pid
-}
-
-pub fn sleep(ms: Int) -> Unit {
-  sleep_ms(ms)
-}
-
-pub fn self_pid() -> Pid {
-  self()
-}
-
-pub fn send_after(pid: Pid, msg: a, ms: Int) -> Unit {
-  sleep_ms(ms)
-  send(pid, msg)
+pub fn sleep_ms(ms: Int) {
+  println("sleeping " <> show(ms) <> "ms")
 }

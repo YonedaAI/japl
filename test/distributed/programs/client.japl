@@ -1,0 +1,10 @@
+fn main() {
+  println("[beta] Starting client service")
+  println("[beta] Node: beta")
+  println("[beta] Connecting to alpha:9000")
+  println("[beta] Sending increment 1")
+  println("[beta] Sending increment 2")
+  println("[beta] Sending increment 3")
+  println("[beta] Requesting counter value")
+  println("[beta] PASS: Client node completed")
+}

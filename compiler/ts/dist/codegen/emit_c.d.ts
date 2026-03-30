@@ -8,6 +8,7 @@ export declare class CEmitter {
     private nameCounter;
     private knownFunctions;
     private hasMain;
+    private foreignIncludes;
     emit(module: IR.IrModule): string;
     private emitIncludes;
     private emitForwardDecls;

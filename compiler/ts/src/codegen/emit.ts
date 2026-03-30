@@ -3,30 +3,156 @@
 
 import * as IR from '../ir/ir.js';
 
+export interface EmitModuleOptions {
+  /** Whether this is the entry file (calls main, etc.) */
+  isEntry: boolean;
+  /** Map from module name to relative .js path for import rewriting */
+  importRewrites: Map<string, string>;
+}
+
 export class TsEmitter {
   private output: string[] = [];
   private indent: number = 0;
   private usedRuntimeImports: Set<string> = new Set();
+  private matchCounter: number = 0;
+  private foreignImports: Map<string, { localName: string; jsName?: string }[]> = new Map();
+  private foreignBuiltinNames: Set<string> = new Set();
+  private importRewrites: Map<string, string> = new Map();
+  private isModuleBuild: boolean = false;
+  private currentTcoParams: string[] = [];
+  private locallyDefinedConstructors: Set<string> = new Set();
 
   emit(module: IR.IrModule): string {
     this.output = [];
     this.indent = 0;
     this.usedRuntimeImports.clear();
+    this.foreignImports.clear();
+    this.foreignBuiltinNames.clear();
+    this.locallyDefinedConstructors.clear();
 
-    // First pass: collect runtime imports needed
+    // Pre-pass: collect locally defined constructor names from type decls
+    for (const decl of module.decls) {
+      if (decl.kind === "type") {
+        for (const v of decl.variants) {
+          this.locallyDefinedConstructors.add(v.name);
+        }
+      }
+    }
+
+    // First pass: collect runtime imports and foreign imports
     for (const decl of module.decls) {
       this.scanImports(decl);
+      if (decl.kind === "foreign") {
+        if (decl.module) {
+          if (!this.foreignImports.has(decl.module)) {
+            this.foreignImports.set(decl.module, []);
+          }
+          this.foreignImports.get(decl.module)!.push({
+            localName: decl.name,
+            jsName: decl.jsName,
+          });
+        } else {
+          // No module = builtin, track name so we don't redefine it
+          this.foreignBuiltinNames.add(decl.name);
+        }
+      }
     }
 
     // Emit runtime imports
     this.emitRuntimeImports();
 
+    // Emit foreign module imports (grouped by module)
+    this.emitForeignImports();
+
+    // Emit builtin helpers
+    this.line("const println = (...args: any[]) => console.log(...args);");
+    this.line("const print = (...args: any[]) => process.stdout.write(args.join(''));");
+    this.line("const show = (v: any): string => typeof v === 'string' ? v : JSON.stringify(v);");
+    this.line("const int_to_string = (n: number): string => String(n);");
+    this.line("const string_length = (s: string): number => s.length;");
+    this.output.push("");
+
     // Emit declarations
+    let hasMain = false;
     for (const decl of module.decls) {
       this.emitDecl(decl);
       this.output.push("");
+      if (decl.kind === "fn" && decl.name === "main") hasMain = true;
     }
 
+    // Auto-call main() if defined
+    if (hasMain) {
+      this.line("main();");
+    }
+
+    return this.output.join("\n").trimEnd() + "\n";
+  }
+
+  emitModule(module: IR.IrModule, options: EmitModuleOptions): string {
+    this.output = [];
+    this.indent = 0;
+    this.usedRuntimeImports.clear();
+    this.foreignImports.clear();
+    this.foreignBuiltinNames.clear();
+    this.locallyDefinedConstructors.clear();
+    this.importRewrites = options.importRewrites;
+    this.isModuleBuild = true;
+
+    // Pre-pass: collect locally defined constructor names from type decls
+    for (const decl of module.decls) {
+      if (decl.kind === "type") {
+        for (const v of decl.variants) {
+          this.locallyDefinedConstructors.add(v.name);
+        }
+      }
+    }
+
+    // First pass: collect runtime imports and foreign imports
+    for (const decl of module.decls) {
+      this.scanImports(decl);
+      if (decl.kind === "foreign") {
+        if (decl.module) {
+          if (!this.foreignImports.has(decl.module)) {
+            this.foreignImports.set(decl.module, []);
+          }
+          this.foreignImports.get(decl.module)!.push({
+            localName: decl.name,
+            jsName: decl.jsName,
+          });
+        } else {
+          this.foreignBuiltinNames.add(decl.name);
+        }
+      }
+    }
+
+    // Emit runtime imports
+    this.emitRuntimeImports();
+
+    // Emit foreign module imports
+    this.emitForeignImports();
+
+    // Emit builtin helpers
+    this.line("const println = (...args: any[]) => console.log(...args);");
+    this.line("const print = (...args: any[]) => process.stdout.write(args.join(''));");
+    this.line("const show = (v: any): string => typeof v === 'string' ? v : JSON.stringify(v);");
+    this.line("const int_to_string = (n: number): string => String(n);");
+    this.line("const string_length = (s: string): number => s.length;");
+    this.output.push("");
+
+    // Emit declarations
+    let hasMain = false;
+    for (const decl of module.decls) {
+      this.emitDecl(decl);
+      this.output.push("");
+      if (decl.kind === "fn" && decl.name === "main") hasMain = true;
+    }
+
+    // Auto-call main() only in entry file
+    if (hasMain && options.isEntry) {
+      this.line("main();");
+    }
+
+    this.isModuleBuild = false;
     return this.output.join("\n").trimEnd() + "\n";
   }
 
@@ -41,6 +167,7 @@ export class TsEmitter {
       case "type":
       case "record_type":
       case "import":
+      case "foreign":
         break;
     }
   }
@@ -63,11 +190,13 @@ export class TsEmitter {
         }
         break;
       case "construct":
-        if (expr.tag === "Ok" || expr.tag === "Err") {
-          this.usedRuntimeImports.add(expr.tag);
-        }
-        if (expr.tag === "Some" || expr.tag === "None") {
-          this.usedRuntimeImports.add(expr.tag);
+        if (!this.locallyDefinedConstructors.has(expr.tag)) {
+          if (expr.tag === "Ok" || expr.tag === "Err") {
+            this.usedRuntimeImports.add(expr.tag);
+          }
+          if (expr.tag === "Some" || expr.tag === "None") {
+            this.usedRuntimeImports.add(expr.tag);
+          }
         }
         for (const arg of expr.args) {
           this.scanExprImports(arg);
@@ -126,6 +255,12 @@ export class TsEmitter {
       case "return":
         this.scanExprImports(expr.expr);
         break;
+      case "tail_loop":
+        this.scanExprImports(expr.body);
+        break;
+      case "tail_continue":
+        for (const arg of expr.args) this.scanExprImports(arg);
+        break;
       case "int":
       case "float":
       case "string":
@@ -139,16 +274,63 @@ export class TsEmitter {
   private emitRuntimeImports(): void {
     if (this.usedRuntimeImports.size === 0) return;
 
-    const concurrencyImports = ["spawn", "send", "receive", "self"]
-      .filter(i => this.usedRuntimeImports.has(i));
-    const typeImports = ["Ok", "Err", "Some", "None"]
-      .filter(i => this.usedRuntimeImports.has(i));
-
-    if (concurrencyImports.length > 0) {
-      this.line(`import { ${concurrencyImports.join(", ")} } from "@japl/runtime";`);
+    // Inline concurrency primitives instead of importing from @japl/runtime
+    // This makes generated code self-contained — no npm install needed
+    if (this.usedRuntimeImports.has("spawn") || this.usedRuntimeImports.has("send") || this.usedRuntimeImports.has("receive") || this.usedRuntimeImports.has("self")) {
+      this.line("// JAPL Process Runtime (inlined)");
+      this.line("const __japl_processes = new Map();");
+      this.line("let __japl_pid_counter = 0;");
+      this.line("let __japl_current_pid = 'main';");
     }
-    if (typeImports.length > 0) {
-      this.line(`import { ${typeImports.join(", ")} } from "@japl/runtime";`);
+    if (this.usedRuntimeImports.has("spawn")) {
+      this.line("function spawn(fn) {");
+      this.line("  const pid = 'pid-' + (++__japl_pid_counter);");
+      this.line("  const mailbox = [];");
+      this.line("  const waiters = [];");
+      this.line("  __japl_processes.set(pid, { mailbox, waiters });");
+      this.line("  Promise.resolve().then(async () => {");
+      this.line("    __japl_current_pid = pid;");
+      this.line("    await fn();");
+      this.line("  }).catch(e => console.error('[process ' + pid + ' crashed]', e));");
+      this.line("  return pid;");
+      this.line("}");
+    }
+    if (this.usedRuntimeImports.has("send")) {
+      this.line("function send(pid, msg) {");
+      this.line("  const proc = __japl_processes.get(pid);");
+      this.line("  if (!proc) { console.error('send: unknown pid', pid); return; }");
+      this.line("  if (proc.waiters.length > 0) { proc.waiters.shift()(msg); }");
+      this.line("  else { proc.mailbox.push(msg); }");
+      this.line("}");
+    }
+    if (this.usedRuntimeImports.has("receive")) {
+      this.line("function receive() {");
+      this.line("  const proc = __japl_processes.get(__japl_current_pid);");
+      this.line("  if (!proc) return Promise.reject(new Error('receive: no process context'));");
+      this.line("  if (proc.mailbox.length > 0) return Promise.resolve(proc.mailbox.shift());");
+      this.line("  return new Promise(resolve => proc.waiters.push(resolve));");
+      this.line("}");
+    }
+    if (this.usedRuntimeImports.has("self")) {
+      this.line("function self() { return __japl_current_pid; }");
+    }
+
+    // Type constructors (Ok, Err, Some, None) are already handled by type declarations
+    this.output.push("");
+  }
+
+  private emitForeignImports(): void {
+    if (this.foreignImports.size === 0) return;
+
+    for (const [module, items] of this.foreignImports) {
+      const importParts = items.map(item => {
+        if (item.jsName) {
+          // foreign "node:fs" fn read_file as "readFileSync" → import { readFileSync as read_file }
+          return `${item.jsName} as ${item.localName}`;
+        }
+        return item.localName;
+      });
+      this.line(`import { ${importParts.join(", ")} } from '${module}';`);
     }
     this.output.push("");
   }
@@ -170,12 +352,34 @@ export class TsEmitter {
       case "import":
         this.emitImportDecl(decl);
         break;
+      case "foreign":
+        // Foreign declarations are handled via emitForeignImports()
+        break;
     }
   }
 
   private emitFnDecl(decl: IR.IrDecl & { kind: "fn" }): void {
     const exportKw = decl.exported ? "export " : "";
     const params = decl.params.join(", ");
+
+    if (decl.body.kind === "tail_loop") {
+      // TCO: emit as while(true) loop
+      const tcoBody = decl.body;
+      const savedParams = this.currentTcoParams;
+      this.currentTcoParams = tcoBody.params;
+      this.line(`${exportKw}function ${decl.name}(${params}) {`);
+      this.indented(() => {
+        this.line("while (true) {");
+        this.indented(() => {
+          this.emitExprAsStatements(tcoBody.body, true);
+        });
+        this.line("}");
+      });
+      this.line("}");
+      this.currentTcoParams = savedParams;
+      return;
+    }
+
     const bodyStr = this.emitExprAsReturn(decl.body);
 
     if (this.isSimpleExpr(decl.body)) {
@@ -194,6 +398,8 @@ export class TsEmitter {
   }
 
   private emitTypeDecl(decl: IR.IrDecl & { kind: "type" }): void {
+    // In module build mode, export types and constructors
+    const exportKw = this.isModuleBuild ? "export " : "";
     // Emit discriminated union type
     const variants = decl.variants.map(v => {
       if (v.fields === 0) {
@@ -202,16 +408,16 @@ export class TsEmitter {
       const fields = Array.from({ length: v.fields }, (_, i) => `_${i}: unknown`).join("; ");
       return `{ _tag: "${v.name}"; ${fields} }`;
     });
-    this.line(`type ${decl.name} = ${variants.join(" | ")};`);
+    this.line(`${exportKw}type ${decl.name} = ${variants.join(" | ")};`);
 
     // Emit constructor functions
     for (const v of decl.variants) {
       if (v.fields === 0) {
-        this.line(`const ${v.name}: ${decl.name} = { _tag: "${v.name}" };`);
+        this.line(`${exportKw}const ${v.name}: ${decl.name} = { _tag: "${v.name}" };`);
       } else {
         const params = Array.from({ length: v.fields }, (_, i) => `_${i}: unknown`);
         const fields = Array.from({ length: v.fields }, (_, i) => `_${i}`);
-        this.line(`const ${v.name} = (${params.join(", ")}): ${decl.name} => ({ _tag: "${v.name}", ${fields.join(", ")} });`);
+        this.line(`${exportKw}const ${v.name} = (${params.join(", ")}): ${decl.name} => ({ _tag: "${v.name}", ${fields.join(", ")} });`);
       }
     }
   }
@@ -238,11 +444,19 @@ export class TsEmitter {
   }
 
   private emitImportDecl(decl: IR.IrDecl & { kind: "import" }): void {
-    const path = decl.path.join("/");
-    if (decl.items.length > 0) {
-      this.line(`import { ${decl.items.join(", ")} } from "${path}";`);
+    // In module build mode, rewrite import paths to relative .js paths
+    const moduleName = decl.path[0];
+    let importPath: string;
+    if (this.isModuleBuild && this.importRewrites.has(moduleName)) {
+      importPath = this.importRewrites.get(moduleName)!;
     } else {
-      this.line(`import "${path}";`);
+      importPath = decl.path.join("/");
+    }
+
+    if (decl.items.length > 0) {
+      this.line(`import { ${decl.items.join(", ")} } from "${importPath}";`);
+    } else {
+      this.line(`import "${importPath}";`);
     }
   }
 
@@ -311,8 +525,15 @@ export class TsEmitter {
       case "block":
         return this.emitBlockAsIife(expr);
 
-      case "spawn":
-        return `spawn(() => ${this.emitExpr(expr.fn)}())`;
+      case "spawn": {
+        const inner = this.emitExpr(expr.fn);
+        // spawn(fn() { body }) → the fn is lowered to a lambda, pass directly
+        // spawn(worker_fn) → wrap in () => worker_fn()
+        if (expr.fn.kind === "lambda") {
+          return `spawn(async ${inner})`;
+        }
+        return `spawn(async () => ${inner})`;
+      }
 
       case "send":
         return `send(${this.emitExpr(expr.pid)}, ${this.emitExpr(expr.msg)})`;
@@ -325,6 +546,13 @@ export class TsEmitter {
 
       case "return":
         return `return ${this.emitExpr(expr.expr)}`;
+
+      case "tail_loop":
+        return this.emitExpr(expr.body);
+
+      case "tail_continue":
+        // In expression context, emit as IIFE (shouldn't normally happen)
+        return "undefined /* tail_continue */";
     }
   }
 
@@ -364,6 +592,10 @@ export class TsEmitter {
   }
 
   private emitConstruct(expr: IR.IrExpr & { kind: "construct" }): string {
+    // Special-case Bool constructors → JavaScript true/false
+    if (expr.tag === "True" && expr.args.length === 0) return "true";
+    if (expr.tag === "False" && expr.args.length === 0) return "false";
+
     if (expr.args.length === 0) {
       return `{ _tag: "${expr.tag}" }`;
     }
@@ -503,6 +735,36 @@ export class TsEmitter {
         this.line(`return ${this.emitExpr(expr.expr)};`);
         break;
 
+      case "tail_continue": {
+        // Reassign parameters and continue the loop
+        const tcoParams = this.currentTcoParams;
+        if (tcoParams.length === expr.args.length) {
+          // Use temp variables to avoid order-dependent assignment issues
+          if (tcoParams.length === 1) {
+            this.line(`${tcoParams[0]} = ${this.emitExpr(expr.args[0])};`);
+          } else {
+            // Multi-param: use temps to handle cases like f(b, a) where params are [a, b]
+            for (let i = 0; i < tcoParams.length; i++) {
+              this.line(`const __tco_${tcoParams[i]} = ${this.emitExpr(expr.args[i])};`);
+            }
+            for (let i = 0; i < tcoParams.length; i++) {
+              this.line(`${tcoParams[i]} = __tco_${tcoParams[i]};`);
+            }
+          }
+          this.line("continue;");
+        }
+        break;
+      }
+
+      case "tail_loop":
+        // Should only appear at function level, handled by emitFnDecl
+        this.line("while (true) {");
+        this.indented(() => {
+          this.emitExprAsStatements(expr.body, isReturn);
+        });
+        this.line("}");
+        break;
+
       default:
         if (isReturn) {
           this.line(`return ${this.emitExpr(expr)};`);
@@ -529,7 +791,14 @@ export class TsEmitter {
     arms: IR.IrMatchArm[],
     isReturn: boolean,
   ): void {
-    const scrStr = this.emitExpr(scrutinee);
+    const scrExpr = this.emitExpr(scrutinee);
+
+    // Assign scrutinee to temp var to avoid double evaluation
+    const needsTemp = scrutinee.kind !== "var";
+    const scrStr = needsTemp ? `__match_${this.matchCounter++}` : scrExpr;
+    if (needsTemp) {
+      this.line(`const ${scrStr} = ${scrExpr};`);
+    }
 
     // Check if all arms are constructor patterns (tag-based switch)
     const allConstructors = arms.every(a => a.pattern.kind === "pconstructor");
@@ -672,6 +941,9 @@ export class TsEmitter {
         return expr.fields.every(([, v]) => this.isSimpleExpr(v));
       case "record_update":
         return this.isSimpleExpr(expr.record) && expr.updates.every(([, v]) => this.isSimpleExpr(v));
+      case "tail_loop":
+      case "tail_continue":
+        return false;
       default:
         return false;
     }

@@ -1,0 +1,19 @@
+type MyResult =
+  | MyOk(Int)
+  | MyErr(String)
+
+fn divide(a: Int, b: Int) -> MyResult {
+  if b == 0 { MyErr("division by zero") }
+  else { MyOk(a / b) }
+}
+
+fn main() {
+  match divide(10, 2) {
+    MyOk(n) => println("10/2 = " <> show(n))
+    MyErr(e) => println("Error: " <> e)
+  }
+  match divide(10, 0) {
+    MyOk(n) => println("10/0 = " <> show(n))
+    MyErr(e) => println("Error: " <> e)
+  }
+}

@@ -4,6 +4,7 @@ export const IO = { effects: new Set(["io"]), open: false };
 // ─── Singleton type constants ───
 export const INT = { kind: "int" };
 export const FLOAT = { kind: "float" };
+export const BYTE = { kind: "byte" };
 export const STRING = { kind: "string" };
 export const BOOL = { kind: "bool" };
 export const UNIT = { kind: "unit" };
@@ -24,6 +25,7 @@ export function typeToString(t) {
     switch (t.kind) {
         case "int": return "Int";
         case "float": return "Float";
+        case "byte": return "Byte";
         case "string": return "String";
         case "bool": return "Bool";
         case "unit": return "Unit";
@@ -94,6 +96,7 @@ function collectFreeVars(t, out) {
     switch (t.kind) {
         case "int":
         case "float":
+        case "byte":
         case "string":
         case "bool":
         case "unit":

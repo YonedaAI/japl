@@ -1,4 +1,4 @@
-import { INT, FLOAT, STRING, BOOL, UNIT, NEVER, PURE, freshVar, freeVars, typeToString, monotype, } from './types.js';
+import { INT, FLOAT, BYTE, STRING, BOOL, UNIT, NEVER, PURE, freshVar, freeVars, typeToString, monotype, } from './types.js';
 import { UnificationEngine } from './unify.js';
 import { TypeEnv } from './env.js';
 import { EffectChecker } from './effects.js';
@@ -112,6 +112,12 @@ export class TypeChecker {
             const err = this.effectChecker.checkPurity(declaredEffects, bodyEffects, decl.span);
             if (err)
                 this.errors.push(err);
+        }
+        else if (decl.returnType && !decl.effects && bodyEffects.effects.size > 0) {
+            // Function has return type annotation but no effect annotation → implicitly pure
+            // Flag if the body has effects (e.g. IO)
+            const effNames = [...bodyEffects.effects].map(e => e.toUpperCase()).join(', ');
+            this.errors.push(new TypeError(`Function '${decl.name}' is declared pure (no effect annotation) but has effects: ${effNames}. Add an effect annotation like ![${effNames}]`, decl.span, ["Add an effect annotation or remove the effectful operations"]));
         }
         this.env.popScope();
         // Bind in outer scope (generalize)
@@ -382,7 +388,54 @@ export class TypeChecker {
             effects = this.mergeEffects(effects, armEff);
             this.env.popScope();
         }
+        // Exhaustiveness check
+        this.checkExhaustiveness(expr, scrutType);
         return [resultType, effects];
+    }
+    checkExhaustiveness(expr, scrutType) {
+        const resolved = this.unifier.resolve(scrutType);
+        // Check for wildcard or variable patterns that cover everything
+        const hasWildcard = expr.arms.some(arm => arm.pattern.kind === 'pwildcard' || arm.pattern.kind === 'pvar');
+        if (hasWildcard)
+            return; // Wildcard covers all cases
+        // For named types (user-defined sum types), check constructor coverage
+        if (resolved.kind === 'named') {
+            const typeDef = this.env.lookupType(resolved.name);
+            if (typeDef && typeDef.variants.length > 0) {
+                const coveredTags = new Set(expr.arms
+                    .map(arm => arm.pattern)
+                    .filter((p) => p.kind === 'pconstructor')
+                    .map(p => p.name));
+                const missing = typeDef.variants.filter(v => !coveredTags.has(v.name));
+                if (missing.length > 0) {
+                    this.errors.push(new TypeError(`Non-exhaustive pattern match: missing ${missing.map(v => v.name).join(', ')}`, expr.span));
+                }
+            }
+        }
+        // For built-in Option type
+        if (resolved.kind === 'option') {
+            const coveredTags = new Set(expr.arms
+                .map(arm => arm.pattern)
+                .filter((p) => p.kind === 'pconstructor')
+                .map(p => p.name));
+            const optionVariants = ['Some', 'None'];
+            const missing = optionVariants.filter(v => !coveredTags.has(v));
+            if (missing.length > 0) {
+                this.errors.push(new TypeError(`Non-exhaustive pattern match: missing ${missing.join(', ')}`, expr.span));
+            }
+        }
+        // For built-in Result type
+        if (resolved.kind === 'result') {
+            const coveredTags = new Set(expr.arms
+                .map(arm => arm.pattern)
+                .filter((p) => p.kind === 'pconstructor')
+                .map(p => p.name));
+            const resultVariants = ['Ok', 'Err'];
+            const missing = resultVariants.filter(v => !coveredTags.has(v));
+            if (missing.length > 0) {
+                this.errors.push(new TypeError(`Non-exhaustive pattern match: missing ${missing.join(', ')}`, expr.span));
+            }
+        }
     }
     inferPattern(pat, scrutinee) {
         switch (pat.kind) {
@@ -555,8 +608,17 @@ export class TypeChecker {
             case "*":
             case "/":
             case "%": {
-                // Arithmetic: both operands must be same numeric type, result is same type
-                // Default to Int, but allow Float
+                // Arithmetic: both operands must be the same numeric type, result is same type
+                // No implicit promotion between Int, Float, and Byte
+                const resolvedLeft = this.unifier.resolve(leftType);
+                const resolvedRight = this.unifier.resolve(rightType);
+                const numericKinds = new Set(["int", "float", "byte"]);
+                const leftIsNumeric = numericKinds.has(resolvedLeft.kind);
+                const rightIsNumeric = numericKinds.has(resolvedRight.kind);
+                if (leftIsNumeric && rightIsNumeric && resolvedLeft.kind !== resolvedRight.kind) {
+                    this.errors.push(new TypeError(`Cannot mix ${typeToString(resolvedLeft)} and ${typeToString(resolvedRight)} in arithmetic. Use to_float(x) or to_int(x) for explicit conversion.`, expr.span));
+                    return [leftType, effects];
+                }
                 try {
                     this.unifier.unify(leftType, rightType, expr.span);
                 }
@@ -565,7 +627,7 @@ export class TypeChecker {
                         this.errors.push(e);
                 }
                 const resolved = this.unifier.resolve(leftType);
-                if (resolved.kind !== "int" && resolved.kind !== "float" && resolved.kind !== "var") {
+                if (!numericKinds.has(resolved.kind) && resolved.kind !== "var") {
                     this.errors.push(new TypeError(`Arithmetic operator '${expr.op}' requires numeric types but got ${typeToString(resolved)}`, expr.span));
                 }
                 return [leftType, effects];
@@ -630,7 +692,7 @@ export class TypeChecker {
         switch (expr.op) {
             case "-": {
                 const resolved = this.unifier.resolve(operandType);
-                if (resolved.kind !== "int" && resolved.kind !== "float" && resolved.kind !== "var") {
+                if (resolved.kind !== "int" && resolved.kind !== "float" && resolved.kind !== "byte" && resolved.kind !== "var") {
                     this.errors.push(new TypeError(`Unary '-' requires numeric type but got ${typeToString(resolved)}`, expr.span));
                 }
                 return [operandType, operandEff];
@@ -811,6 +873,7 @@ export class TypeChecker {
                 switch (te.name) {
                     case "Int": return INT;
                     case "Float": return FLOAT;
+                    case "Byte": return BYTE;
                     case "String": return STRING;
                     case "Bool": return BOOL;
                     case "Unit": return UNIT;

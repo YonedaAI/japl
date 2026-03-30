@@ -1,54 +1,31 @@
-module Option
-
-type Option(a) =
-  | Some(a)
+type Option =
+  | Some(Int)
   | None
 
-pub fn map(opt: Option(a), f: fn(a) -> b) -> Option(b) {
+pub fn map_option(opt: Option, f: fn(Int) -> Int) -> Option {
   match opt {
     Some(x) => Some(f(x))
     None => None
   }
 }
 
-pub fn flat_map(opt: Option(a), f: fn(a) -> Option(b)) -> Option(b) {
-  match opt {
-    Some(x) => f(x)
-    None => None
-  }
-}
-
-pub fn unwrap_or(opt: Option(a), default: a) -> a {
+pub fn unwrap_or(opt: Option, fallback: Int) -> Int {
   match opt {
     Some(x) => x
-    None => default
+    None => fallback
   }
 }
 
-pub fn is_some(opt: Option(a)) -> Bool {
+pub fn is_some(opt: Option) -> Bool {
   match opt {
     Some(_) => true
     None => false
   }
 }
 
-pub fn is_none(opt: Option(a)) -> Bool {
+pub fn is_none(opt: Option) -> Bool {
   match opt {
     Some(_) => false
     None => true
-  }
-}
-
-pub fn and_then(opt: Option(a), f: fn(a) -> Option(b)) -> Option(b) {
-  match opt {
-    Some(x) => f(x)
-    None => None
-  }
-}
-
-pub fn or_else(opt: Option(a), f: fn() -> Option(a)) -> Option(a) {
-  match opt {
-    Some(x) => Some(x)
-    None => f()
   }
 }

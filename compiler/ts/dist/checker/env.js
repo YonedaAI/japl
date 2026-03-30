@@ -1,3 +1,4 @@
+import { monotype, freshVar, PURE, INT, STRING, UNIT } from './types.js';
 export class TypeEnv {
     scopes = [new Map()];
     typeDefinitions = new Map();
@@ -100,6 +101,58 @@ export class TypeEnv {
             fieldTypes: [],
             resultType: { kind: "bool" },
         });
+        // IO builtins — println, print have IO effect
+        const ioEffect = { effects: new Set(["io"]), open: false };
+        const anyVar = freshVar();
+        this.bind("println", monotype({
+            kind: "fn",
+            params: [anyVar],
+            ret: UNIT,
+            effects: ioEffect,
+        }));
+        const anyVar2 = freshVar();
+        this.bind("print", monotype({
+            kind: "fn",
+            params: [anyVar2],
+            ret: UNIT,
+            effects: ioEffect,
+        }));
+        // Pure builtins — show, int_to_string, string_length
+        const showVar = freshVar();
+        this.bind("show", monotype({
+            kind: "fn",
+            params: [showVar],
+            ret: STRING,
+            effects: PURE,
+        }));
+        this.bind("int_to_string", monotype({
+            kind: "fn",
+            params: [INT],
+            ret: STRING,
+            effects: PURE,
+        }));
+        this.bind("string_length", monotype({
+            kind: "fn",
+            params: [STRING],
+            ret: INT,
+            effects: PURE,
+        }));
+        // Num trait — generic numeric operations
+        const typeVar = { kind: "var", id: -100 };
+        this.defineTrait('Num', {
+            name: 'Num',
+            typeParam: 'a',
+            supertraits: [],
+            methods: [
+                { name: 'add', params: [typeVar, typeVar], ret: typeVar },
+                { name: 'sub', params: [typeVar, typeVar], ret: typeVar },
+                { name: 'mul', params: [typeVar, typeVar], ret: typeVar },
+                { name: 'zero', params: [], ret: typeVar },
+            ],
+        });
+        // impl Num for Int (registered as trait impl)
+        // impl Num for Float (registered as trait impl)
+        // impl Num for Byte (registered as trait impl)
     }
 }
 //# sourceMappingURL=env.js.map

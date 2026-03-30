@@ -143,8 +143,8 @@ describe("Codegen: end-to-end", () => {
       }],
     };
     const out = emitter.emit(ir);
-    expect(out).toContain("spawn(() => worker())");
-    expect(out).toContain('import { spawn } from "@japl/runtime"');
+    expect(out).toContain("spawn(async () => worker)");
+    expect(out).toContain("function spawn(fn)");
   });
 
   // 14. String concat
@@ -267,7 +267,7 @@ describe("Codegen: end-to-end", () => {
     };
     const out = emitter.emit(ir);
     expect(out).toContain('send(pid, "hello")');
-    expect(out).toContain('import { send } from "@japl/runtime"');
+    expect(out).toContain("function send(pid, msg)");
   });
 
   // 28. Pipe with partial application

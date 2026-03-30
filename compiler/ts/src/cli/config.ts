@@ -1,6 +1,13 @@
 // ─── Simple TOML-subset parser for japl.toml ───
 // Supports [sections] and key = "value" pairs with string values.
 
+export interface NodeConfig {
+  name?: string;
+  listen?: string;
+  cookie?: string;
+  connect?: string[];
+}
+
 export interface JaplConfig {
   package?: {
     name?: string;
@@ -9,7 +16,8 @@ export interface JaplConfig {
   };
   dependencies?: Record<string, string>;
   'dev-dependencies'?: Record<string, string>;
-  [section: string]: Record<string, string> | undefined;
+  node?: NodeConfig;
+  [section: string]: Record<string, string> | NodeConfig | undefined;
 }
 
 export function parseConfig(source: string): JaplConfig {
@@ -37,23 +45,50 @@ export function parseConfig(source: string): JaplConfig {
       continue;
     }
 
-    // Key-value pair: key = "value" or key = value
+    // Key-value pair: key = "value" or key = value or key = ["a", "b"]
     const kvMatch = line.match(/^([a-zA-Z0-9_-]+)\s*=\s*(.+)$/);
     if (kvMatch) {
       const key = kvMatch[1];
-      let value = kvMatch[2].trim();
-
-      // Strip surrounding quotes
-      if ((value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
+      const rawValue = kvMatch[2].trim();
 
       if (currentSection) {
         if (!config[currentSection]) {
           config[currentSection] = {};
         }
-        (config[currentSection] as Record<string, string>)[key] = value;
+
+        // Handle array values: ["a", "b"]
+        if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
+          const inner = rawValue.slice(1, -1).trim();
+          const items = inner === '' ? [] : inner.split(',').map(item => {
+            const trimmed = item.trim();
+            if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+                (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+              return trimmed.slice(1, -1);
+            }
+            return trimmed;
+          });
+          if (currentSection === 'node') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (config[currentSection] as any)[key] = items;
+          } else {
+            // For non-node sections, store as comma-separated string
+            (config[currentSection] as Record<string, string>)[key] = items.join(',');
+          }
+        } else {
+          let value = rawValue;
+          // Strip surrounding quotes
+          if ((value.startsWith('"') && value.endsWith('"')) ||
+              (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+          }
+
+          if (currentSection === 'node') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (config[currentSection] as any)[key] = value;
+          } else {
+            (config[currentSection] as Record<string, string>)[key] = value;
+          }
+        }
       }
       continue;
     }

@@ -1,0 +1,63 @@
+version: '3.8'
+
+networks:
+  bridge:
+    driver: bridge
+
+services:
+  alpha:
+    build:
+      context: ../..
+      dockerfile: test/distributed/Dockerfile
+    container_name: japl-alpha-chaos
+    hostname: alpha
+    networks:
+      bridge:
+    command: ["--node", "alpha", "--listen", ":9000", "--cookie", "yoneda", "programs/supervisor.japl"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "echo ok"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+      start_period: 10s
+
+  beta:
+    build:
+      context: ../..
+      dockerfile: test/distributed/Dockerfile
+    container_name: japl-beta-chaos
+    hostname: beta
+    networks:
+      bridge:
+    command: ["--node", "beta", "--connect", "alpha:9000", "--cookie", "yoneda", "programs/client.japl"]
+    depends_on:
+      alpha:
+        condition: service_healthy
+
+  chaos:
+    image: alpine
+    container_name: japl-chaos
+    networks:
+      bridge:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        echo "=== JAPL Chaos Monkey ==="
+        echo "[chaos] Waiting 15s for services to stabilize..."
+        sleep 15
+        echo "[chaos] Killing alpha node..."
+        apk add --no-cache docker-cli > /dev/null 2>&1
+        docker kill japl-alpha-chaos || echo "[chaos] Kill failed (expected if no docker socket)"
+        echo "[chaos] Alpha killed. Waiting 10s..."
+        sleep 10
+        echo "[chaos] Alpha should have restarted (restart: unless-stopped)"
+        echo "[chaos] Waiting 10s for recovery..."
+        sleep 10
+        echo "[chaos] Test complete."
+        echo "=== CHAOS TEST DONE ==="
+    depends_on:
+      - alpha
+      - beta

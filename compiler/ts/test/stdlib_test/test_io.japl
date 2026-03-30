@@ -1,0 +1,8 @@
+import IO.{read_file, write_file, file_exists}
+
+fn main() {
+  write_file("/tmp/japl_test.txt", "hello from JAPL stdlib")
+  println(show(file_exists("/tmp/japl_test.txt")))
+  let content = read_file("/tmp/japl_test.txt")
+  println(content)
+}

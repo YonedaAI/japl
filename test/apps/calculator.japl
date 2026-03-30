@@ -1,0 +1,29 @@
+type Expr =
+  | Num(Int)
+  | Add(Expr, Expr)
+  | Mul(Expr, Expr)
+  | Neg(Expr)
+
+fn evaluate(expr: Expr) -> Int {
+  match expr {
+    Num(n) => n
+    Add(a, b) => evaluate(a) + evaluate(b)
+    Mul(a, b) => evaluate(a) * evaluate(b)
+    Neg(e) => 0 - evaluate(e)
+  }
+}
+
+fn show_expr(expr: Expr) -> String {
+  match expr {
+    Num(n) => show(n)
+    Add(a, b) => "(" <> show_expr(a) <> " + " <> show_expr(b) <> ")"
+    Mul(a, b) => "(" <> show_expr(a) <> " * " <> show_expr(b) <> ")"
+    Neg(e) => "(-" <> show_expr(e) <> ")"
+  }
+}
+
+fn main() {
+  let expr = Add(Mul(Num(3), Num(4)), Neg(Num(5)))
+  println("Expression: " <> show_expr(expr))
+  println("Result: " <> show(evaluate(expr)))
+}

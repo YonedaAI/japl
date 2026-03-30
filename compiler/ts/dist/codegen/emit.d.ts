@@ -1,12 +1,27 @@
 import * as IR from '../ir/ir.js';
+export interface EmitModuleOptions {
+    /** Whether this is the entry file (calls main, etc.) */
+    isEntry: boolean;
+    /** Map from module name to relative .js path for import rewriting */
+    importRewrites: Map<string, string>;
+}
 export declare class TsEmitter {
     private output;
     private indent;
     private usedRuntimeImports;
+    private matchCounter;
+    private foreignImports;
+    private foreignBuiltinNames;
+    private importRewrites;
+    private isModuleBuild;
+    private currentTcoParams;
+    private locallyDefinedConstructors;
     emit(module: IR.IrModule): string;
+    emitModule(module: IR.IrModule, options: EmitModuleOptions): string;
     private scanImports;
     private scanExprImports;
     private emitRuntimeImports;
+    private emitForeignImports;
     private emitDecl;
     private emitFnDecl;
     private emitTypeDecl;

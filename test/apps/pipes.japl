@@ -1,0 +1,11 @@
+fn double(x: Int) -> Int { x * 2 }
+fn add(x: Int, y: Int) -> Int { x + y }
+fn to_str(x: Int) -> String { show(x) }
+
+fn main() {
+  let result = 5 |> double |> double
+  println(show(result))
+
+  let msg = 42 |> to_str
+  println(msg)
+}

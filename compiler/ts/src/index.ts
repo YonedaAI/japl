@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { buildFile, buildToString } from './cli/build.js';
+import { buildFile, buildToString, buildMultiFileTo } from './cli/build.js';
 import { parseConfig } from './cli/config.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -20,13 +20,21 @@ function printHelp(): void {
 
 Usage:
   japl build <file.japl> [--target ts|c] [--out <dir>]
-  japl run <file.japl>              Build to TS and execute with node
+  japl run [options] <file.japl>    Build to TS and execute with node
   japl check <file.japl>            Type check only
   japl fmt <file.japl>              Format (stub)
   japl test [dir]                   Find and run test blocks
   japl new <name>                   Scaffold a project
+  japl cluster status               Show connected nodes
+  japl cluster nodes                List all known nodes
   japl version                      Print version
-  japl help                         Show this help`);
+  japl help                         Show this help
+
+Run options (distributed mode):
+  --node <name>          Node name for this instance
+  --listen <:port>       Address to listen on (e.g., :9000)
+  --connect <host:port>  Comma-separated peers to connect to
+  --cookie <secret>      Shared secret for cluster auth`);
 }
 
 function parseCliArgs(args: string[]): { flags: Record<string, string>; positional: string[] } {
@@ -79,36 +87,120 @@ function cmdBuild(args: string[]): void {
   buildFile(inputFile, outputPath, target);
 }
 
+export interface DistributedNodeConfig {
+  name: string;
+  listen?: string;
+  connect?: string[];
+  cookie: string;
+}
+
+export function parseRunArgs(args: string[]): { flags: Record<string, string>; positional: string[] } {
+  return parseCliArgs(args);
+}
+
+export function extractNodeConfig(flags: Record<string, string>): DistributedNodeConfig | null {
+  const nodeFlag = flags['node'];
+  if (!nodeFlag) return null;
+
+  return {
+    name: nodeFlag,
+    listen: flags['listen'],
+    connect: flags['connect'] ? flags['connect'].split(',') : undefined,
+    cookie: flags['cookie'] ?? 'japl-default-cookie',
+  };
+}
+
 function cmdRun(args: string[]): void {
-  const inputFile = args[0];
+  const { flags, positional } = parseCliArgs(args);
+  const inputFile = positional[0];
   if (!inputFile) {
     console.error('Error: missing input file');
-    console.error('Usage: japl run <file.japl>');
+    console.error('Usage: japl run [--node <name>] [--listen <:port>] [--connect <host:port>] [--cookie <secret>] <file.japl>');
     process.exit(1);
   }
 
+  const nodeConfig = extractNodeConfig(flags);
+
+  if (nodeConfig) {
+    // Distributed mode
+    console.log(`[japl] Starting node "${nodeConfig.name}"${nodeConfig.listen ? ` listening on ${nodeConfig.listen}` : ''}`);
+    // In a full implementation: import DistributedRuntime, start it, then run the program
+    // For now, build and execute with the node config available as env vars
+    runWithNode(inputFile, nodeConfig);
+  } else {
+    // Local mode (existing behavior)
+    const strict = 'strict' in flags;
+    runLocal(inputFile, strict);
+  }
+}
+
+function runLocal(inputFile: string, strict = false): void {
+  // In strict mode, run type checker first and reject violations
+  if (strict) {
+    const source = fs.readFileSync(inputFile, 'utf-8');
+    try {
+      buildToString(source, { target: 'ts', strict: true });
+    } catch (err: any) {
+      console.error(err.message);
+      process.exit(1);
+    }
+  }
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'japl-'));
-  const baseName = path.basename(inputFile, '.japl') + '.ts';
-  const tmpFile = path.join(tmpDir, baseName);
 
   try {
-    buildFile(inputFile, tmpFile);
+    // Use multi-file build which handles imports automatically
+    const entryTsFile = buildMultiFileTo(inputFile, tmpDir);
 
     // Try tsx first, then ts-node, then tsc+node
     try {
-      execFileSync('npx', ['tsx', tmpFile], { stdio: 'inherit' });
+      execFileSync('npx', ['tsx', entryTsFile], { stdio: 'inherit' });
     } catch {
       try {
-        execFileSync('npx', ['ts-node', '--esm', tmpFile], { stdio: 'inherit' });
+        execFileSync('npx', ['ts-node', '--esm', entryTsFile], { stdio: 'inherit' });
       } catch {
         // Fallback: compile with tsc, then run with node
-        const jsFile = tmpFile.replace(/\.ts$/, '.js');
+        const jsFile = entryTsFile.replace(/\.ts$/, '.js');
         execFileSync('npx', [
           'tsc', '--outDir', tmpDir, '--module', 'Node16',
           '--moduleResolution', 'Node16', '--target', 'ES2022',
-          '--esModuleInterop', 'true', tmpFile
+          '--esModuleInterop', 'true', entryTsFile
         ], { stdio: 'inherit' });
         execFileSync('node', [jsFile], { stdio: 'inherit' });
+      }
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function runWithNode(inputFile: string, nodeConfig: DistributedNodeConfig): void {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'japl-'));
+
+  try {
+    const entryTsFile = buildMultiFileTo(inputFile, tmpDir);
+
+    const env = {
+      ...process.env,
+      JAPL_NODE_NAME: nodeConfig.name,
+      JAPL_NODE_COOKIE: nodeConfig.cookie,
+      ...(nodeConfig.listen ? { JAPL_NODE_LISTEN: nodeConfig.listen } : {}),
+      ...(nodeConfig.connect ? { JAPL_NODE_CONNECT: nodeConfig.connect.join(',') } : {}),
+    };
+
+    try {
+      execFileSync('npx', ['tsx', entryTsFile], { stdio: 'inherit', env });
+    } catch {
+      try {
+        execFileSync('npx', ['ts-node', '--esm', entryTsFile], { stdio: 'inherit', env });
+      } catch {
+        const jsFile = entryTsFile.replace(/\.ts$/, '.js');
+        execFileSync('npx', [
+          'tsc', '--outDir', tmpDir, '--module', 'Node16',
+          '--moduleResolution', 'Node16', '--target', 'ES2022',
+          '--esModuleInterop', 'true', entryTsFile
+        ], { stdio: 'inherit' });
+        execFileSync('node', [jsFile], { stdio: 'inherit', env });
       }
     }
   } finally {
@@ -279,6 +371,24 @@ node_modules/
   console.log(`  ${name}/.gitignore`);
 }
 
+function cmdCluster(args: string[]): void {
+  const subcommand = args[0];
+  switch (subcommand) {
+    case 'status':
+      console.log('[japl] Cluster status:');
+      console.log('  No active connections (run with --node to start a distributed node)');
+      break;
+    case 'nodes':
+      console.log('[japl] Known nodes:');
+      console.log('  No known nodes (run with --node to start a distributed node)');
+      break;
+    default:
+      console.error(`Unknown cluster subcommand: ${subcommand ?? '(none)'}`);
+      console.error('Usage: japl cluster <status|nodes>');
+      process.exit(1);
+  }
+}
+
 // ─── Dispatch ───
 
 switch (command) {
@@ -299,6 +409,9 @@ switch (command) {
     break;
   case 'new':
     cmdNew(args.slice(1));
+    break;
+  case 'cluster':
+    cmdCluster(args.slice(1));
     break;
   case 'version':
   case '--version':

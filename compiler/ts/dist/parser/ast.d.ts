@@ -60,7 +60,9 @@ export type Decl = {
     span: Span;
 } | {
     kind: "foreign";
+    module?: string;
     name: string;
+    jsName?: string;
     params: Param[];
     returnType: TypeExpr;
     span: Span;

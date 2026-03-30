@@ -9,7 +9,88 @@ export function lowerModule(module) {
             decls.push(lowered);
         }
     }
-    return { decls };
+    // Apply tail call optimization pass
+    return applyTCO({ decls });
+}
+// ─── Tail Call Optimization ───
+function applyTCO(module) {
+    return {
+        decls: module.decls.map(decl => {
+            if (decl.kind === "fn" && hasTailCallTo(decl.body, decl.name)) {
+                return {
+                    ...decl,
+                    body: {
+                        kind: "tail_loop",
+                        params: decl.params,
+                        body: rewriteTailCalls(decl.body, decl.name, decl.params),
+                    },
+                };
+            }
+            return decl;
+        }),
+    };
+}
+/** Check if an expression contains a tail call to the named function */
+function hasTailCallTo(expr, fnName) {
+    switch (expr.kind) {
+        case "app":
+            return expr.fn.kind === "var" && expr.fn.name === fnName;
+        case "if":
+            return hasTailCallTo(expr.then, fnName) || hasTailCallTo(expr.else, fnName);
+        case "block": {
+            if (expr.exprs.length === 0)
+                return false;
+            return hasTailCallTo(expr.exprs[expr.exprs.length - 1], fnName);
+        }
+        case "let":
+            return hasTailCallTo(expr.body, fnName);
+        case "match":
+            return expr.arms.some(arm => hasTailCallTo(arm.body, fnName));
+        default:
+            return false;
+    }
+}
+/** Rewrite tail calls to tail_continue nodes */
+function rewriteTailCalls(expr, fnName, params) {
+    switch (expr.kind) {
+        case "app":
+            if (expr.fn.kind === "var" && expr.fn.name === fnName) {
+                return { kind: "tail_continue", args: expr.args };
+            }
+            return expr;
+        case "if":
+            return {
+                kind: "if",
+                cond: expr.cond,
+                then: rewriteTailCalls(expr.then, fnName, params),
+                else: rewriteTailCalls(expr.else, fnName, params),
+            };
+        case "block": {
+            if (expr.exprs.length === 0)
+                return expr;
+            const newExprs = [...expr.exprs];
+            newExprs[newExprs.length - 1] = rewriteTailCalls(newExprs[newExprs.length - 1], fnName, params);
+            return { kind: "block", exprs: newExprs };
+        }
+        case "let":
+            return {
+                kind: "let",
+                name: expr.name,
+                value: expr.value,
+                body: rewriteTailCalls(expr.body, fnName, params),
+            };
+        case "match":
+            return {
+                kind: "match",
+                scrutinee: expr.scrutinee,
+                arms: expr.arms.map(arm => ({
+                    ...arm,
+                    body: rewriteTailCalls(arm.body, fnName, params),
+                })),
+            };
+        default:
+            return expr;
+    }
 }
 function lowerDecl(decl) {
     switch (decl.kind) {
@@ -48,11 +129,18 @@ function lowerDecl(decl) {
                 path: decl.path,
                 items: decl.items,
             };
+        case "foreign":
+            return {
+                kind: "foreign",
+                module: decl.module,
+                name: decl.name,
+                jsName: decl.jsName,
+                params: decl.params.map(p => p.name),
+            };
         case "trait":
         case "impl":
         case "module":
         case "supervisor":
-        case "foreign":
             // These are either not yet supported in codegen or handled differently
             return null;
     }

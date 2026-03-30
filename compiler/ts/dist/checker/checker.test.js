@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TokenKind } from '../lexer/token.js';
+import { Lexer } from '../lexer/lexer.js';
 import { Parser } from '../parser/parser.js';
 import { TypeChecker } from './infer.js';
-import { resetVarCounter, typeToString, INT, STRING, BOOL, UNIT } from './types.js';
+import { resetVarCounter, typeToString, INT, FLOAT, BYTE, STRING, BOOL, UNIT } from './types.js';
 import { UnificationEngine } from './unify.js';
 import { TypeError } from './errors.js';
 import { EffectChecker } from './effects.js';
@@ -88,6 +89,15 @@ function checkErr(tokens) {
     const r = checkModule(tokens);
     expect(r.result.errors.length).toBeGreaterThan(0);
     return r;
+}
+function checkSource(source) {
+    const lexer = new Lexer(source);
+    const tokens = lexer.tokenize();
+    const parser = new Parser(tokens);
+    const mod = parser.parse();
+    const checker = new TypeChecker();
+    const result = checker.checkModule(mod);
+    return { checker, result };
 }
 // ─── Tests ───
 describe("TypeChecker", () => {
@@ -569,6 +579,8 @@ describe("Type pretty printing", () => {
     // 51. typeToString
     it("pretty prints types correctly", () => {
         expect(typeToString(INT)).toBe("Int");
+        expect(typeToString(FLOAT)).toBe("Float");
+        expect(typeToString(BYTE)).toBe("Byte");
         expect(typeToString(STRING)).toBe("String");
         expect(typeToString(BOOL)).toBe("Bool");
         expect(typeToString(UNIT)).toBe("Unit");
@@ -581,6 +593,55 @@ describe("Type pretty printing", () => {
             ret: INT,
             effects: { effects: new Set(), open: false },
         })).toBe("fn(Int, Int) -> Int");
+    });
+});
+// ─── Gap 2: No implicit Int→Float promotion ───
+describe("Strict numeric types (no implicit promotion)", () => {
+    beforeEach(() => {
+        resetVarCounter();
+    });
+    it("rejects Int + Float (no implicit promotion)", () => {
+        const r = checkSource('fn f(x: Int, y: Float) -> Float { x + y }');
+        expect(r.result.errors.length).toBeGreaterThan(0);
+        expect(r.result.errors[0].message).toContain('Cannot mix');
+    });
+    it("allows Int + Int", () => {
+        const r = checkSource('fn f(x: Int, y: Int) -> Int { x + y }');
+        expect(r.result.errors).toHaveLength(0);
+    });
+    it("allows Float + Float", () => {
+        const r = checkSource('fn f(x: Float, y: Float) -> Float { x + y }');
+        expect(r.result.errors).toHaveLength(0);
+    });
+    it("rejects Float + Int (no implicit promotion)", () => {
+        const r = checkSource('fn f(x: Float, y: Int) -> Float { x + y }');
+        expect(r.result.errors.length).toBeGreaterThan(0);
+        expect(r.result.errors[0].message).toContain('Cannot mix');
+    });
+});
+// ─── Gap 4: Byte type ───
+describe("Byte type", () => {
+    beforeEach(() => {
+        resetVarCounter();
+    });
+    it("type checks Byte arithmetic", () => {
+        const r = checkSource('fn f(x: Byte, y: Byte) -> Byte { x + y }');
+        expect(r.result.errors).toHaveLength(0);
+    });
+    it("rejects Byte + Int", () => {
+        const r = checkSource('fn f(x: Byte, y: Int) -> Int { x + y }');
+        expect(r.result.errors.length).toBeGreaterThan(0);
+        expect(r.result.errors[0].message).toContain('Cannot mix');
+    });
+    it("rejects Int + Byte", () => {
+        const r = checkSource('fn f(x: Int, y: Byte) -> Int { x + y }');
+        expect(r.result.errors.length).toBeGreaterThan(0);
+        expect(r.result.errors[0].message).toContain('Cannot mix');
+    });
+    it("rejects Byte + Float", () => {
+        const r = checkSource('fn f(x: Byte, y: Float) -> Float { x + y }');
+        expect(r.result.errors.length).toBeGreaterThan(0);
+        expect(r.result.errors[0].message).toContain('Cannot mix');
     });
 });
 //# sourceMappingURL=checker.test.js.map

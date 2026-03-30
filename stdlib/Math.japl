@@ -1,0 +1,29 @@
+pub fn abs(x: Int) -> Int {
+  if x < 0 { 0 - x } else { x }
+}
+
+pub fn max(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+pub fn min(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+pub fn clamp(x: Int, low: Int, high: Int) -> Int {
+  max(low, min(x, high))
+}
+
+pub fn pow(base: Int, exp: Int) -> Int {
+  if exp <= 0 { 1 }
+  else { base * pow(base, exp - 1) }
+}
+
+pub fn gcd(a: Int, b: Int) -> Int {
+  if b == 0 { a }
+  else { gcd(b, a % b) }
+}
+
+pub fn lcm(a: Int, b: Int) -> Int {
+  a / gcd(a, b) * b
+}

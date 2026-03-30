@@ -31,6 +31,7 @@ export declare class TypeChecker {
     private inferLambda;
     private inferLet;
     private inferMatch;
+    private checkExhaustiveness;
     private inferPattern;
     private inferIf;
     private inferPipe;

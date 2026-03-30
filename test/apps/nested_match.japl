@@ -1,0 +1,26 @@
+type Tree =
+  | Leaf(Int)
+  | Branch(Tree, Tree)
+
+fn sum_tree(t: Tree) -> Int {
+  match t {
+    Leaf(n) => n
+    Branch(left, right) => sum_tree(left) + sum_tree(right)
+  }
+}
+
+fn depth(t: Tree) -> Int {
+  match t {
+    Leaf(_) => 1
+    Branch(left, right) =>
+      let ld = depth(left)
+      let rd = depth(right)
+      if ld > rd { ld + 1 } else { rd + 1 }
+  }
+}
+
+fn main() {
+  let tree = Branch(Branch(Leaf(1), Leaf(2)), Branch(Leaf(3), Leaf(4)))
+  println("Sum: " <> show(sum_tree(tree)))
+  println("Depth: " <> show(depth(tree)))
+}

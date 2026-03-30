@@ -1,0 +1,21 @@
+type Msg =
+  | Inc
+  | Get
+
+fn counter(n: Int) {
+  println("Counter value: " <> show(n))
+  receive {
+    Inc => counter(n + 1)
+    Get => println("Final: " <> show(n))
+  }
+}
+
+fn main() {
+  println("Starting concurrent counter...")
+  let pid = spawn(fn() { counter(0) })
+  send(pid, Inc)
+  send(pid, Inc)
+  send(pid, Inc)
+  send(pid, Get)
+  println("Messages sent.")
+}

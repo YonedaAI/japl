@@ -1,0 +1,12 @@
+import Result.{Ok, Err, map_result, unwrap_or_result, is_ok}
+
+fn double(x: Int) -> Int { x * 2 }
+
+fn main() {
+  let a = Ok(21)
+  let b = Err("oops")
+  println(show(unwrap_or_result(map_result(a, double), 0)))
+  println(show(unwrap_or_result(b, 99)))
+  println(show(is_ok(a)))
+  println(show(is_ok(b)))
+}

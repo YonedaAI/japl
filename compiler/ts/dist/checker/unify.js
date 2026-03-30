@@ -11,6 +11,7 @@ export class UnificationEngine {
             switch (ra.kind) {
                 case "int":
                 case "float":
+                case "byte":
                 case "string":
                 case "bool":
                 case "unit":
@@ -135,6 +136,7 @@ export class UnificationEngine {
         switch (resolved.kind) {
             case "int":
             case "float":
+            case "byte":
             case "string":
             case "bool":
             case "unit":

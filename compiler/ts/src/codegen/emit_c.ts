@@ -21,6 +21,7 @@ export class CEmitter {
   private nameCounter: number = 0;
   private knownFunctions: Set<string> = new Set();  // top-level fn names
   private hasMain: boolean = false;
+  private foreignIncludes: Set<string> = new Set();
 
   emit(module: IR.IrModule): string {
     this.output = [];
@@ -31,14 +32,21 @@ export class CEmitter {
     this.nameCounter = 0;
     this.knownFunctions = new Set();
     this.hasMain = false;
+    this.foreignIncludes = new Set();
 
-    // First pass: collect known function names
+    // First pass: collect known function names and foreign includes
     for (const decl of module.decls) {
       if (decl.kind === 'fn') {
         this.knownFunctions.add(decl.name);
         if (decl.name === 'main') {
           this.hasMain = true;
         }
+      }
+      if (decl.kind === 'foreign' && decl.module) {
+        // For C backend, module is a header file (e.g., "stdio.h")
+        this.foreignIncludes.add(decl.module);
+        // Register the function name as known so it can be called
+        this.knownFunctions.add(decl.name);
       }
     }
 
@@ -95,6 +103,15 @@ export class CEmitter {
     this.line('#include <stdio.h>');
     this.line('#include <stdlib.h>');
     this.line('#include <string.h>');
+    for (const header of this.foreignIncludes) {
+      // If the module looks like a system header (e.g., "math.h"), use angle brackets
+      // Otherwise use quotes
+      if (header.endsWith('.h')) {
+        this.line(`#include <${header}>`);
+      } else {
+        this.line(`/* foreign module: ${header} */`);
+      }
+    }
   }
 
   private emitForwardDecls(): void {
@@ -123,6 +140,10 @@ export class CEmitter {
       case 'import':
         // Imports are resolved at link time in C
         this.line(`/* import ${decl.path.join('/')} */`);
+        break;
+      case 'foreign':
+        // Foreign declarations are handled via includes
+        this.line(`/* foreign: ${decl.module ? decl.module + '::' : ''}${decl.name} */`);
         break;
     }
   }
@@ -230,6 +251,12 @@ export class CEmitter {
 
       case 'return':
         return this.emitExpr(expr.expr);
+
+      case 'tail_loop':
+        return this.emitExpr(expr.body);
+
+      case 'tail_continue':
+        return 'japl_unit() /* tail_continue */';
     }
   }
 

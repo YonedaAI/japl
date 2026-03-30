@@ -1,5 +1,3 @@
-module String
-
 pub fn length(s: String) -> Int {
   string_length(s)
 }
@@ -9,7 +7,7 @@ pub fn concat(a: String, b: String) -> String {
 }
 
 pub fn is_empty(s: String) -> Bool {
-  length(s) == 0
+  string_length(s) == 0
 }
 
 pub fn repeat(s: String, n: Int) -> String {
@@ -17,14 +15,6 @@ pub fn repeat(s: String, n: Int) -> String {
   else { s <> repeat(s, n - 1) }
 }
 
-pub fn contains(haystack: String, needle: String) -> Bool {
-  string_contains(haystack, needle)
-}
-
-pub fn starts_with(s: String, prefix: String) -> Bool {
-  string_starts_with(s, prefix)
-}
-
-pub fn trim(s: String) -> String {
-  string_trim(s)
+pub fn join(sep: String, a: String, b: String) -> String {
+  a <> sep <> b
 }

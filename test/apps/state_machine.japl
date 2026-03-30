@@ -1,0 +1,44 @@
+type Light =
+  | Red
+  | Yellow
+  | Green
+
+type Action =
+  | Next
+  | Emergency
+
+fn transition(light: Light, action: Action) -> Light {
+  match action {
+    Emergency => Red
+    Next => match light {
+      Red => Green
+      Green => Yellow
+      Yellow => Red
+    }
+  }
+}
+
+fn light_name(light: Light) -> String {
+  match light {
+    Red => "RED"
+    Yellow => "YELLOW"
+    Green => "GREEN"
+  }
+}
+
+fn run_sequence(light: Light, steps: Int) -> Light {
+  if steps <= 0 { light }
+  else {
+    println("  " <> light_name(light))
+    run_sequence(transition(light, Next), steps - 1)
+  }
+}
+
+fn main() {
+  println("Traffic light sequence:")
+  let final_state = run_sequence(Red, 7)
+  println("Final state: " <> light_name(final_state))
+  println("Emergency from Green:")
+  let emergency = transition(Green, Emergency)
+  println("  " <> light_name(emergency))
+}

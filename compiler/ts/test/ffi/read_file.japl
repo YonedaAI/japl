@@ -1,0 +1,6 @@
+foreign "node:fs" fn readFileSync(path: String, encoding: String) -> String
+
+fn main() {
+  let content = readFileSync("test/ffi/hello.txt", "utf-8")
+  println(content)
+}

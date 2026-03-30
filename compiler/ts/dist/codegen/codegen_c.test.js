@@ -297,5 +297,25 @@ describe('C Codegen: end-to-end', () => {
         const out3 = compile(`fn modulo(a, b) { a % b }`);
         expect(out3).toContain('japl_mod(a, b)');
     });
+    // 32. Hex literal emits as japl_int with decimal value
+    it('emits hex literal as japl_int', () => {
+        const out = compile(`fn main() { let x = 0xFF; x }`);
+        expect(out).toContain('japl_int(255)');
+    });
+    // 33. Binary literal emits as japl_int with decimal value
+    it('emits binary literal as japl_int', () => {
+        const out = compile(`fn main() { let x = 0b1010; x }`);
+        expect(out).toContain('japl_int(10)');
+    });
+    // 34. Scientific notation emits as japl_float
+    it('emits scientific notation as japl_float', () => {
+        const out = compile(`fn main() { let x = 1.5e10; x }`);
+        expect(out).toContain('japl_float(15000000000)');
+    });
+    // 35. Underscore-separated literal emits as japl_int
+    it('emits underscore-separated literal as japl_int', () => {
+        const out = compile(`fn main() { let x = 1_000_000; x }`);
+        expect(out).toContain('japl_int(1000000)');
+    });
 });
 //# sourceMappingURL=codegen_c.test.js.map

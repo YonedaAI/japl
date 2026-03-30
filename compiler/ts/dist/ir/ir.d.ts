@@ -23,6 +23,12 @@ export type IrDecl = {
     kind: "import";
     path: string[];
     items: string[];
+} | {
+    kind: "foreign";
+    module?: string;
+    name: string;
+    jsName?: string;
+    params: string[];
 };
 export type IrVariant = {
     name: string;
@@ -117,6 +123,13 @@ export type IrExpr = {
     kind: "concat";
     left: IrExpr;
     right: IrExpr;
+} | {
+    kind: "tail_loop";
+    params: string[];
+    body: IrExpr;
+} | {
+    kind: "tail_continue";
+    args: IrExpr[];
 };
 export type IrMatchArm = {
     pattern: IrPattern;

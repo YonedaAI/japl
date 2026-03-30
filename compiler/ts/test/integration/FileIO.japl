@@ -1,0 +1,10 @@
+foreign "node:fs" fn readFileSync(path: String, encoding: String) -> String
+foreign "node:fs" fn existsSync(path: String) -> Bool
+
+pub fn read(path: String) -> String {
+  readFileSync(path, "utf-8")
+}
+
+pub fn exists(path: String) -> Bool {
+  existsSync(path)
+}

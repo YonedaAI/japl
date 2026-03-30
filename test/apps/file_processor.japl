@@ -1,0 +1,26 @@
+foreign "node:fs" fn readFileSync(path: String, encoding: String) -> String
+foreign "node:fs" fn writeFileSync(path: String, data: String) -> Unit
+
+fn count_chars(s: String) -> Int {
+  string_length(s)
+}
+
+fn banner(s: String) -> String {
+  "=== " <> s <> " ==="
+}
+
+fn main() {
+  let line1 = "Hello from JAPL!"
+  let line2 = "This is a real program."
+  let line3 = "It processes files."
+  writeFileSync("/tmp/japl_input.txt", line1)
+  let content = readFileSync("/tmp/japl_input.txt", "utf-8")
+  let chars = count_chars(content)
+  println("File Report:")
+  println("Characters: " <> show(chars))
+  println("Content: " <> banner(content))
+  let output = "Processed: " <> banner(line1) <> " | " <> banner(line2) <> " | " <> banner(line3)
+  writeFileSync("/tmp/japl_output.txt", output)
+  println(output)
+  println("Files written successfully.")
+}

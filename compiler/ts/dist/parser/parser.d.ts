@@ -27,6 +27,7 @@ export declare class Parser {
     parseExpr(minBp?: number): AST.Expr;
     private parsePrefixExpr;
     private parsePrimary;
+    private desugarInterpolation;
     private parseConstructorExpr;
     private parseParenExpr;
     private parseLetExpr;
