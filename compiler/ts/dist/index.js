@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { buildFile, buildToWat } from './cli/build.js';
+import { buildToWat, buildToWasm, runWasm, checkTools } from './cli/build.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { Lexer } from './lexer/index.js';
 import { Parser } from './parser/index.js';
 import { TypeChecker } from './checker/index.js';
@@ -12,7 +13,8 @@ function printHelp() {
     console.log(`JAPL ${VERSION} — Just Another Programming Language
 
 Usage:
-  japl build <file.japl> [--out <dir>] [--emit-wat]
+  japl build <file.japl>            Compile to WASM (outputs build/<name>.wasm)
+  japl run <file.japl>              Compile and execute
   japl check <file.japl>            Type check only
   japl fmt <file.japl>              Format (stub)
   japl new <name>                   Scaffold a project
@@ -20,8 +22,12 @@ Usage:
   japl help                         Show this help
 
 Build options:
-  --emit-wat        Show WAT text output (for debugging)
-  --out <dir>       Output directory`);
+  --emit-wat        Output WAT text instead of WASM binary
+  --out <dir>       Output directory (default: build/)
+
+Requirements:
+  wat2wasm          WAT → WASM compiler (brew install wabt)
+  wasmtime          WASM runtime (brew install wasmtime)`);
 }
 function parseCliArgs(args) {
     const flags = {};
@@ -50,25 +56,29 @@ function cmdBuild(args) {
     const { flags, positional } = parseCliArgs(args);
     const inputFile = positional[0];
     if (!inputFile) {
-        console.error('Error: missing input file');
-        console.error('Usage: japl build <file.japl> [--out <dir>] [--emit-wat]');
+        console.error('Usage: japl build <file.japl> [--emit-wat] [--out <dir>]');
         process.exit(1);
     }
     const emitWat = 'emit-wat' in flags;
+    const outDir = flags['out'] ?? 'build';
+    // Ensure output directory exists
+    if (!fs.existsSync(outDir)) {
+        fs.mkdirSync(outDir, { recursive: true });
+    }
     if (emitWat) {
-        // Print WAT to stdout for debugging
+        // Just emit WAT text
         const source = fs.readFileSync(inputFile, 'utf-8');
         const wat = buildToWat(source);
-        console.log(wat);
-        return;
+        const watPath = path.join(outDir, path.basename(inputFile, '.japl') + '.wat');
+        fs.writeFileSync(watPath, wat);
+        console.log(`Compiled ${inputFile} → ${watPath}`);
     }
-    let outputPath;
-    if (flags['out']) {
-        const outDir = flags['out'];
-        const baseName = path.basename(inputFile, '.japl') + '.wat';
-        outputPath = path.join(outDir, baseName);
+    else {
+        // Full pipeline: .japl → .wat → .wasm
+        checkTools(['wat2wasm']);
+        const wasmPath = buildToWasm(inputFile, outDir);
+        console.log(`Compiled ${inputFile} → ${wasmPath}`);
     }
-    buildFile(inputFile, outputPath);
 }
 function cmdCheck(args) {
     const inputFile = args[0];
@@ -147,10 +157,35 @@ node_modules/
     console.log(`  ${name}/src/main.japl`);
     console.log(`  ${name}/.gitignore`);
 }
+function cmdRun(args) {
+    const { flags, positional } = parseCliArgs(args);
+    const inputFile = positional[0];
+    if (!inputFile) {
+        console.error('Usage: japl run <file.japl>');
+        process.exit(1);
+    }
+    checkTools(['wat2wasm', 'wasmtime']);
+    // Build to temp directory
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'japl-'));
+    try {
+        const wasmPath = buildToWasm(inputFile, tmpDir);
+        runWasm(wasmPath);
+    }
+    catch (err) {
+        console.error(err.message);
+        process.exit(1);
+    }
+    finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+}
 // ─── Dispatch ───
 switch (command) {
     case 'build':
         cmdBuild(args.slice(1));
+        break;
+    case 'run':
+        cmdRun(args.slice(1));
         break;
     case 'check':
         cmdCheck(args.slice(1));

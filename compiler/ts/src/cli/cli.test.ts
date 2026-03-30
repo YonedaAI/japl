@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { parseConfig } from './config.js';
-import { buildToWat } from './build.js';
+import { buildToWat, buildToWasm, checkTools } from './build.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -165,5 +165,61 @@ entry = "src/main.japl"
     const source = `fn hello() -> String { "world" }`;
     const wat = buildToWat(source);
     expect(wat).toContain('(module');
+  });
+});
+
+// ─── WASM Build Pipeline Tests ───
+
+describe('WASM build pipeline', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'japl-wasm-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('buildToWasm produces a .wasm file', () => {
+    const inputPath = path.join(tmpDir, 'hello.japl');
+    fs.writeFileSync(inputPath, `fn add(x: Int, y: Int) -> Int { x + y }`);
+
+    const wasmPath = buildToWasm(inputPath, tmpDir);
+    expect(wasmPath).toBe(path.join(tmpDir, 'hello.wasm'));
+    expect(fs.existsSync(wasmPath)).toBe(true);
+
+    // .wat should be cleaned up
+    expect(fs.existsSync(path.join(tmpDir, 'hello.wat'))).toBe(false);
+  });
+
+  it('buildToWasm cleans up .wat intermediate file', () => {
+    const inputPath = path.join(tmpDir, 'test.japl');
+    fs.writeFileSync(inputPath, `fn id(x: Int) -> Int { x }`);
+
+    buildToWasm(inputPath, tmpDir);
+
+    const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.wat'));
+    expect(files).toHaveLength(0);
+  });
+
+  it('--emit-wat outputs .wat file only', () => {
+    const source = `fn greet() -> String { "hi" }`;
+    const wat = buildToWat(source);
+    const watPath = path.join(tmpDir, 'greet.wat');
+    fs.writeFileSync(watPath, wat);
+
+    expect(fs.existsSync(watPath)).toBe(true);
+    const contents = fs.readFileSync(watPath, 'utf-8');
+    expect(contents).toContain('(module');
+  });
+
+  it('checkTools throws for missing tool', () => {
+    expect(() => checkTools(['nonexistent-tool-xyz'])).toThrow('nonexistent-tool-xyz not found');
+  });
+
+  it('checkTools does not throw for existing tools', () => {
+    // 'which' itself should always exist
+    expect(() => checkTools(['which'])).not.toThrow();
   });
 });

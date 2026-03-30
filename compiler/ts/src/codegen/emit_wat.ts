@@ -17,16 +17,61 @@ export class WatEmitter {
   private declaredLocals: string[] = [];
   private userFunctions: Set<string> = new Set();
 
+  // Tagged union registry: variant name -> { typeName, tagId, fieldCount }
+  private variantRegistry: Map<string, { typeName: string; tagId: number; fieldCount: number }> = new Map();
+  // Record type registry: type name -> sorted field names
+  private recordTypeRegistry: Map<string, string[]> = new Map();
+  // Lambda storage: generated functions to emit
+  private lambdaFunctions: { name: string; params: string[]; body: IR.IrExpr }[] = [];
+  private lambdaCounter: number = 0;
+  // Track lambda names mapped to variable names
+  private lambdaNameMap: Map<string, string> = new Map();
+  // Heap start (after string data segments)
+  private heapStart: number = 0;
+
   emit(module: IR.IrModule): string {
     this.output = [];
     this.stringData = [];
     this.memoryOffset = 1024; // reserve 0-1023 for iov/scratch
     this.userFunctions.clear();
+    this.variantRegistry.clear();
+    this.recordTypeRegistry.clear();
+    this.lambdaFunctions = [];
+    this.lambdaCounter = 0;
+    this.lambdaNameMap.clear();
 
-    // Collect user function names
+    // Register type declarations (variants and record types)
+    for (const decl of module.decls) {
+      if (decl.kind === 'type') {
+        for (let i = 0; i < decl.variants.length; i++) {
+          const v = decl.variants[i];
+          this.variantRegistry.set(v.name, {
+            typeName: decl.name,
+            tagId: i,
+            fieldCount: v.fields,
+          });
+        }
+      }
+      if (decl.kind === 'record_type') {
+        const sortedFields = decl.fields.map(f => f[0]).sort();
+        this.recordTypeRegistry.set(decl.name, sortedFields);
+      }
+    }
+
+    // Collect user function names (including variant constructors)
     for (const decl of module.decls) {
       if (decl.kind === 'fn') {
         this.userFunctions.add(decl.name);
+      }
+    }
+    for (const [name] of this.variantRegistry) {
+      this.userFunctions.add(name);
+    }
+
+    // Pre-scan for lambdas to generate named functions
+    for (const decl of module.decls) {
+      if (decl.kind === 'fn' || decl.kind === 'test') {
+        this.collectLambdas(decl.body);
       }
     }
 
@@ -44,11 +89,40 @@ export class WatEmitter {
     this.collectStrings(module);
     this.emitDataSegments();
 
+    // Heap pointer global (placed after all string data)
+    this.heapStart = (this.memoryOffset + 7) & ~7; // align to 8 bytes
+    this.line(`(global $heap_ptr (mut i32) (i32.const ${this.heapStart}))`);
+    this.line('');
+
+    // Bump allocator
+    this.emitAlloc();
+    this.line('');
+
     // Built-in helper functions
     this.emitPrintln();
     this.line('');
     this.emitShowI64();
     this.line('');
+
+    // String concat helper
+    this.emitStringConcat();
+    this.line('');
+
+    // List helpers (cons and nil)
+    this.emitListHelpers();
+    this.line('');
+
+    // Variant constructor functions
+    for (const [name, info] of this.variantRegistry) {
+      this.emitVariantConstructor(name, info.tagId, info.fieldCount);
+      this.line('');
+    }
+
+    // Lambda functions
+    for (const lam of this.lambdaFunctions) {
+      this.emitLambdaFunction(lam);
+      this.line('');
+    }
 
     // User functions
     for (const decl of module.decls) {
@@ -129,10 +203,33 @@ export class WatEmitter {
         break;
       case 'match':
         this.collectStringsFromExpr(expr.scrutinee);
-        for (const arm of expr.arms) this.collectStringsFromExpr(arm.body);
+        for (const arm of expr.arms) {
+          this.collectStringsFromExpr(arm.body);
+          if (arm.guard) this.collectStringsFromExpr(arm.guard);
+        }
         break;
       case 'lambda':
         this.collectStringsFromExpr(expr.body);
+        break;
+      case 'construct':
+        for (const a of expr.args) this.collectStringsFromExpr(a);
+        break;
+      case 'concat':
+        this.collectStringsFromExpr(expr.left);
+        this.collectStringsFromExpr(expr.right);
+        break;
+      case 'record':
+        for (const [, val] of expr.fields) this.collectStringsFromExpr(val);
+        break;
+      case 'field_access':
+        this.collectStringsFromExpr(expr.expr);
+        break;
+      case 'record_update':
+        this.collectStringsFromExpr(expr.record);
+        for (const [, val] of expr.updates) this.collectStringsFromExpr(val);
+        break;
+      case 'list':
+        for (const e of expr.elements) this.collectStringsFromExpr(e);
         break;
       default:
         break;
@@ -325,8 +422,11 @@ export class WatEmitter {
       this.currentFnLocals.set(p, 'i64'); // assume all params are i64 for now
     }
 
-    // Pre-scan body for let bindings to declare locals
+    // Pre-scan body for let bindings and temp locals to declare
     this.collectLocals(decl.body);
+
+    // Reset counter so emitExpr generates matching names
+    this.localCounter = 0;
 
     // Determine result type
     const resultType = this.inferResultType(decl.body);
@@ -382,16 +482,115 @@ export class WatEmitter {
         this.collectLocals(expr.operand);
         break;
       case 'app':
+        this.collectLocals(expr.fn);
         for (const a of expr.args) this.collectLocals(a);
         break;
       case 'block':
         for (const e of expr.exprs) this.collectLocals(e);
         break;
-      case 'match':
+      case 'match': {
         this.collectLocals(expr.scrutinee);
-        for (const arm of expr.arms) this.collectLocals(arm.body);
+        // Pre-allocate the match scrutinee local (must match emitMatch counter)
+        const matchLocalName = `__match_${this.localCounter++}`;
+        if (!this.currentFnLocals.has(matchLocalName)) {
+          this.currentFnLocals.set(matchLocalName, 'i32');
+          this.declaredLocals.push(matchLocalName);
+        }
+        for (const arm of expr.arms) {
+          this.collectMatchPatternLocals(arm.pattern);
+          this.collectLocals(arm.body);
+          if (arm.guard) this.collectLocals(arm.guard);
+        }
+        break;
+      }
+      case 'construct':
+        for (const a of expr.args) this.collectLocals(a);
+        break;
+      case 'concat':
+        this.collectLocals(expr.left);
+        this.collectLocals(expr.right);
+        break;
+      case 'record': {
+        // Pre-allocate record pointer local + field temp locals
+        const sorted = [...expr.fields].sort((a, b) => a[0].localeCompare(b[0]));
+        const recPtrName = `__rec_${this.localCounter++}`;
+        if (!this.currentFnLocals.has(recPtrName)) {
+          this.currentFnLocals.set(recPtrName, 'i32');
+          this.declaredLocals.push(recPtrName);
+        }
+        for (let i = 0; i < sorted.length; i++) {
+          const tmpName = `__rec_tmp_${i}`;
+          if (!this.currentFnLocals.has(tmpName)) {
+            this.currentFnLocals.set(tmpName, 'i64');
+            this.declaredLocals.push(tmpName);
+          }
+        }
+        for (const [, val] of expr.fields) this.collectLocals(val);
+        break;
+      }
+      case 'field_access':
+        this.collectLocals(expr.expr);
+        break;
+      case 'record_update': {
+        this.collectLocals(expr.record);
+        // Pre-allocate temp locals for record update (must match emitRecordUpdate counter)
+        const srcName = `__rupd_src_${this.localCounter++}`;
+        const dstName = `__rupd_dst_${this.localCounter++}`;
+        const cntName = `__rupd_cnt_${this.localCounter++}`;
+        const szName = `__rupd_sz_${this.localCounter++}`;
+        const idxName = `__rupd_i_${this.localCounter++}`;
+        for (const [name, type] of [[srcName, 'i32'], [dstName, 'i32'], [cntName, 'i32'], [szName, 'i32'], [idxName, 'i32']] as [string, string][]) {
+          if (!this.currentFnLocals.has(name)) {
+            this.currentFnLocals.set(name, type);
+            this.declaredLocals.push(name);
+          }
+        }
+        for (const [, val] of expr.updates) {
+          const tmpName = `__rupd_val_${this.localCounter++}`;
+          if (!this.currentFnLocals.has(tmpName)) {
+            this.currentFnLocals.set(tmpName, 'i64');
+            this.declaredLocals.push(tmpName);
+          }
+          this.collectLocals(val);
+        }
+        break;
+      }
+      case 'list': {
+        // Pre-allocate list tail temp locals
+        for (let i = expr.elements.length - 1; i >= 0; i--) {
+          const tailName = `__list_tail_${this.localCounter++}`;
+          if (!this.currentFnLocals.has(tailName)) {
+            this.currentFnLocals.set(tailName, 'i64');
+            this.declaredLocals.push(tailName);
+          }
+        }
+        for (const e of expr.elements) this.collectLocals(e);
+        break;
+      }
+      case 'lambda':
+        this.collectLocals(expr.body);
         break;
       default:
+        break;
+    }
+  }
+
+  private collectMatchPatternLocals(pat: IR.IrPattern): void {
+    switch (pat.kind) {
+      case 'pvar':
+        if (!this.currentFnLocals.has(pat.name)) {
+          this.currentFnLocals.set(pat.name, 'i64');
+          this.declaredLocals.push(pat.name);
+        }
+        break;
+      case 'pconstructor':
+        for (const arg of pat.args) this.collectMatchPatternLocals(arg);
+        break;
+      case 'pwildcard':
+      case 'pliteral':
+        break;
+      case 'plist':
+        for (const el of pat.elements) this.collectMatchPatternLocals(el);
         break;
     }
   }
@@ -425,6 +624,17 @@ export class WatEmitter {
         if (expr.exprs.length === 0) return 'void';
         return this.inferExprType(expr.exprs[expr.exprs.length - 1]);
       }
+      case 'construct': return 'i64'; // pointer as i64
+      case 'match': {
+        if (expr.arms.length > 0) return this.inferExprType(expr.arms[0].body);
+        return 'i64';
+      }
+      case 'record': return 'i64'; // pointer as i64
+      case 'field_access': return 'i64';
+      case 'record_update': return 'i64';
+      case 'list': return 'i64';
+      case 'concat': return 'i64'; // returns string pointer as i64
+      case 'lambda': return 'i64'; // function reference as i64
       default: return 'i64';
     }
   }
@@ -434,7 +644,13 @@ export class WatEmitter {
       switch (expr.fn.name) {
         case 'println': return 'void';
         case 'show': return 'i32'; // returns string pointer
-        default: return 'i64'; // user functions return i64 by default
+        default: {
+          // Check if this is a variant constructor
+          if (this.variantRegistry.has(expr.fn.name)) return 'i64';
+          // Check if this is a lambda reference
+          if (this.lambdaNameMap.has(expr.fn.name)) return 'i64';
+          return 'i64'; // user functions return i64 by default
+        }
       }
     }
     return 'i64';
@@ -494,6 +710,30 @@ export class WatEmitter {
 
       case 'block':
         return this.emitBlock(expr, isVoid);
+
+      case 'construct':
+        return this.emitConstruct(expr);
+
+      case 'match':
+        return this.emitMatch(expr);
+
+      case 'record':
+        return this.emitRecord(expr);
+
+      case 'field_access':
+        return this.emitFieldAccess(expr);
+
+      case 'record_update':
+        return this.emitRecordUpdate(expr);
+
+      case 'list':
+        return this.emitList(expr);
+
+      case 'concat':
+        return this.emitConcat(expr);
+
+      case 'lambda':
+        return this.emitLambdaRef(expr);
 
       default:
         return [`;; TODO: ${expr.kind}`];
@@ -627,6 +867,11 @@ export class WatEmitter {
         // println takes a string pointer (i32)
         if (expr.args.length === 1) {
           lines.push(...this.emitExpr(expr.args[0]));
+          // If the argument is i64 (e.g., from concat), convert to i32
+          const argType = this.inferExprType(expr.args[0]);
+          if (argType === 'i64') {
+            lines.push('i32.wrap_i64');
+          }
           lines.push('call $println');
         }
         return lines;
@@ -641,11 +886,15 @@ export class WatEmitter {
         return lines;
       }
 
-      // User function call
+      // Check if this is a lambda reference
+      const lambdaName = this.lambdaNameMap.get(fnName);
+      const callTarget = lambdaName ?? fnName;
+
+      // User function call (or lambda call)
       for (const arg of expr.args) {
         lines.push(...this.emitExpr(arg));
       }
-      lines.push(`call $${fnName}`);
+      lines.push(`call $${callTarget}`);
 
       // If call result unused in void context, drop it
       if (isVoid) {
@@ -680,6 +929,633 @@ export class WatEmitter {
       }
     }
     return lines;
+  }
+
+  // ─── Construct (Tagged Union) ───
+
+  private emitConstruct(expr: IR.IrExpr & { kind: 'construct' }): string[] {
+    const lines: string[] = [];
+    const info = this.variantRegistry.get(expr.tag);
+    if (info) {
+      // Call the generated constructor function
+      for (const arg of expr.args) {
+        lines.push(...this.emitExpr(arg));
+      }
+      lines.push(`call $${expr.tag}`);
+    } else {
+      lines.push(`;; unknown constructor: ${expr.tag}`);
+    }
+    return lines;
+  }
+
+  // ─── Match Expression ───
+
+  private emitMatch(expr: IR.IrExpr & { kind: 'match' }): string[] {
+    const lines: string[] = [];
+    const matchLocal = `__match_${this.localCounter++}`;
+
+    // Declare match scrutinee local
+    if (!this.currentFnLocals.has(matchLocal)) {
+      this.currentFnLocals.set(matchLocal, 'i32');
+      this.declaredLocals.push(matchLocal);
+    }
+
+    // Evaluate scrutinee and store as i32 pointer
+    lines.push(...this.emitExpr(expr.scrutinee));
+    lines.push('i32.wrap_i64');
+    lines.push(`local.set $${matchLocal}`);
+
+    // Determine result type from first arm body
+    const resultType = expr.arms.length > 0 ? this.inferExprType(expr.arms[0].body) : 'i64';
+
+    // Generate nested if/else chain
+    const matchLines = this.emitMatchArms(expr.arms, matchLocal, resultType, 0);
+    lines.push(...matchLines);
+
+    return lines;
+  }
+
+  private emitMatchArms(arms: IR.IrMatchArm[], matchLocal: string, resultType: string, index: number): string[] {
+    if (index >= arms.length) {
+      // Unreachable fallback
+      return ['unreachable'];
+    }
+
+    const arm = arms[index];
+    const pat = arm.pattern;
+
+    // If this is a wildcard or variable pattern (catch-all), just emit the body
+    if (pat.kind === 'pwildcard') {
+      return this.emitExpr(arm.body);
+    }
+    if (pat.kind === 'pvar') {
+      const lines: string[] = [];
+      // Bind the whole scrutinee value (as i64) to the variable
+      lines.push(`local.get $${matchLocal}`);
+      lines.push('i64.extend_i32_u');
+      lines.push(`local.set $${pat.name}`);
+      lines.push(...this.emitExpr(arm.body));
+      return lines;
+    }
+    if (pat.kind === 'pliteral') {
+      const lines: string[] = [];
+      // Compare scrutinee (as i64 from pointer) to literal
+      // For literal patterns on ints, the scrutinee is already the value
+      lines.push(`local.get $${matchLocal}`);
+      lines.push('i64.extend_i32_u');
+      lines.push(...this.emitExpr(pat.value));
+      lines.push('i64.eq');
+      lines.push(`(if (result ${resultType})`);
+      lines.push('  (then');
+      const bodyLines = this.emitExpr(arm.body);
+      for (const l of bodyLines) lines.push('    ' + l);
+      lines.push('  )');
+      lines.push('  (else');
+      const restLines = this.emitMatchArms(arms, matchLocal, resultType, index + 1);
+      for (const l of restLines) lines.push('    ' + l);
+      lines.push('  )');
+      lines.push(')');
+      return lines;
+    }
+
+    if (pat.kind === 'pconstructor') {
+      const info = this.variantRegistry.get(pat.tag);
+      if (!info) {
+        return [`;; unknown constructor in pattern: ${pat.tag}`];
+      }
+
+      const lines: string[] = [];
+      // Check tag: i32.load from pointer == tagId
+      lines.push(`local.get $${matchLocal}`);
+      lines.push('i32.load');
+      lines.push(`i32.const ${info.tagId}`);
+      lines.push('i32.eq');
+
+      lines.push(`(if (result ${resultType})`);
+      lines.push('  (then');
+
+      // Extract fields and bind pattern variables
+      const bindLines = this.emitPatternBindings(pat, matchLocal);
+      for (const l of bindLines) lines.push('    ' + l);
+
+      const bodyLines = this.emitExpr(arm.body);
+      for (const l of bodyLines) lines.push('    ' + l);
+
+      lines.push('  )');
+      lines.push('  (else');
+
+      // Rest of arms
+      if (index + 1 < arms.length) {
+        const restLines = this.emitMatchArms(arms, matchLocal, resultType, index + 1);
+        for (const l of restLines) lines.push('    ' + l);
+      } else {
+        lines.push('    unreachable');
+      }
+
+      lines.push('  )');
+      lines.push(')');
+      return lines;
+    }
+
+    // Fallback: emit body directly (e.g., for unsupported patterns)
+    return this.emitExpr(arm.body);
+  }
+
+  private emitPatternBindings(pat: IR.IrPattern, matchLocal: string): string[] {
+    const lines: string[] = [];
+    if (pat.kind === 'pconstructor') {
+      for (let i = 0; i < pat.args.length; i++) {
+        const arg = pat.args[i];
+        if (arg.kind === 'pvar') {
+          // Field i is at offset 8 + i*8 (after 4-byte tag + 4-byte count)
+          const offset = 8 + i * 8;
+          lines.push(`(local.set $${arg.name} (i64.load offset=${offset} (local.get $${matchLocal})))`);
+        } else if (arg.kind === 'pwildcard') {
+          // skip
+        }
+        // Nested constructors could be handled recursively but kept simple for now
+      }
+    }
+    return lines;
+  }
+
+  // ─── Record Expression ───
+
+  private emitRecord(expr: IR.IrExpr & { kind: 'record' }): string[] {
+    const lines: string[] = [];
+    // Sort fields alphabetically
+    const sorted = [...expr.fields].sort((a, b) => a[0].localeCompare(b[0]));
+    const fieldCount = sorted.length;
+    const size = 4 + fieldCount * 8; // 4 bytes for count + 8 bytes per field
+
+    const ptrLocal = `__rec_${this.localCounter++}`;
+    if (!this.currentFnLocals.has(ptrLocal)) {
+      this.currentFnLocals.set(ptrLocal, 'i32');
+      this.declaredLocals.push(ptrLocal);
+    }
+
+    // Allocate
+    lines.push(`(local.set $${ptrLocal} (call $alloc (i32.const ${size})))`);
+    // Store field count
+    lines.push(`(i32.store (local.get $${ptrLocal}) (i32.const ${fieldCount}))`);
+
+    // Store each field value
+    for (let i = 0; i < sorted.length; i++) {
+      const offset = 4 + i * 8;
+      lines.push(...this.emitExpr(sorted[i][1]));
+      // Widen to i64 if the value is i32 (e.g., string pointer, bool)
+      const valType = this.inferExprType(sorted[i][1]);
+      if (valType === 'i32') {
+        lines.push('i64.extend_i32_u');
+      }
+      lines.push(`local.set $__rec_tmp_${i}`);
+
+      // Declare temp local if needed
+      const tmpName = `__rec_tmp_${i}`;
+      if (!this.currentFnLocals.has(tmpName)) {
+        this.currentFnLocals.set(tmpName, 'i64');
+        this.declaredLocals.push(tmpName);
+      }
+
+      lines.push(`(i64.store offset=${offset} (local.get $${ptrLocal}) (local.get $${tmpName}))`);
+    }
+
+    // Return pointer as i64
+    lines.push(`(i64.extend_i32_u (local.get $${ptrLocal}))`);
+    return lines;
+  }
+
+  private getRecordFieldIndex(fields: [string, IR.IrExpr][], fieldName: string): number {
+    const sorted = [...fields].map(f => f[0]).sort();
+    return sorted.indexOf(fieldName);
+  }
+
+  // ─── Field Access ───
+
+  private emitFieldAccess(expr: IR.IrExpr & { kind: 'field_access' }): string[] {
+    const lines: string[] = [];
+    // We need to figure out the field index. Since we sort alphabetically,
+    // we need context about which record type this is. For now, we handle
+    // field access by looking up the record expression's field layout.
+    // If expr.expr is a var, check record type registry; otherwise use
+    // a runtime approach based on known field positions.
+
+    // Try to determine field order from record type registry or from
+    // a record literal. For general case, we need the field index.
+    const fieldIndex = this.resolveFieldIndex(expr.expr, expr.field);
+    const offset = 4 + fieldIndex * 8;
+
+    lines.push(...this.emitExpr(expr.expr));
+    lines.push('i32.wrap_i64');
+    lines.push(`i64.load offset=${offset}`);
+    return lines;
+  }
+
+  private resolveFieldIndex(expr: IR.IrExpr, fieldName: string): number {
+    // If the expression is a record literal, we can determine the order
+    if (expr.kind === 'record') {
+      const sorted = [...expr.fields].map(f => f[0]).sort();
+      const idx = sorted.indexOf(fieldName);
+      if (idx >= 0) return idx;
+    }
+    // If it's a var, try to look up in record type registry
+    // This is a best-effort approach; the field name itself determines position
+    // For known record types, look through all registered types
+    for (const [, fields] of this.recordTypeRegistry) {
+      const idx = fields.indexOf(fieldName);
+      if (idx >= 0) return idx;
+    }
+    // Fallback: hash to an index (not ideal, but for simple cases field name lookup works)
+    return 0;
+  }
+
+  // ─── Record Update ───
+
+  private emitRecordUpdate(expr: IR.IrExpr & { kind: 'record_update' }): string[] {
+    const lines: string[] = [];
+
+    // We need to copy the old record and override specific fields.
+    // First, evaluate the source record.
+    const srcLocal = `__rupd_src_${this.localCounter++}`;
+    const dstLocal = `__rupd_dst_${this.localCounter++}`;
+    if (!this.currentFnLocals.has(srcLocal)) {
+      this.currentFnLocals.set(srcLocal, 'i32');
+      this.declaredLocals.push(srcLocal);
+    }
+    if (!this.currentFnLocals.has(dstLocal)) {
+      this.currentFnLocals.set(dstLocal, 'i32');
+      this.declaredLocals.push(dstLocal);
+    }
+
+    lines.push(...this.emitExpr(expr.record));
+    lines.push('i32.wrap_i64');
+    lines.push(`local.set $${srcLocal}`);
+
+    // Read field count from source
+    // For simplicity, determine field count from record type registry or updates
+    // We'll read it from the source record at runtime
+    const countLocal = `__rupd_cnt_${this.localCounter++}`;
+    if (!this.currentFnLocals.has(countLocal)) {
+      this.currentFnLocals.set(countLocal, 'i32');
+      this.declaredLocals.push(countLocal);
+    }
+    lines.push(`(local.set $${countLocal} (i32.load (local.get $${srcLocal})))`);
+
+    // Allocate new record: 4 + count * 8
+    // Use a calculated size
+    const sizeLocal = `__rupd_sz_${this.localCounter++}`;
+    if (!this.currentFnLocals.has(sizeLocal)) {
+      this.currentFnLocals.set(sizeLocal, 'i32');
+      this.declaredLocals.push(sizeLocal);
+    }
+    lines.push(`(local.set $${sizeLocal} (i32.add (i32.const 4) (i32.mul (local.get $${countLocal}) (i32.const 8))))`);
+    lines.push(`(local.set $${dstLocal} (call $alloc (local.get $${sizeLocal})))`);
+
+    // Copy field count
+    lines.push(`(i32.store (local.get $${dstLocal}) (local.get $${countLocal}))`);
+
+    // Memory copy all fields from source to dest
+    // Loop: for i=0..count-1, copy field
+    const idxLocal = `__rupd_i_${this.localCounter++}`;
+    if (!this.currentFnLocals.has(idxLocal)) {
+      this.currentFnLocals.set(idxLocal, 'i32');
+      this.declaredLocals.push(idxLocal);
+    }
+    lines.push(`(local.set $${idxLocal} (i32.const 0))`);
+    lines.push(`(block $rupd_done`);
+    lines.push(`  (loop $rupd_loop`);
+    lines.push(`    (br_if $rupd_done (i32.ge_u (local.get $${idxLocal}) (local.get $${countLocal})))`);
+    lines.push(`    (i64.store`);
+    lines.push(`      (i32.add (local.get $${dstLocal}) (i32.add (i32.const 4) (i32.mul (local.get $${idxLocal}) (i32.const 8))))`);
+    lines.push(`      (i64.load (i32.add (local.get $${srcLocal}) (i32.add (i32.const 4) (i32.mul (local.get $${idxLocal}) (i32.const 8)))))`);
+    lines.push(`    )`);
+    lines.push(`    (local.set $${idxLocal} (i32.add (local.get $${idxLocal}) (i32.const 1)))`);
+    lines.push(`    (br $rupd_loop)`);
+    lines.push(`  )`);
+    lines.push(`)`);
+
+    // Now override updated fields
+    for (const [name, val] of expr.updates) {
+      const fieldIdx = this.resolveFieldIndex(expr.record, name);
+      const offset = 4 + fieldIdx * 8;
+      const tmpLocal = `__rupd_val_${this.localCounter++}`;
+      if (!this.currentFnLocals.has(tmpLocal)) {
+        this.currentFnLocals.set(tmpLocal, 'i64');
+        this.declaredLocals.push(tmpLocal);
+      }
+      lines.push(...this.emitExpr(val));
+      lines.push(`local.set $${tmpLocal}`);
+      lines.push(`(i64.store offset=${offset} (local.get $${dstLocal}) (local.get $${tmpLocal}))`);
+    }
+
+    // Return pointer as i64
+    lines.push(`(i64.extend_i32_u (local.get $${dstLocal}))`);
+    return lines;
+  }
+
+  // ─── List Expression ───
+
+  private emitList(expr: IR.IrExpr & { kind: 'list' }): string[] {
+    const lines: string[] = [];
+    // Build list from right to left: [1,2,3] => cons(1, cons(2, cons(3, nil)))
+    // Start with nil
+    lines.push('call $nil');
+
+    // Then cons each element from right to left
+    for (let i = expr.elements.length - 1; i >= 0; i--) {
+      // Stack has tail; push head, then swap order for cons(head, tail)
+      const tailLocal = `__list_tail_${this.localCounter++}`;
+      if (!this.currentFnLocals.has(tailLocal)) {
+        this.currentFnLocals.set(tailLocal, 'i64');
+        this.declaredLocals.push(tailLocal);
+      }
+      lines.push(`local.set $${tailLocal}`);
+      lines.push(...this.emitExpr(expr.elements[i]));
+      lines.push(`local.get $${tailLocal}`);
+      lines.push('call $cons');
+    }
+
+    return lines;
+  }
+
+  // ─── String Concat ───
+
+  private emitConcat(expr: IR.IrExpr & { kind: 'concat' }): string[] {
+    const lines: string[] = [];
+    // Both operands should be i32 (string pointers) or i64 depending on context.
+    // Our string pointers from data segments are i32, but from records they're i64.
+    // string_concat expects i64 params (pointers widened to i64)
+    lines.push(...this.emitExpr(expr.left));
+    // Ensure i64
+    if (this.inferExprType(expr.left) === 'i32') {
+      lines.push('i64.extend_i32_u');
+    }
+    lines.push(...this.emitExpr(expr.right));
+    if (this.inferExprType(expr.right) === 'i32') {
+      lines.push('i64.extend_i32_u');
+    }
+    lines.push('call $string_concat');
+    return lines;
+  }
+
+  // ─── Lambda Reference ───
+
+  private emitLambdaRef(expr: IR.IrExpr & { kind: 'lambda' }): string[] {
+    // The lambda was already registered during collectLambdas.
+    // Find it by matching params + body identity (use counter-based name).
+    // For now, return a reference to the lambda function as i64.
+    // Since we don't have real closure support (no captured vars),
+    // we just return a sentinel that maps to the function index.
+    // The caller will use call $__lambda_N directly.
+    const name = `__lambda_${this.lambdaCounter++}`;
+    // Actually, lambdas are pre-registered with lower counters.
+    // Let's look up the last registered lambda matching these params.
+    // Simple approach: we store the function name, and emit i64.const 0 as placeholder.
+    // Real calls go through emitApp which resolves lambda var names.
+    return [`i64.const 0 ;; lambda ref placeholder`];
+  }
+
+  // ─── Bump Allocator ───
+
+  private emitAlloc(): void {
+    this.line('(func $alloc (param $size i32) (result i32)');
+    this.indent++;
+    this.line('(local $ptr i32)');
+    this.line('global.get $heap_ptr');
+    this.line('local.set $ptr');
+    this.line('global.get $heap_ptr');
+    this.line('local.get $size');
+    this.line('i32.add');
+    this.line('global.set $heap_ptr');
+    this.line('local.get $ptr');
+    this.indent--;
+    this.line(')');
+  }
+
+  // ─── Variant Constructor Functions ───
+
+  private emitVariantConstructor(name: string, tagId: number, fieldCount: number): void {
+    const size = 4 + 4 + fieldCount * 8; // tag(4) + count(4) + fields(8 each)
+    const params = [];
+    for (let i = 0; i < fieldCount; i++) {
+      params.push(`(param $v${i} i64)`);
+    }
+
+    this.line(`(func $${name} ${params.join(' ')} (result i64)`);
+    this.indent++;
+    this.line('(local $ptr i32)');
+    this.line(`(local.set $ptr (call $alloc (i32.const ${size})))`);
+    this.line(`(i32.store (local.get $ptr) (i32.const ${tagId}))`);
+    this.line(`(i32.store offset=4 (local.get $ptr) (i32.const ${fieldCount}))`);
+    for (let i = 0; i < fieldCount; i++) {
+      const offset = 8 + i * 8;
+      this.line(`(i64.store offset=${offset} (local.get $ptr) (local.get $v${i}))`);
+    }
+    this.line('(i64.extend_i32_u (local.get $ptr))');
+    this.indent--;
+    this.line(')');
+  }
+
+  // ─── String Concat Helper ───
+
+  private emitStringConcat(): void {
+    // $string_concat(a: i64, b: i64) -> i64
+    // a and b are i64 pointers to strings: [4 bytes len][UTF-8 bytes]
+    // Returns i64 pointer to new concatenated string
+    this.line('(func $string_concat (param $a i64) (param $b i64) (result i64)');
+    this.indent++;
+    this.line('(local $a_ptr i32) (local $b_ptr i32)');
+    this.line('(local $a_len i32) (local $b_len i32)');
+    this.line('(local $new_len i32) (local $new_ptr i32)');
+
+    // Get i32 pointers
+    this.line('(local.set $a_ptr (i32.wrap_i64 (local.get $a)))');
+    this.line('(local.set $b_ptr (i32.wrap_i64 (local.get $b)))');
+
+    // Get lengths
+    this.line('(local.set $a_len (i32.load (local.get $a_ptr)))');
+    this.line('(local.set $b_len (i32.load (local.get $b_ptr)))');
+
+    // Total length
+    this.line('(local.set $new_len (i32.add (local.get $a_len) (local.get $b_len)))');
+
+    // Allocate: 4 + new_len, aligned to 4
+    this.line('(local.set $new_ptr (call $alloc (i32.add (i32.const 4) (local.get $new_len))))');
+
+    // Write length
+    this.line('(i32.store (local.get $new_ptr) (local.get $new_len))');
+
+    // Copy a's bytes: memory.copy(dst=new_ptr+4, src=a_ptr+4, len=a_len)
+    this.line('(memory.copy');
+    this.line('  (i32.add (local.get $new_ptr) (i32.const 4))');
+    this.line('  (i32.add (local.get $a_ptr) (i32.const 4))');
+    this.line('  (local.get $a_len)');
+    this.line(')');
+
+    // Copy b's bytes: memory.copy(dst=new_ptr+4+a_len, src=b_ptr+4, len=b_len)
+    this.line('(memory.copy');
+    this.line('  (i32.add (i32.add (local.get $new_ptr) (i32.const 4)) (local.get $a_len))');
+    this.line('  (i32.add (local.get $b_ptr) (i32.const 4))');
+    this.line('  (local.get $b_len)');
+    this.line(')');
+
+    // Return as i64
+    this.line('(i64.extend_i32_u (local.get $new_ptr))');
+    this.indent--;
+    this.line(')');
+  }
+
+  // ─── List Helpers ───
+
+  private emitListHelpers(): void {
+    // $nil() -> i64: allocate [tag=0 (4 bytes)]
+    this.line('(func $nil (result i64)');
+    this.indent++;
+    this.line('(local $ptr i32)');
+    this.line('(local.set $ptr (call $alloc (i32.const 4)))');
+    this.line('(i32.store (local.get $ptr) (i32.const 0))');
+    this.line('(i64.extend_i32_u (local.get $ptr))');
+    this.indent--;
+    this.line(')');
+
+    this.line('');
+
+    // $cons(head: i64, tail: i64) -> i64: allocate [tag=1][head][tail]
+    this.line('(func $cons (param $head i64) (param $tail i64) (result i64)');
+    this.indent++;
+    this.line('(local $ptr i32)');
+    this.line('(local.set $ptr (call $alloc (i32.const 20)))');
+    this.line('(i32.store (local.get $ptr) (i32.const 1))');
+    this.line('(i64.store offset=4 (local.get $ptr) (local.get $head))');
+    this.line('(i64.store offset=12 (local.get $ptr) (local.get $tail))');
+    this.line('(i64.extend_i32_u (local.get $ptr))');
+    this.indent--;
+    this.line(')');
+  }
+
+  // ─── Lambda Collection and Emission ───
+
+  private collectLambdas(expr: IR.IrExpr): void {
+    switch (expr.kind) {
+      case 'let':
+        if (expr.value.kind === 'lambda') {
+          // Register this lambda with a name based on the let binding
+          const lamName = `__lambda_${this.lambdaFunctions.length}`;
+          this.lambdaFunctions.push({
+            name: lamName,
+            params: expr.value.params,
+            body: expr.value.body,
+          });
+          this.lambdaNameMap.set(expr.name, lamName);
+          this.userFunctions.add(lamName);
+          this.collectLambdas(expr.value.body);
+        } else {
+          this.collectLambdas(expr.value);
+        }
+        this.collectLambdas(expr.body);
+        break;
+      case 'lambda': {
+        // Anonymous lambda (not bound to let)
+        const lamName = `__lambda_${this.lambdaFunctions.length}`;
+        this.lambdaFunctions.push({
+          name: lamName,
+          params: expr.params,
+          body: expr.body,
+        });
+        this.userFunctions.add(lamName);
+        this.collectLambdas(expr.body);
+        break;
+      }
+      case 'app':
+        this.collectLambdas(expr.fn);
+        for (const a of expr.args) this.collectLambdas(a);
+        break;
+      case 'if':
+        this.collectLambdas(expr.cond);
+        this.collectLambdas(expr.then);
+        this.collectLambdas(expr.else);
+        break;
+      case 'binop':
+        this.collectLambdas(expr.left);
+        this.collectLambdas(expr.right);
+        break;
+      case 'unaryop':
+        this.collectLambdas(expr.operand);
+        break;
+      case 'block':
+        for (const e of expr.exprs) this.collectLambdas(e);
+        break;
+      case 'match':
+        this.collectLambdas(expr.scrutinee);
+        for (const arm of expr.arms) this.collectLambdas(arm.body);
+        break;
+      case 'construct':
+        for (const a of expr.args) this.collectLambdas(a);
+        break;
+      case 'concat':
+        this.collectLambdas(expr.left);
+        this.collectLambdas(expr.right);
+        break;
+      case 'record':
+        for (const [, val] of expr.fields) this.collectLambdas(val);
+        break;
+      case 'field_access':
+        this.collectLambdas(expr.expr);
+        break;
+      case 'record_update':
+        this.collectLambdas(expr.record);
+        for (const [, val] of expr.updates) this.collectLambdas(val);
+        break;
+      case 'list':
+        for (const e of expr.elements) this.collectLambdas(e);
+        break;
+      default:
+        break;
+    }
+  }
+
+  private emitLambdaFunction(lam: { name: string; params: string[]; body: IR.IrExpr }): void {
+    // Emit as a regular function
+    const savedLocals = this.currentFnLocals;
+    const savedDeclared = this.declaredLocals;
+    const savedCounter = this.localCounter;
+
+    this.currentFnLocals = new Map();
+    this.declaredLocals = [];
+    this.localCounter = 0;
+
+    // Register params
+    for (const p of lam.params) {
+      this.currentFnLocals.set(p, 'i64');
+    }
+
+    // Pre-scan body for locals
+    this.collectLocals(lam.body);
+
+    const resultType = this.inferExprType(lam.body);
+    const params = lam.params.map(p => `(param $${p} i64)`).join(' ');
+    const resultStr = resultType === 'void' ? '' : ` (result ${resultType})`;
+
+    this.line(`(func $${lam.name} ${params}${resultStr}`);
+    this.indent++;
+
+    for (const localName of this.declaredLocals) {
+      const type = this.currentFnLocals.get(localName)!;
+      this.line(`(local $${localName} ${type})`);
+    }
+
+    const bodyLines = this.emitExpr(lam.body, resultType === 'void');
+    for (const l of bodyLines) {
+      this.line(l);
+    }
+
+    this.indent--;
+    this.line(')');
+
+    // Restore
+    this.currentFnLocals = savedLocals;
+    this.declaredLocals = savedDeclared;
+    this.localCounter = savedCounter;
   }
 
   // ─── _start ───

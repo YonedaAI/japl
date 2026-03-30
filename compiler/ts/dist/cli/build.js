@@ -4,6 +4,7 @@ import { lowerModule } from '../ir/lower.js';
 import { WatEmitter } from '../codegen/emit_wat.js';
 import { TypeChecker } from '../checker/infer.js';
 import { LinearityChecker } from '../checker/linearity.js';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 export function buildToWat(source, opts = {}) {
@@ -53,5 +54,49 @@ export function buildFile(inputPath, outputPath) {
     }
     fs.writeFileSync(outPath, wat);
     console.log(`Compiled ${inputPath} → ${outPath}`);
+}
+export function checkTools(tools) {
+    for (const tool of tools) {
+        try {
+            execFileSync('which', [tool], { stdio: 'pipe' });
+        }
+        catch {
+            const installHint = tool === 'wat2wasm' ? 'brew install wabt' : `brew install ${tool}`;
+            throw new Error(`${tool} not found. Install with: ${installHint}`);
+        }
+    }
+}
+export function buildToWasm(inputPath, outputDir) {
+    // 1. Read source, parse, check, lower, emit WAT
+    const source = fs.readFileSync(inputPath, 'utf-8');
+    const wat = buildToWat(source);
+    // 2. Write .wat to output dir
+    const baseName = path.basename(inputPath, '.japl');
+    const outDir = outputDir ?? path.dirname(inputPath);
+    const watPath = path.join(outDir, baseName + '.wat');
+    const wasmPath = path.join(outDir, baseName + '.wasm');
+    if (!fs.existsSync(outDir)) {
+        fs.mkdirSync(outDir, { recursive: true });
+    }
+    fs.writeFileSync(watPath, wat);
+    // 3. Compile WAT → WASM via wat2wasm
+    try {
+        execFileSync('wat2wasm', [watPath, '-o', wasmPath], { stdio: 'pipe' });
+    }
+    catch (err) {
+        const stderr = err.stderr?.toString() ?? '';
+        // Clean up .wat on failure too
+        try {
+            fs.unlinkSync(watPath);
+        }
+        catch { /* ignore */ }
+        throw new Error(`WAT compilation failed:\n${stderr}`);
+    }
+    // 4. Clean up .wat (keep only .wasm)
+    fs.unlinkSync(watPath);
+    return wasmPath;
+}
+export function runWasm(wasmPath) {
+    execFileSync('wasmtime', [wasmPath], { stdio: 'inherit' });
 }
 //# sourceMappingURL=build.js.map
