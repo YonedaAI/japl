@@ -322,7 +322,45 @@ describe('Lexer', () => {
     expect(tokens.map((t) => t.value)).toEqual(['1', '..', '10']);
   });
 
-  // 30. Complex process expression
+  // 30. Hex literals
+  it('tokenizes hex literals', () => {
+    const tokens = lexSignificant('0xFF 0xDEAD 0x0');
+    expect(tokens.map(t => t.kind)).toEqual([TokenKind.Int, TokenKind.Int, TokenKind.Int]);
+    expect(tokens.map(t => t.value)).toEqual(['0xFF', '0xDEAD', '0x0']);
+  });
+
+  // 31. Binary literals
+  it('tokenizes binary literals', () => {
+    const tokens = lexSignificant('0b1010 0b0 0b11111111');
+    expect(tokens.map(t => t.kind)).toEqual([TokenKind.Int, TokenKind.Int, TokenKind.Int]);
+    expect(tokens.map(t => t.value)).toEqual(['0b1010', '0b0', '0b11111111']);
+  });
+
+  // 32. Digit separators
+  it('tokenizes numbers with separators', () => {
+    const tokens = lexSignificant('1_000_000 3.14_159 0xFF_FF');
+    expect(tokens[0].kind).toBe(TokenKind.Int);
+    expect(tokens[0].value).toBe('1_000_000');
+    expect(tokens[1].kind).toBe(TokenKind.Float);
+    expect(tokens[1].value).toBe('3.14_159');
+    expect(tokens[2].kind).toBe(TokenKind.Int);
+    expect(tokens[2].value).toBe('0xFF_FF');
+  });
+
+  // 33. Scientific notation
+  it('tokenizes scientific notation', () => {
+    const tokens = lexSignificant('1e10 1.5e-3 2.4E+5');
+    expect(tokens.map(t => t.kind)).toEqual([TokenKind.Float, TokenKind.Float, TokenKind.Float]);
+    expect(tokens.map(t => t.value)).toEqual(['1e10', '1.5e-3', '2.4E+5']);
+  });
+
+  // 34. Binary with separators
+  it('tokenizes binary with separators', () => {
+    const tokens = lexSignificant('0b1111_0000');
+    expect(tokens[0].value).toBe('0b1111_0000');
+  });
+
+  // 35. Complex process expression
   it('tokenizes a spawn/send/receive expression', () => {
     const tokens = lexSignificant('spawn fn() { receive { msg => done } }');
     const kinds = tokens.map((t) => t.kind);

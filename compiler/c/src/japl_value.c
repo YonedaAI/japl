@@ -44,6 +44,13 @@ JaplValue japl_nil(void) {
     return val;
 }
 
+JaplValue japl_byte(uint8_t v) {
+    JaplValue val;
+    val.kind = JAPL_BYTE;
+    val.byte_val = v;
+    return val;
+}
+
 JaplValue japl_pid(uint64_t pid) {
     JaplValue val;
     val.kind = JAPL_PID;
@@ -275,6 +282,14 @@ double japl_to_float(JaplValue v) {
     abort();
 }
 
+uint8_t japl_to_byte(JaplValue v) {
+    if (v.kind != JAPL_BYTE) {
+        fprintf(stderr, "JAPL panic: expected Byte, got %s\n", japl_kind_name(v.kind));
+        exit(1);
+    }
+    return v.byte_val;
+}
+
 const char* japl_to_cstr(JaplValue v) {
     if (v.kind != JAPL_STRING) {
         fprintf(stderr, "japl: expected String, got kind %d\n", v.kind);
@@ -291,62 +306,92 @@ int japl_to_bool(JaplValue v) {
     return v.bool_val;
 }
 
+/* ── Display Helpers ────────────────────────────────────────── */
+
+const char* japl_kind_name(JaplValueKind kind) {
+    switch (kind) {
+        case JAPL_INT: return "Int";
+        case JAPL_FLOAT: return "Float";
+        case JAPL_BYTE: return "Byte";
+        case JAPL_BOOL: return "Bool";
+        case JAPL_STRING: return "String";
+        case JAPL_LIST: return "List";
+        case JAPL_RECORD: return "Record";
+        case JAPL_TAG: return "Tag";
+        case JAPL_FN: return "Fn";
+        case JAPL_PID: return "Pid";
+        case JAPL_UNIT: return "Unit";
+        case JAPL_NIL: return "Nil";
+        default: return "Unknown";
+    }
+}
+
 /* ── Arithmetic ─────────────────────────────────────────────── */
 
 JaplValue japl_add(JaplValue a, JaplValue b) {
-    if (a.kind == JAPL_INT && b.kind == JAPL_INT)
-        return japl_int(a.int_val + b.int_val);
+    if (a.kind == JAPL_INT && b.kind == JAPL_INT) {
+        int64_t x = a.int_val;
+        int64_t y = b.int_val;
+        if ((y > 0 && x > INT64_MAX - y) || (y < 0 && x < INT64_MIN - y)) {
+            fprintf(stderr, "JAPL panic: integer overflow in addition: %"PRId64" + %"PRId64"\n", x, y);
+            exit(1);
+        }
+        return japl_int(x + y);
+    }
     if (a.kind == JAPL_FLOAT && b.kind == JAPL_FLOAT)
         return japl_float(a.float_val + b.float_val);
-    if (a.kind == JAPL_INT && b.kind == JAPL_FLOAT)
-        return japl_float((double)a.int_val + b.float_val);
-    if (a.kind == JAPL_FLOAT && b.kind == JAPL_INT)
-        return japl_float(a.float_val + (double)b.int_val);
     if (a.kind == JAPL_STRING && b.kind == JAPL_STRING)
         return japl_string_concat(a, b);
-    fprintf(stderr, "japl: cannot add kinds %d and %d\n", a.kind, b.kind);
-    abort();
+    fprintf(stderr, "JAPL panic: cannot add %s and %s\n", japl_kind_name(a.kind), japl_kind_name(b.kind));
+    exit(1);
 }
 
 JaplValue japl_sub(JaplValue a, JaplValue b) {
-    if (a.kind == JAPL_INT && b.kind == JAPL_INT)
-        return japl_int(a.int_val - b.int_val);
+    if (a.kind == JAPL_INT && b.kind == JAPL_INT) {
+        int64_t x = a.int_val;
+        int64_t y = b.int_val;
+        if ((y < 0 && x > INT64_MAX + y) || (y > 0 && x < INT64_MIN + y)) {
+            fprintf(stderr, "JAPL panic: integer overflow in subtraction: %"PRId64" - %"PRId64"\n", x, y);
+            exit(1);
+        }
+        return japl_int(x - y);
+    }
     if (a.kind == JAPL_FLOAT && b.kind == JAPL_FLOAT)
         return japl_float(a.float_val - b.float_val);
-    if (a.kind == JAPL_INT && b.kind == JAPL_FLOAT)
-        return japl_float((double)a.int_val - b.float_val);
-    if (a.kind == JAPL_FLOAT && b.kind == JAPL_INT)
-        return japl_float(a.float_val - (double)b.int_val);
-    fprintf(stderr, "japl: cannot subtract kinds %d and %d\n", a.kind, b.kind);
-    abort();
+    fprintf(stderr, "JAPL panic: cannot subtract %s and %s\n", japl_kind_name(a.kind), japl_kind_name(b.kind));
+    exit(1);
 }
 
 JaplValue japl_mul(JaplValue a, JaplValue b) {
-    if (a.kind == JAPL_INT && b.kind == JAPL_INT)
-        return japl_int(a.int_val * b.int_val);
+    if (a.kind == JAPL_INT && b.kind == JAPL_INT) {
+        int64_t x = a.int_val;
+        int64_t y = b.int_val;
+        if (x != 0 && y != 0) {
+            if ((x > 0 && y > 0 && x > INT64_MAX / y) ||
+                (x < 0 && y < 0 && x < INT64_MAX / y) ||
+                (x > 0 && y < 0 && y < INT64_MIN / x) ||
+                (x < 0 && y > 0 && x < INT64_MIN / y)) {
+                fprintf(stderr, "JAPL panic: integer overflow in multiplication: %"PRId64" * %"PRId64"\n", x, y);
+                exit(1);
+            }
+        }
+        return japl_int(x * y);
+    }
     if (a.kind == JAPL_FLOAT && b.kind == JAPL_FLOAT)
         return japl_float(a.float_val * b.float_val);
-    if (a.kind == JAPL_INT && b.kind == JAPL_FLOAT)
-        return japl_float((double)a.int_val * b.float_val);
-    if (a.kind == JAPL_FLOAT && b.kind == JAPL_INT)
-        return japl_float(a.float_val * (double)b.int_val);
-    fprintf(stderr, "japl: cannot multiply kinds %d and %d\n", a.kind, b.kind);
-    abort();
+    fprintf(stderr, "JAPL panic: cannot multiply %s and %s\n", japl_kind_name(a.kind), japl_kind_name(b.kind));
+    exit(1);
 }
 
 JaplValue japl_div(JaplValue a, JaplValue b) {
     if (a.kind == JAPL_INT && b.kind == JAPL_INT) {
-        if (b.int_val == 0) { fprintf(stderr, "japl: division by zero\n"); abort(); }
+        if (b.int_val == 0) { fprintf(stderr, "JAPL panic: division by zero\n"); exit(1); }
         return japl_int(a.int_val / b.int_val);
     }
     if (a.kind == JAPL_FLOAT && b.kind == JAPL_FLOAT)
         return japl_float(a.float_val / b.float_val);
-    if (a.kind == JAPL_INT && b.kind == JAPL_FLOAT)
-        return japl_float((double)a.int_val / b.float_val);
-    if (a.kind == JAPL_FLOAT && b.kind == JAPL_INT)
-        return japl_float(a.float_val / (double)b.int_val);
-    fprintf(stderr, "japl: cannot divide kinds %d and %d\n", a.kind, b.kind);
-    abort();
+    fprintf(stderr, "JAPL panic: cannot divide %s and %s\n", japl_kind_name(a.kind), japl_kind_name(b.kind));
+    exit(1);
 }
 
 JaplValue japl_mod(JaplValue a, JaplValue b) {
@@ -365,6 +410,38 @@ JaplValue japl_negate(JaplValue v) {
     abort();
 }
 
+/* ── Byte Arithmetic ───────────────────────────────────────── */
+
+JaplValue japl_byte_add(JaplValue a, JaplValue b) {
+    uint8_t x = japl_to_byte(a);
+    uint8_t y = japl_to_byte(b);
+    if (x > UINT8_MAX - y) {
+        fprintf(stderr, "JAPL panic: byte overflow in addition: %u + %u\n", x, y);
+        exit(1);
+    }
+    return japl_byte((uint8_t)(x + y));
+}
+
+JaplValue japl_byte_sub(JaplValue a, JaplValue b) {
+    uint8_t x = japl_to_byte(a);
+    uint8_t y = japl_to_byte(b);
+    if (x < y) {
+        fprintf(stderr, "JAPL panic: byte underflow in subtraction: %u - %u\n", x, y);
+        exit(1);
+    }
+    return japl_byte((uint8_t)(x - y));
+}
+
+JaplValue japl_byte_mul(JaplValue a, JaplValue b) {
+    uint8_t x = japl_to_byte(a);
+    uint8_t y = japl_to_byte(b);
+    if (y != 0 && x > UINT8_MAX / y) {
+        fprintf(stderr, "JAPL panic: byte overflow in multiplication: %u * %u\n", x, y);
+        exit(1);
+    }
+    return japl_byte((uint8_t)(x * y));
+}
+
 /* ── Comparison ─────────────────────────────────────────────── */
 
 static int japl_values_equal(JaplValue a, JaplValue b) {
@@ -372,6 +449,7 @@ static int japl_values_equal(JaplValue a, JaplValue b) {
     switch (a.kind) {
         case JAPL_INT:    return a.int_val == b.int_val;
         case JAPL_FLOAT:  return a.float_val == b.float_val;
+        case JAPL_BYTE:   return a.byte_val == b.byte_val;
         case JAPL_BOOL:   return a.bool_val == b.bool_val;
         case JAPL_STRING: return strcmp(a.string_val->data, b.string_val->data) == 0;
         case JAPL_UNIT:   return 1;
@@ -462,6 +540,12 @@ char* japl_show(JaplValue v) {
             buf = malloc((size_t)len + 1);
             snprintf(buf, (size_t)len + 1, "%g", v.float_val);
             break;
+        case JAPL_BYTE: {
+            char tmp[4];
+            snprintf(tmp, sizeof(tmp), "%u", v.byte_val);
+            buf = strdup(tmp);
+            break;
+        }
         case JAPL_BOOL:
             buf = strdup(v.bool_val ? "true" : "false");
             break;

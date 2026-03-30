@@ -465,11 +465,11 @@ export class Parser {
     switch (tok.kind) {
       case TokenKind.Int: {
         this.advance();
-        return { kind: "int", value: Number(tok.value), span: tok.span };
+        return { kind: "int", value: Number(tok.value.replace(/_/g, '')), span: tok.span };
       }
       case TokenKind.Float: {
         this.advance();
-        return { kind: "float", value: Number(tok.value), span: tok.span };
+        return { kind: "float", value: Number(tok.value.replace(/_/g, '')), span: tok.span };
       }
       case TokenKind.String: {
         this.advance();
@@ -793,11 +793,11 @@ export class Parser {
       }
       case TokenKind.Int: {
         this.advance();
-        return { kind: "pliteral", value: { kind: "int", value: Number(tok.value), span: tok.span }, span: tok.span };
+        return { kind: "pliteral", value: { kind: "int", value: Number(tok.value.replace(/_/g, '')), span: tok.span }, span: tok.span };
       }
       case TokenKind.Float: {
         this.advance();
-        return { kind: "pliteral", value: { kind: "float", value: Number(tok.value), span: tok.span }, span: tok.span };
+        return { kind: "pliteral", value: { kind: "float", value: Number(tok.value.replace(/_/g, '')), span: tok.span }, span: tok.span };
       }
       case TokenKind.String: {
         this.advance();

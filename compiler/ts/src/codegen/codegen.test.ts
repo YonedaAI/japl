@@ -294,4 +294,28 @@ describe("Codegen: end-to-end", () => {
     const out = compile(`fn neq(a, b) { a != b }`);
     expect(out).toContain("a !== b");
   });
+
+  // 32. Hex literal (parser converts to decimal number)
+  it("emits hex literal as number", () => {
+    const out = compile(`fn main() { let x = 0xFF; x }`);
+    expect(out).toContain("255");
+  });
+
+  // 33. Binary literal (parser converts to decimal number)
+  it("emits binary literal as number", () => {
+    const out = compile(`fn main() { let x = 0b1010; x }`);
+    expect(out).toContain("10");
+  });
+
+  // 34. Scientific notation
+  it("emits scientific notation", () => {
+    const out = compile(`fn main() { let x = 1.5e10; x }`);
+    expect(out).toContain("15000000000");
+  });
+
+  // 35. Underscore-separated literal (parser strips underscores)
+  it("emits underscore-separated literal as number", () => {
+    const out = compile(`fn main() { let x = 1_000_000; x }`);
+    expect(out).toContain("1000000");
+  });
 });

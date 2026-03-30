@@ -1,4 +1,4 @@
-import { Type, TypeScheme, monotype, PURE } from './types.js';
+import { Type, TypeScheme, monotype, freshVar, PURE } from './types.js';
 
 export type TypeDef = {
   name: string;
@@ -147,5 +147,22 @@ export class TypeEnv {
       fieldTypes: [],
       resultType: { kind: "bool" },
     });
+
+    // Num trait — generic numeric operations
+    const typeVar: Type = { kind: "var", id: -100 };
+    this.defineTrait('Num', {
+      name: 'Num',
+      typeParam: 'a',
+      supertraits: [],
+      methods: [
+        { name: 'add', params: [typeVar, typeVar], ret: typeVar },
+        { name: 'sub', params: [typeVar, typeVar], ret: typeVar },
+        { name: 'mul', params: [typeVar, typeVar], ret: typeVar },
+        { name: 'zero', params: [], ret: typeVar },
+      ],
+    });
+    // impl Num for Int (registered as trait impl)
+    // impl Num for Float (registered as trait impl)
+    // impl Num for Byte (registered as trait impl)
   }
 }

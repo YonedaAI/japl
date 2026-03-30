@@ -4,6 +4,7 @@ export enum TokenKind {
   // Literals
   Int,
   Float,
+  Byte,
   String,
   True,
   False,
@@ -147,6 +148,7 @@ export const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map<string, TokenKin
 const TOKEN_KIND_NAMES: Record<number, string> = {
   [TokenKind.Int]: 'Int',
   [TokenKind.Float]: 'Float',
+  [TokenKind.Byte]: 'Byte',
   [TokenKind.String]: 'String',
   [TokenKind.True]: 'True',
   [TokenKind.False]: 'False',

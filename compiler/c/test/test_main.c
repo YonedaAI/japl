@@ -23,7 +23,7 @@ extern void test_value_unit(void);
 extern void test_value_nil(void);
 extern void test_value_add_int(void);
 extern void test_value_add_float(void);
-extern void test_value_add_mixed(void);
+extern void test_value_no_implicit_promotion(void);
 extern void test_value_sub(void);
 extern void test_value_mul(void);
 extern void test_value_div(void);
@@ -47,6 +47,19 @@ extern void test_closure_basic(void);
 extern void test_closure_with_env(void);
 extern void test_record_basic(void);
 extern void test_record_update(void);
+extern void test_int_overflow_add(void);
+extern void test_int_overflow_sub(void);
+extern void test_int_overflow_mul(void);
+extern void test_int_mul_by_zero(void);
+extern void test_byte_create(void);
+extern void test_byte_zero(void);
+extern void test_byte_show(void);
+extern void test_byte_show_255(void);
+extern void test_byte_add(void);
+extern void test_byte_sub(void);
+extern void test_byte_mul(void);
+extern void test_byte_eq(void);
+extern void test_kind_name(void);
 
 /* ── GC tests ───────────────────────────────────────────────── */
 extern void test_gc_heap_create(void);
@@ -98,7 +111,7 @@ int main(void) {
     printf("\n[Arithmetic]\n");
     TEST(test_value_add_int);
     TEST(test_value_add_float);
-    TEST(test_value_add_mixed);
+    TEST(test_value_no_implicit_promotion);
     TEST(test_value_sub);
     TEST(test_value_mul);
     TEST(test_value_div);
@@ -162,7 +175,24 @@ int main(void) {
     TEST(test_supervisor_start);
     TEST(test_supervisor_restart);
 
+    printf("\n[Overflow Detection]\n");
+    TEST(test_int_overflow_add);
+    TEST(test_int_overflow_sub);
+    TEST(test_int_overflow_mul);
+    TEST(test_int_mul_by_zero);
+
+    printf("\n[Byte Type]\n");
+    TEST(test_byte_create);
+    TEST(test_byte_zero);
+    TEST(test_byte_show);
+    TEST(test_byte_show_255);
+    TEST(test_byte_add);
+    TEST(test_byte_sub);
+    TEST(test_byte_mul);
+    TEST(test_byte_eq);
+    TEST(test_kind_name);
+
     printf("\n==================\n");
-    printf("All 50 tests passed!\n");
+    printf("All 63 tests passed!\n");
     return 0;
 }

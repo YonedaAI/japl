@@ -174,15 +174,50 @@ export class Lexer {
     const col = this.col;
     let isFloat = false;
 
-    while (this.pos < this.source.length && isDigit(this.peek())) {
+    // Check for hex: 0x...
+    if (this.peek() === '0' && (this.peekNext() === 'x' || this.peekNext() === 'X')) {
+      this.advance(); // '0'
+      this.advance(); // 'x'
+      while (this.pos < this.source.length && (isHexDigit(this.peek()) || this.peek() === '_')) {
+        this.advance();
+      }
+      const value = this.source.slice(start, this.pos);
+      return this.makeToken(TokenKind.Int, value, start, line, col);
+    }
+
+    // Check for binary: 0b...
+    if (this.peek() === '0' && (this.peekNext() === 'b' || this.peekNext() === 'B')) {
+      this.advance(); // '0'
+      this.advance(); // 'b'
+      while (this.pos < this.source.length && (this.peek() === '0' || this.peek() === '1' || this.peek() === '_')) {
+        this.advance();
+      }
+      const value = this.source.slice(start, this.pos);
+      return this.makeToken(TokenKind.Int, value, start, line, col);
+    }
+
+    // Regular decimal digits with separators
+    while (this.pos < this.source.length && (isDigit(this.peek()) || this.peek() === '_')) {
       this.advance();
     }
 
-    // Check for decimal point (but not .. operator)
+    // Decimal point (not .. operator)
     if (this.peek() === '.' && this.peekNext() !== '.' && isDigit(this.peekNext())) {
       isFloat = true;
-      this.advance(); // consume '.'
-      while (this.pos < this.source.length && isDigit(this.peek())) {
+      this.advance(); // '.'
+      while (this.pos < this.source.length && (isDigit(this.peek()) || this.peek() === '_')) {
+        this.advance();
+      }
+    }
+
+    // Scientific notation: e/E followed by optional +/- and digits
+    if (this.peek() === 'e' || this.peek() === 'E') {
+      isFloat = true;
+      this.advance(); // 'e'
+      if (this.peek() === '+' || this.peek() === '-') {
+        this.advance(); // sign
+      }
+      while (this.pos < this.source.length && (isDigit(this.peek()) || this.peek() === '_')) {
         this.advance();
       }
     }
@@ -336,6 +371,10 @@ export class Lexer {
 
 function isDigit(ch: string): boolean {
   return ch >= '0' && ch <= '9';
+}
+
+function isHexDigit(ch: string): boolean {
+  return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
 }
 
 function isAlpha(ch: string): boolean {

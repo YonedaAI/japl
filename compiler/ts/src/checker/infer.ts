@@ -2,7 +2,7 @@ import * as AST from '../parser/ast.js';
 import { Span } from '../lexer/token.js';
 import {
   Type, TypeScheme, EffectRow, Effect,
-  INT, FLOAT, STRING, BOOL, UNIT, NEVER, PURE, IO,
+  INT, FLOAT, BYTE, STRING, BOOL, UNIT, NEVER, PURE, IO,
   freshVar, freeVars, typeToString, monotype, resetVarCounter,
 } from './types.js';
 import { UnificationEngine } from './unify.js';
@@ -636,15 +636,29 @@ export class TypeChecker {
 
     switch (expr.op) {
       case "+": case "-": case "*": case "/": case "%": {
-        // Arithmetic: both operands must be same numeric type, result is same type
-        // Default to Int, but allow Float
+        // Arithmetic: both operands must be the same numeric type, result is same type
+        // No implicit promotion between Int, Float, and Byte
+        const resolvedLeft = this.unifier.resolve(leftType);
+        const resolvedRight = this.unifier.resolve(rightType);
+        const numericKinds = new Set(["int", "float", "byte"]);
+        const leftIsNumeric = numericKinds.has(resolvedLeft.kind);
+        const rightIsNumeric = numericKinds.has(resolvedRight.kind);
+
+        if (leftIsNumeric && rightIsNumeric && resolvedLeft.kind !== resolvedRight.kind) {
+          this.errors.push(new TypeError(
+            `Cannot mix ${typeToString(resolvedLeft)} and ${typeToString(resolvedRight)} in arithmetic. Use to_float(x) or to_int(x) for explicit conversion.`,
+            expr.span,
+          ));
+          return [leftType, effects];
+        }
+
         try {
           this.unifier.unify(leftType, rightType, expr.span);
         } catch (e) {
           if (e instanceof TypeError) this.errors.push(e);
         }
         const resolved = this.unifier.resolve(leftType);
-        if (resolved.kind !== "int" && resolved.kind !== "float" && resolved.kind !== "var") {
+        if (!numericKinds.has(resolved.kind) && resolved.kind !== "var") {
           this.errors.push(new TypeError(
             `Arithmetic operator '${expr.op}' requires numeric types but got ${typeToString(resolved)}`,
             expr.span,
@@ -701,7 +715,7 @@ export class TypeChecker {
     switch (expr.op) {
       case "-": {
         const resolved = this.unifier.resolve(operandType);
-        if (resolved.kind !== "int" && resolved.kind !== "float" && resolved.kind !== "var") {
+        if (resolved.kind !== "int" && resolved.kind !== "float" && resolved.kind !== "byte" && resolved.kind !== "var") {
           this.errors.push(new TypeError(
             `Unary '-' requires numeric type but got ${typeToString(resolved)}`,
             expr.span,
@@ -916,6 +930,7 @@ export class TypeChecker {
         switch (te.name) {
           case "Int": return INT;
           case "Float": return FLOAT;
+          case "Byte": return BYTE;
           case "String": return STRING;
           case "Bool": return BOOL;
           case "Unit": return UNIT;

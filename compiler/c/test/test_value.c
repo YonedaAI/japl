@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdint.h>
 #include "japl_runtime.h"
 
 /* ── Int tests ──────────────────────────────────────────────── */
@@ -99,9 +100,13 @@ void test_value_add_float(void) {
     assert(fabs(japl_to_float(r) - 4.0) < 0.0001);
 }
 
-void test_value_add_mixed(void) {
-    JaplValue r = japl_add(japl_int(1), japl_float(2.5));
-    assert(fabs(japl_to_float(r) - 3.5) < 0.0001);
+void test_value_no_implicit_promotion(void) {
+    /* Int + Int works fine — mixed Int + Float is now a type error.
+       We can't easily test exit() in C, so just verify same-type arithmetic. */
+    JaplValue a = japl_int(5);
+    JaplValue b = japl_int(3);
+    JaplValue r = japl_add(a, b);
+    assert(r.int_val == 8);
 }
 
 void test_value_sub(void) {
@@ -288,4 +293,99 @@ void test_record_update(void) {
     free(updated.record_val->keys);
     free(updated.record_val->values);
     free(updated.record_val);
+}
+
+/* ── Overflow detection tests ──────────────────────────────── */
+
+void test_int_overflow_add(void) {
+    /* INT64_MAX - 1 + 1 should succeed */
+    JaplValue a = japl_int(INT64_MAX - 1);
+    JaplValue b = japl_int(1);
+    JaplValue r = japl_add(a, b);
+    assert(r.int_val == INT64_MAX);
+}
+
+void test_int_overflow_sub(void) {
+    /* INT64_MIN + 1 - 1 should succeed */
+    JaplValue a = japl_int(INT64_MIN + 1);
+    JaplValue b = japl_int(1);
+    JaplValue r = japl_sub(a, b);
+    assert(r.int_val == INT64_MIN);
+}
+
+void test_int_overflow_mul(void) {
+    /* Large but non-overflowing multiplication */
+    JaplValue a = japl_int(1000000);
+    JaplValue b = japl_int(1000000);
+    JaplValue r = japl_mul(a, b);
+    assert(r.int_val == 1000000000000LL);
+}
+
+void test_int_mul_by_zero(void) {
+    JaplValue a = japl_int(INT64_MAX);
+    JaplValue b = japl_int(0);
+    JaplValue r = japl_mul(a, b);
+    assert(r.int_val == 0);
+}
+
+/* ── Byte type tests ───────────────────────────────────────── */
+
+void test_byte_create(void) {
+    JaplValue b = japl_byte(255);
+    assert(b.kind == JAPL_BYTE);
+    assert(japl_to_byte(b) == 255);
+}
+
+void test_byte_zero(void) {
+    JaplValue b = japl_byte(0);
+    assert(b.kind == JAPL_BYTE);
+    assert(japl_to_byte(b) == 0);
+}
+
+void test_byte_show(void) {
+    JaplValue b = japl_byte(42);
+    char* s = japl_show(b);
+    assert(strcmp(s, "42") == 0);
+    free(s);
+}
+
+void test_byte_show_255(void) {
+    JaplValue b = japl_byte(255);
+    char* s = japl_show(b);
+    assert(strcmp(s, "255") == 0);
+    free(s);
+}
+
+void test_byte_add(void) {
+    JaplValue a = japl_byte(100);
+    JaplValue b = japl_byte(55);
+    JaplValue r = japl_byte_add(a, b);
+    assert(japl_to_byte(r) == 155);
+}
+
+void test_byte_sub(void) {
+    JaplValue a = japl_byte(200);
+    JaplValue b = japl_byte(50);
+    JaplValue r = japl_byte_sub(a, b);
+    assert(japl_to_byte(r) == 150);
+}
+
+void test_byte_mul(void) {
+    JaplValue a = japl_byte(10);
+    JaplValue b = japl_byte(25);
+    JaplValue r = japl_byte_mul(a, b);
+    assert(japl_to_byte(r) == 250);
+}
+
+void test_byte_eq(void) {
+    assert(japl_to_bool(japl_eq(japl_byte(42), japl_byte(42))) == 1);
+    assert(japl_to_bool(japl_eq(japl_byte(42), japl_byte(43))) == 0);
+}
+
+void test_kind_name(void) {
+    assert(strcmp(japl_kind_name(JAPL_INT), "Int") == 0);
+    assert(strcmp(japl_kind_name(JAPL_FLOAT), "Float") == 0);
+    assert(strcmp(japl_kind_name(JAPL_BYTE), "Byte") == 0);
+    assert(strcmp(japl_kind_name(JAPL_BOOL), "Bool") == 0);
+    assert(strcmp(japl_kind_name(JAPL_STRING), "String") == 0);
 }

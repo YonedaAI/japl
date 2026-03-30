@@ -17,6 +17,7 @@ struct JaplClosure;
 typedef enum {
     JAPL_INT,
     JAPL_FLOAT,
+    JAPL_BYTE,    // u8, 0-255
     JAPL_BOOL,
     JAPL_STRING,
     JAPL_LIST,
@@ -35,6 +36,7 @@ typedef struct JaplValue {
     union {
         int64_t int_val;
         double float_val;
+        uint8_t byte_val;
         int bool_val;
         struct JaplString* string_val;
         struct JaplList* list_val;
@@ -78,6 +80,7 @@ typedef struct JaplRecord {
 
 JaplValue japl_int(int64_t v);
 JaplValue japl_float(double v);
+JaplValue japl_byte(uint8_t v);
 JaplValue japl_bool(int v);
 JaplValue japl_unit(void);
 JaplValue japl_nil(void);
@@ -107,6 +110,7 @@ JaplValue japl_record_update(JaplValue rec, const char* key, JaplValue val);
 
 int64_t japl_to_int(JaplValue v);
 double japl_to_float(JaplValue v);
+uint8_t japl_to_byte(JaplValue v);
 const char* japl_to_cstr(JaplValue v);
 int japl_to_bool(JaplValue v);
 
@@ -118,6 +122,16 @@ JaplValue japl_mul(JaplValue a, JaplValue b);
 JaplValue japl_div(JaplValue a, JaplValue b);
 JaplValue japl_mod(JaplValue a, JaplValue b);
 JaplValue japl_negate(JaplValue v);
+
+/* ── Byte Arithmetic ───────────────────────────────────────── */
+
+JaplValue japl_byte_add(JaplValue a, JaplValue b);
+JaplValue japl_byte_sub(JaplValue a, JaplValue b);
+JaplValue japl_byte_mul(JaplValue a, JaplValue b);
+
+/* ── Display Helpers ───────────────────────────────────────── */
+
+const char* japl_kind_name(JaplValueKind kind);
 
 /* ── Comparison ─────────────────────────────────────────────── */
 

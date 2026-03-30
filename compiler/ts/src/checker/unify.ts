@@ -13,7 +13,7 @@ export class UnificationEngine {
     // Same concrete kind check
     if (ra.kind === rb.kind) {
       switch (ra.kind) {
-        case "int": case "float": case "string": case "bool":
+        case "int": case "float": case "byte": case "string": case "bool":
         case "unit": case "never":
           return; // identical primitives
         default:
@@ -161,7 +161,7 @@ export class UnificationEngine {
   deepResolve(t: Type): Type {
     const resolved = this.resolve(t);
     switch (resolved.kind) {
-      case "int": case "float": case "string": case "bool":
+      case "int": case "float": case "byte": case "string": case "bool":
       case "unit": case "never":
         return resolved;
       case "var":

@@ -3,6 +3,7 @@
 export type Type =
   | { kind: "int" }
   | { kind: "float" }
+  | { kind: "byte" }
   | { kind: "string" }
   | { kind: "bool" }
   | { kind: "unit" }
@@ -37,6 +38,7 @@ export type TypeScheme = {
 
 export const INT: Type = { kind: "int" };
 export const FLOAT: Type = { kind: "float" };
+export const BYTE: Type = { kind: "byte" };
 export const STRING: Type = { kind: "string" };
 export const BOOL: Type = { kind: "bool" };
 export const UNIT: Type = { kind: "unit" };
@@ -64,6 +66,7 @@ export function typeToString(t: Type): string {
   switch (t.kind) {
     case "int": return "Int";
     case "float": return "Float";
+    case "byte": return "Byte";
     case "string": return "String";
     case "bool": return "Bool";
     case "unit": return "Unit";
@@ -134,7 +137,7 @@ export function freeVars(t: Type): Set<number> {
 
 function collectFreeVars(t: Type, out: Set<number>): void {
   switch (t.kind) {
-    case "int": case "float": case "string": case "bool":
+    case "int": case "float": case "byte": case "string": case "bool":
     case "unit": case "never":
       break;
     case "var":
