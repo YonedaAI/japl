@@ -1,0 +1,15 @@
+type Tree =
+  | Leaf(Int)
+  | Branch(Tree, Tree)
+
+fn sum_tree(t: Tree) -> Int {
+  match t {
+    Leaf(n) => n
+    Branch(left, right) => sum_tree(left) + sum_tree(right)
+  }
+}
+
+fn main() {
+  let tree = Branch(Branch(Leaf(1), Leaf(2)), Branch(Leaf(3), Leaf(4)))
+  println(show(sum_tree(tree)))
+}

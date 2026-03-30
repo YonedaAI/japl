@@ -1,0 +1,8 @@
+fn make_adder(n: Int) {
+  fn(x: Int) { x + n }
+}
+
+fn main() {
+  let add5 = make_adder(5)
+  println(show(add5(3)))
+}

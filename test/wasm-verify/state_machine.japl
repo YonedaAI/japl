@@ -1,0 +1,19 @@
+type Light = | Red | Green | Yellow
+
+fn next(l: Light) -> Light {
+  match l { Red => Green, Green => Yellow, Yellow => Red }
+}
+
+fn name(l: Light) -> String {
+  match l { Red => "RED", Green => "GREEN", Yellow => "YELLOW" }
+}
+
+fn run(l: Light, n: Int) {
+  if n <= 0 { println("done") }
+  else {
+    println(name(l))
+    run(next(l), n - 1)
+  }
+}
+
+fn main() { run(Red, 6) }

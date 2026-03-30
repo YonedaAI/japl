@@ -1,0 +1,8 @@
+fn apply(f: fn(Int) -> Int, x: Int) -> Int { f(x) }
+fn double(x: Int) -> Int { x * 2 }
+fn square(x: Int) -> Int { x * x }
+
+fn main() {
+  println(show(apply(double, 5)))
+  println(show(apply(square, 4)))
+}

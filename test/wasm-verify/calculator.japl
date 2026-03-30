@@ -1,0 +1,18 @@
+type Expr =
+  | Num(Int)
+  | Add(Expr, Expr)
+  | Mul(Expr, Expr)
+  | Neg(Expr)
+
+fn evaluate(e: Expr) -> Int {
+  match e {
+    Num(n) => n
+    Add(a, b) => evaluate(a) + evaluate(b)
+    Mul(a, b) => evaluate(a) * evaluate(b)
+    Neg(x) => 0 - evaluate(x)
+  }
+}
+
+fn main() {
+  println(show(evaluate(Add(Mul(Num(3), Num(4)), Neg(Num(5))))))
+}

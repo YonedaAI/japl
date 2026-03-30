@@ -1,0 +1,15 @@
+type MyResult =
+  | MyOk(Int)
+  | MyErr(Int)
+
+fn unwrap_ok(r: MyResult) -> Int {
+  match r {
+    MyOk(n) => n
+    MyErr(e) => e
+  }
+}
+
+fn main() {
+  println(show(unwrap_ok(MyOk(5))))
+  println(show(unwrap_ok(MyErr(0))))
+}

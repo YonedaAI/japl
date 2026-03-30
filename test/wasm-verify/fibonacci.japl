@@ -1,0 +1,10 @@
+fn fib(n: Int) -> Int {
+  if n <= 1 { n }
+  else { fib(n - 1) + fib(n - 2) }
+}
+fn main() {
+  println(show(fib(0)))
+  println(show(fib(1)))
+  println(show(fib(5)))
+  println(show(fib(10)))
+}
