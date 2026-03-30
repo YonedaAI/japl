@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { buildToWat, buildToWasm, runWasm, checkTools } from './cli/build.js';
+import { buildToWat, buildToWasm, runWasm, checkTools, findJaplRuntime, programUsesProcesses } from './cli/build.js';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -13,21 +14,28 @@ function printHelp() {
     console.log(`JAPL ${VERSION} — Just Another Programming Language
 
 Usage:
-  japl build <file.japl>            Compile to WASM (outputs build/<name>.wasm)
-  japl run <file.japl>              Compile and execute
-  japl check <file.japl>            Type check only
-  japl fmt <file.japl>              Format (stub)
-  japl new <name>                   Scaffold a project
-  japl version                      Print version
-  japl help                         Show this help
+  japl build <file.japl>                Compile to WASM
+  japl run <file.japl>                  Compile and execute
+  japl run --node <name> <file.japl>    Run in distributed mode
+  japl check <file.japl>                Type check only
+  japl fmt <file.japl>                  Format (stub)
+  japl new <name>                       Scaffold a project
+  japl version                          Print version
+  japl help                             Show this help
+
+Run options:
+  --node <name>          Node name for distributed mode
+  --listen <:port>       Listen for connections
+  --connect <host:port>  Connect to peer node
 
 Build options:
-  --emit-wat        Output WAT text instead of WASM binary
-  --out <dir>       Output directory (default: build/)
+  --emit-wat             Output WAT text (debug)
+  --out <dir>            Output directory (default: build/)
 
 Requirements:
-  wat2wasm          WAT → WASM compiler (brew install wabt)
-  wasmtime          WASM runtime (brew install wasmtime)`);
+  wat2wasm               brew install wabt
+  wasmtime               brew install wasmtime (optional, for simple programs)
+  japl-runtime           cd japl-runtime && cargo build (for processes)`);
 }
 function parseCliArgs(args) {
     const flags = {};
@@ -161,15 +169,35 @@ function cmdRun(args) {
     const { flags, positional } = parseCliArgs(args);
     const inputFile = positional[0];
     if (!inputFile) {
-        console.error('Usage: japl run <file.japl>');
+        console.error('Usage: japl run <file.japl> [--node <name>] [--listen <:port>] [--connect <host:port>]');
         process.exit(1);
     }
-    checkTools(['wat2wasm', 'wasmtime']);
+    checkTools(['wat2wasm']);
     // Build to temp directory
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'japl-'));
     try {
         const wasmPath = buildToWasm(inputFile, tmpDir);
-        runWasm(wasmPath);
+        // Determine if we need the full japl-runtime (process support)
+        const needsRuntime = flags['node'] !== undefined ||
+            flags['listen'] !== undefined ||
+            flags['connect'] !== undefined ||
+            programUsesProcesses(wasmPath);
+        if (needsRuntime) {
+            // Use japl-runtime for process support
+            const runtimeBin = findJaplRuntime();
+            const runtimeArgs = ['run', wasmPath];
+            if (flags['node'] !== undefined)
+                runtimeArgs.push('--node', flags['node']);
+            if (flags['listen'] !== undefined)
+                runtimeArgs.push('--listen', flags['listen']);
+            if (flags['connect'] !== undefined)
+                runtimeArgs.push('--connect', flags['connect']);
+            execFileSync(runtimeBin, runtimeArgs, { stdio: 'inherit' });
+        }
+        else {
+            // Use wasmtime directly (faster for simple programs)
+            runWasm(wasmPath);
+        }
     }
     catch (err) {
         console.error(err.message);

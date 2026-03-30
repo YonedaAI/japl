@@ -1,7 +1,10 @@
+mod distribution;
 mod engine;
 mod host;
+mod node;
 mod process;
 mod scheduler;
+mod wire;
 
 use clap::Parser;
 use scheduler::Scheduler;
@@ -24,11 +27,11 @@ enum Commands {
         #[arg(long)]
         node: Option<String>,
 
-        /// Listen address
+        /// Listen address (e.g. ":9000")
         #[arg(long)]
         listen: Option<String>,
 
-        /// Connect to peer
+        /// Connect to peer (e.g. "localhost:9000")
         #[arg(long)]
         connect: Option<String>,
     },
@@ -40,11 +43,31 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Run {
             file,
-            node: _,
-            listen: _,
-            connect: _,
+            node,
+            listen,
+            connect,
         } => {
             let mut scheduler = Scheduler::new();
+
+            if let Some(node_name) = node {
+                let dist = distribution::DistributionLayer::new(
+                    node_name.clone(),
+                    "japl-default-cookie".to_string(),
+                    scheduler.command_sender(),
+                );
+
+                if let Some(addr) = listen {
+                    dist.listen(&addr)?;
+                }
+
+                if let Some(peer) = connect {
+                    dist.connect(&peer)?;
+                }
+
+                scheduler.set_distribution(dist);
+                println!("[{}] Distribution layer active", node_name);
+            }
+
             scheduler.load_module(&file)?;
             scheduler.run()?;
         }

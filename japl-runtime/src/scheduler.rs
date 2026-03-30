@@ -3,6 +3,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use wasmtime::*;
 
+use crate::distribution::DistributionLayer;
 use crate::engine::JaplEngine;
 use crate::process::{ProcessId, ProcessMessage, ProcessState, SchedulerCommand};
 
@@ -14,6 +15,8 @@ pub struct Scheduler {
     /// Channel the scheduler listens on for commands from processes.
     cmd_tx: mpsc::Sender<SchedulerCommand>,
     cmd_rx: Option<mpsc::Receiver<SchedulerCommand>>,
+    /// Optional distribution layer for cross-node communication.
+    distribution: Option<Arc<DistributionLayer>>,
 }
 
 impl Scheduler {
@@ -25,7 +28,18 @@ impl Scheduler {
             next_pid: Arc::new(Mutex::new(0)),
             cmd_tx,
             cmd_rx: Some(cmd_rx),
+            distribution: None,
         }
+    }
+
+    /// Get a clone of the command sender (for distribution layer to inject commands).
+    pub fn command_sender(&self) -> mpsc::Sender<SchedulerCommand> {
+        self.cmd_tx.clone()
+    }
+
+    /// Set the distribution layer for cross-node messaging.
+    pub fn set_distribution(&mut self, dist: DistributionLayer) {
+        self.distribution = Some(Arc::new(dist));
     }
 
     pub fn load_module(&mut self, path: &str) -> anyhow::Result<()> {

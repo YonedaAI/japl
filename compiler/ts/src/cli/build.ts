@@ -123,3 +123,30 @@ export function buildToWasm(inputPath: string, outputDir?: string): string {
 export function runWasm(wasmPath: string): void {
   execFileSync('wasmtime', [wasmPath], { stdio: 'inherit' });
 }
+
+export function findJaplRuntime(): string {
+  // Check relative to compiler source directory
+  const compilerDir = path.dirname(new URL(import.meta.url).pathname);
+  const candidates = [
+    path.resolve(compilerDir, '../../../../japl-runtime/target/release/japl-runtime'),
+    path.resolve(compilerDir, '../../../../japl-runtime/target/debug/japl-runtime'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  // Try PATH
+  try {
+    execFileSync('which', ['japl-runtime'], { stdio: 'pipe' });
+    return 'japl-runtime';
+  } catch { /* not on PATH */ }
+
+  throw new Error('japl-runtime not found. Build with: cd japl-runtime && cargo build --release');
+}
+
+export function programUsesProcesses(wasmPath: string): boolean {
+  // Check if the .wasm imports from "japl" module (indicates process usage)
+  const bytes = fs.readFileSync(wasmPath);
+  return bytes.includes(Buffer.from('japl'));
+}
