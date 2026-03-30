@@ -652,5 +652,45 @@ describe("Parser", () => {
             expect(expr.value).toBe("hello world");
         }
     });
+    // 45. Tool keyword parses as fn declaration
+    it("parses tool declaration: tool add(x: Int, y: Int) -> Int { x + y }", () => {
+        const TOOL = tok(TokenKind.Tool, "tool");
+        const tokens = [
+            TOOL, ident("add"), LPAREN,
+            ident("x"), COLON, upper("Int"), COMMA,
+            ident("y"), COLON, upper("Int"),
+            RPAREN, ARROW, upper("Int"),
+            LBRACE, ident("x"), PLUS, ident("y"), RBRACE,
+        ];
+        const mod = parse(tokens);
+        expect(mod.decls).toHaveLength(1);
+        const fn = mod.decls[0];
+        expect(fn.kind).toBe("fn");
+        if (fn.kind === "fn") {
+            expect(fn.name).toBe("add");
+            expect(fn.params).toHaveLength(2);
+            expect(fn.params[0].name).toBe("x");
+            expect(fn.params[1].name).toBe("y");
+            expect(fn.pub).toBe(false);
+        }
+    });
+    // 46. Pub tool keyword parses
+    it("parses pub tool declaration", () => {
+        const TOOL = tok(TokenKind.Tool, "tool");
+        const tokens = [
+            PUB, TOOL, ident("greet"), LPAREN,
+            ident("name"), COLON, upper("String"),
+            RPAREN, ARROW, upper("String"),
+            LBRACE, ident("name"), RBRACE,
+        ];
+        const mod = parse(tokens);
+        expect(mod.decls).toHaveLength(1);
+        const fn = mod.decls[0];
+        expect(fn.kind).toBe("fn");
+        if (fn.kind === "fn") {
+            expect(fn.name).toBe("greet");
+            expect(fn.pub).toBe(true);
+        }
+    });
 });
 //# sourceMappingURL=parser.test.js.map

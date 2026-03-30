@@ -18,6 +18,8 @@ export declare class EffectChecker {
      * Effect subsumption rules:
      * - IO subsumes pure (anything can be called from IO context)
      * - Process subsumes Async
+     * - LLM subsumes pure (LLM functions can call pure functions)
+     * - LLM does NOT subsume IO (they are separate effects)
      */
     private isSubsumedByDeclared;
 }

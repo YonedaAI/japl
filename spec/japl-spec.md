@@ -4,7 +4,7 @@
 **Date:** 2026-03-26
 **Status:** Working Draft
 
-> "Pure by default, concurrent by design, resource-safe by construction, distributed without apology."
+> "Pure by default, concurrent by design, resource-safe by construction."
 
 JAPL (Just Another Programming Language) is a strict, typed, effect-aware functional programming language. It combines Rust's ownership and resource safety, Go's simplicity and tooling, Erlang/OTP's lightweight processes and supervision trees, and the FP tradition's immutable values, algebraic data types, pattern matching, and effect tracking.
 
@@ -87,7 +87,7 @@ oct_digit       ::= '0'..'7'
 bin_digit       ::= '0' | '1'
 ```
 
-Integer literals have arbitrary precision. Underscores may be used as visual separators.
+Integer literals are 64-bit signed integers with checked overflow. The compiler rejects operations that would overflow at compile time when detectable; runtime overflow traps. Underscores may be used as visual separators.
 
 #### Float Literals
 
@@ -809,7 +809,7 @@ JAPL employs a **dual-layer** memory model: a pure layer for immutable values an
 
 **Semantics:** All values in the pure layer are immutable. Once constructed, a value cannot be observably modified. Values can be freely shared, duplicated, and discarded.
 
-**Memory management:** Garbage-collected with a generational, per-process collector. Because values are immutable, no write barriers are needed, and GC in one process does not pause other processes.
+**Memory management:** Bump allocator in WASM linear memory. Because values are immutable, allocation is append-only within the linear memory region. A per-process generational collector is planned but not yet implemented.
 
 **Typing rules:** Standard structural rules (weakening, contraction, exchange) apply. A pure value `x : T` may be used zero or more times.
 
@@ -822,7 +822,7 @@ let copy = data  -- sharing is fine; data is immutable
 
 **Semantics:** Resources are mutable external handles (file handles, network sockets, GPU buffers, FFI pointers). Each resource has exactly one owner at any time. Resources must be consumed exactly once.
 
-**Memory management:** Ownership-tracked. Resources are deterministically released when consumed (e.g., by `close`) or when the owning scope exits. No GC involvement.
+**Memory management:** Ownership-tracked via compile-time linearity checking (`--strict` mode). Resources must be consumed exactly once. Deterministic release at scope exit is planned but currently requires explicit consumption.
 
 **Typing rules:** Linear typing rules (no weakening, no contraction) apply. A resource `x : own T` must be used exactly once.
 
@@ -918,15 +918,15 @@ Borrowing rules:
 3. Multiple `ref` borrows may coexist.
 4. There are no mutable borrows; mutation of a resource requires exclusive ownership (`own`).
 
-### 4.6 Region-Based Inference
+### 4.6 Resource Release [PLANNED]
 
-The compiler performs region inference to determine the lifetime of each resource and automatically inserts release operations at scope boundaries when the programmer does not explicitly consume the resource.
+**Note:** Region-based inference for automatic resource release is planned but not yet implemented. Currently, the compiler performs compile-time linearity checking (`--strict` mode) to verify that resources are consumed exactly once. Automatic insertion of release operations at scope boundaries is a future goal.
 
 ### 4.7 Ownership Summary
 
 | Layer | Mutability | Memory | Sharing | Typing |
 |-------|-----------|--------|---------|--------|
-| Pure | Immutable | GC (per-process, generational) | Free | Unrestricted |
+| Pure | Immutable | Bump allocator (WASM linear memory) | Free | Unrestricted |
 | Resource | Mutable | Ownership-tracked, deterministic | Single owner | Linear |
 
 ---
@@ -1106,10 +1106,10 @@ JAPL uses Erlang-style lightweight processes as the sole concurrency primitive. 
 
 ### 6.1 Process Properties
 
-1. **Lightweight:** Each process has a small initial stack (~2KB) that grows as needed. A single node supports millions of concurrent processes.
+1. **Isolated:** Each process runs as a separate WASM instance on an OS thread managed by the japl-runtime scheduler. Process count is bounded by available OS threads, not Erlang-style green threads. Lightweight green-thread scheduling is planned.
 2. **Isolated:** Each process has its own heap partition. No shared mutable state between processes.
-3. **Preemptively scheduled:** The runtime scheduler uses reduction counting to ensure fairness across processes.
-4. **Independently GC'd:** Garbage collection for one process does not pause other processes.
+3. **OS-scheduled:** Processes are currently scheduled by the OS via the japl-runtime thread pool. Preemptive scheduling with reduction counting is planned.
+4. **Independent memory:** Each process has its own WASM linear memory with bump allocation. Per-process generational garbage collection is planned.
 
 ### 6.2 Process Creation
 
@@ -1494,7 +1494,7 @@ assert List.length(items) > 0
 
 ## 9. Distribution
 
-JAPL treats distribution as a first-class language concern rather than a library afterthought.
+JAPL treats distribution as a first-class language concern rather than a library afterthought. **[PROTOTYPE]** Distribution currently works between local processes with serialized tagged values over TCP. Cross-machine distribution with typed ADT messages has not been verified end-to-end.
 
 ### 9.1 Node Addressing
 
@@ -1718,7 +1718,7 @@ Core functions: `String.length`, `String.concat`, `String.split`, `String.contai
 
 | Type | Description |
 |------|-------------|
-| `Pid[msg]` | Process identifier with typed mailbox |
+| `Pid[msg]` | Process identifier with typed message protocol (compiler-checked; runtime uses serialized tagged values) |
 | `Reply[a]` | One-shot reply channel (linear) |
 | `Ref` | Unique monitor reference |
 

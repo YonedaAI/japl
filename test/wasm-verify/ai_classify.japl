@@ -1,0 +1,11 @@
+fn classify(text: String) -> String {
+  "Positive"
+}
+
+fn main() {
+  let sentiment = classify("JAPL is a great language!")
+  println("Sentiment: " <> sentiment)
+
+  let sentiment2 = classify("This code is broken")
+  println("Sentiment: " <> sentiment2)
+}

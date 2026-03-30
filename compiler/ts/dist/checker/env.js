@@ -117,6 +117,14 @@ export class TypeEnv {
             ret: UNIT,
             effects: ioEffect,
         }));
+        // LLM builtin — llm(prompt: String) -> String with LLM effect
+        const llmEffect = { effects: new Set(["llm"]), open: false };
+        this.bind("llm", monotype({
+            kind: "fn",
+            params: [STRING],
+            ret: STRING,
+            effects: llmEffect,
+        }));
         // Pure builtins — show, int_to_string, string_length
         const showVar = freshVar();
         this.bind("show", monotype({

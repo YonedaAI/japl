@@ -1,0 +1,4 @@
+fn main() {
+  let response = llm("What is 2 + 2?")
+  println(response)
+}

@@ -9,6 +9,7 @@ import * as os from 'node:os';
 import { Lexer } from './lexer/index.js';
 import { Parser } from './parser/index.js';
 import { TypeChecker } from './checker/index.js';
+import { Formatter } from './formatter/index.js';
 
 const VERSION = '0.2.0';
 
@@ -23,7 +24,7 @@ Usage:
   japl run <file.japl>                  Compile and execute
   japl run --node <name> <file.japl>    Run in distributed mode
   japl check <file.japl>                Type check only
-  japl fmt <file.japl>                  Format (stub)
+  japl fmt <file.japl>                  Format source code
   japl new <name>                       Scaffold a project
   japl version                          Print version
   japl help                             Show this help
@@ -136,11 +137,30 @@ function cmdCheck(args: string[]): void {
 function cmdFmt(args: string[]): void {
   const inputFile = args[0];
   if (!inputFile) {
-    console.error('Error: missing input file');
     console.error('Usage: japl fmt <file.japl>');
     process.exit(1);
   }
-  console.log(`fmt: not yet implemented (${inputFile})`);
+
+  const source = fs.readFileSync(inputFile, 'utf-8');
+  const lexer = new Lexer(source);
+  const tokens = lexer.tokenize();
+  const parser = new Parser(tokens);
+  const ast = parser.parse();
+
+  const parseErrors = parser.getErrors();
+  if (parseErrors.length > 0) {
+    console.error(`Parse errors in ${inputFile}:`);
+    for (const err of parseErrors) {
+      console.error(`  ${err.message}`);
+    }
+    process.exit(1);
+  }
+
+  const formatter = new Formatter();
+  const formatted = formatter.format(ast);
+
+  fs.writeFileSync(inputFile, formatted);
+  console.log(`Formatted ${inputFile}`);
 }
 
 function cmdNew(args: string[]): void {

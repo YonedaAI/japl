@@ -9,7 +9,7 @@
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:title" content="JAPL — Just Another Programming Language">
-  <meta property="og:description" content="Pure by default, concurrent by design, resource-safe by construction, distributed without apology. A strict, typed, effect-aware functional language.">
+  <meta property="og:description" content="A typed actor language for building reliable distributed systems and AI agents. Pure by default, concurrent by design, AI-native by construction.">
   <meta property="og:url" content="https://japl-nine.vercel.app">
   <meta property="og:image" content="https://japl-nine.vercel.app/og-image.png">
   <meta property="og:image:width" content="1200">
@@ -19,7 +19,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="JAPL — Just Another Programming Language">
-  <meta name="twitter:description" content="Pure by default, concurrent by design, resource-safe by construction, distributed without apology.">
+  <meta name="twitter:description" content="A typed actor language for building reliable distributed systems and AI agents. Pure by default, concurrent by design, AI-native by construction.">
   <meta name="twitter:image" content="https://japl-nine.vercel.app/og-image.png">
 
   <link rel="stylesheet" href="style.css">
@@ -36,6 +36,7 @@
     <ul class="nav-links" id="navLinks">
       <li><a href="#principles">Principles</a></li>
       <li><a href="#code">Code</a></li>
+      <li><a href="#ai">AI</a></li>
       <li><a href="#papers">Research</a></li>
       <li><a href="#dna">DNA</a></li>
       <li><a href="#compiler">Compiler</a></li>
@@ -55,8 +56,8 @@
     <div class="hero-content">
       <h1 class="hero-wordmark">JAPL</h1>
       <p class="hero-sub">Just Another Programming Language</p>
-      <p class="hero-tagline">Pure by default, concurrent by design, resource-safe by construction, distributed without apology.</p>
-      <p class="hero-desc">A language where pure functions handle logic, supervised processes handle time and failure, and ownership handles resources.</p>
+      <p class="hero-tagline">A typed actor language for building reliable distributed systems and AI agents.</p>
+      <p class="hero-desc">Pure by default, concurrent by design, resource-safe by construction. LLM calls are tracked effects, agent processes are supervised, and types generate structured I/O.</p>
       <div class="hero-ctas">
         <a href="#papers" class="btn btn-primary">Read the Research</a>
         <a href="https://github.com/YonedaAI/japl" class="btn btn-secondary" target="_blank" rel="noopener">View on GitHub</a>
@@ -188,6 +189,57 @@
 
 <span class="kw">fn</span> <span class="fn">pipeline</span><span class="pun">(</span>shapes<span class="pun">:</span> <span class="ty">List</span><span class="pun">[</span><span class="ty">Shape</span><span class="pun">]</span><span class="pun">)</span> <span class="op">-></span> <span class="ty">Float</span> <span class="op">=</span>
   shapes <span class="pipe">|></span> <span class="fn">map</span><span class="pun">(</span>area<span class="pun">)</span> <span class="pipe">|></span> <span class="fn">filter</span><span class="pun">(</span><span class="kw">fn</span> a <span class="op">-></span> a <span class="op">></span> <span class="num">10.0</span><span class="pun">)</span> <span class="pipe">|></span> <span class="fn">sum</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     AI-Native Features
+     ============================================================ -->
+<section id="ai">
+  <div class="container">
+    <p class="section-label">AI-Native</p>
+    <h2 class="section-title">Built for AI Agents</h2>
+    <p class="section-desc">First-class language support for building reliable, auditable AI systems.</p>
+
+    <div class="principles-grid">
+
+      <div class="principle-card">
+        <div class="principle-icon">L</div>
+        <h3>LLM as a Tracked Effect</h3>
+        <p>LLM calls are effects in the type system. The compiler knows which functions touch an LLM, enabling static analysis of AI code paths.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">S</div>
+        <h3>Structured I/O from Types</h3>
+        <p>JAPL types automatically generate JSON schemas, giving LLMs structured input/output contracts instead of free-form text.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">T</div>
+        <h3>Tool Contracts</h3>
+        <p>The <code>tool</code> keyword declares typed functions that agents can invoke, with effects and schemas tracked at compile time.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">A</div>
+        <h3>Supervised Agent Processes</h3>
+        <p>AI agents run as supervised processes. If an agent crashes, its supervisor restarts it automatically with the same fault-tolerance as any JAPL process.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">B</div>
+        <h3>Budget Tracking (Planned)</h3>
+        <p>Linear types track token budgets as owned resources. The compiler ensures budgets are consumed, never dropped or duplicated.</p>
+      </div>
+
+      <div class="principle-card">
+        <div class="principle-icon">R</div>
+        <h3>Deterministic Replay (Planned)</h3>
+        <p>Record nondeterministic LLM decisions and replay them for debugging, testing, and auditing agent behavior.</p>
+      </div>
+
     </div>
   </div>
 </section>

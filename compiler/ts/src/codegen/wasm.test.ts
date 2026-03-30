@@ -517,4 +517,69 @@ fn main() { println(show(apply(double, 5))) }`);
       expect(wat).toContain('call_indirect');
     });
   });
+
+  describe('tool keyword', () => {
+    it('tool compiles to WAT as fn', () => {
+      const wat = compileToWat(`tool add(x: Int, y: Int) -> Int { x + y }
+fn main() { println(show(add(2, 3))) }`);
+      expect(wat).toContain('(func $add');
+      expect(wat).toContain('call $add');
+    });
+
+    it('tool with WAT execution produces correct output', () => {
+      const wat = compileToWat(`tool double(x: Int) -> Int { x * 2 }
+fn main() { println(show(double(21))) }`);
+      const output = runWat(wat);
+      if (output === null) return;
+      expect(output).toBe('42\n');
+    });
+  });
+
+  describe('LLM effect', () => {
+    it('LLM call compiles to WAT with japl.llm import', () => {
+      const wat = compileToWat(`fn main() {
+  let response = llm("What is 2 + 2?")
+  println(response)
+}`);
+      expect(wat).toContain('(import "japl" "llm"');
+      expect(wat).toContain('call $japl_llm');
+    });
+  });
+
+  describe('AI agent demo', () => {
+    it('agent with LLM + processes compiles', () => {
+      const wat = compileToWat(`type AgentMsg =
+  | Ask(String, Pid)
+  | Done
+
+type AgentResponse =
+  | Answer(String)
+
+fn agent_loop(count: Int) {
+  receive {
+    Ask(question, reply_to) =>
+      let answer = llm("Answer concisely: " <> question)
+      let _ = send(reply_to, Answer(answer))
+      agent_loop(count + 1),
+    Done =>
+      let _ = println("Agent shutting down after " <> show(count) <> " queries")
+      agent_loop(count)
+  }
+}
+
+fn main() {
+  let _ = println("=== JAPL AI Agent ===")
+  let me = self()
+  let agent = spawn(fn() { agent_loop(0) })
+  let _ = send(agent, Ask("What is JAPL?", me))
+  let _ = receive { Answer(resp) => println("Agent says: " <> resp) }
+  let _ = send(agent, Done)
+  println("=== Done ===")
+}`);
+      expect(wat).toContain('(import "japl" "llm"');
+      expect(wat).toContain('(import "japl" "spawn"');
+      expect(wat).toContain('(import "japl" "send"');
+      expect(wat).toContain('call $japl_llm');
+    });
+  });
 });

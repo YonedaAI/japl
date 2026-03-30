@@ -8,3 +8,5 @@ wasmtime = "43"
 wasmtime-wasi = "43"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+ureq = "2"
+serde_json = "1"

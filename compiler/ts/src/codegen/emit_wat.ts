@@ -40,6 +40,8 @@ export class WatEmitter {
   private tableFunctionIndex: Map<string, number> = new Map();
   // Whether the program uses process primitives (spawn/send/receive/self)
   private usesProcesses: boolean = false;
+  // Whether the program uses the LLM builtin
+  private usesLLM: boolean = false;
   // Track all needed call_indirect type signatures
   private neededFnSigs: Set<number> = new Set();
 
@@ -58,6 +60,7 @@ export class WatEmitter {
     this.tableFunctions = [];
     this.tableFunctionIndex.clear();
     this.usesProcesses = false;
+    this.usesLLM = false;
     this.neededFnSigs = new Set();
 
     // Register type declarations (variants and record types)
@@ -120,6 +123,8 @@ export class WatEmitter {
 
     // Detect process primitives usage
     this.usesProcesses = this.scanForProcessPrimitives(module);
+    // Detect LLM builtin usage
+    this.usesLLM = this.scanForLLMUsage(module);
 
     this.line('(module');
     this.indent++;
@@ -130,6 +135,11 @@ export class WatEmitter {
     // JAPL runtime imports (process primitives)
     if (this.usesProcesses) {
       this.emitJaplImports();
+    }
+
+    // JAPL LLM import
+    if (this.usesLLM) {
+      this.emitLLMImport();
     }
 
     // Memory
@@ -153,7 +163,7 @@ export class WatEmitter {
 
     // Heap pointer global (placed after all string data)
     this.heapStart = (this.memoryOffset + 7) & ~7; // align to 8 bytes
-    if (this.usesProcesses) {
+    if (this.usesProcesses || this.usesLLM) {
       this.line(`(global $heap_ptr (export "heap_ptr") (mut i32) (i32.const ${this.heapStart}))`);
     } else {
       this.line(`(global $heap_ptr (mut i32) (i32.const ${this.heapStart}))`);
@@ -242,6 +252,58 @@ export class WatEmitter {
     this.line('(import "japl" "receive" (func $japl_receive (result i64)))');
     this.line('(import "japl" "self_pid" (func $japl_self_pid (result i64)))');
     this.line('');
+  }
+
+  // ─── JAPL LLM Import ───
+
+  private emitLLMImport(): void {
+    this.line('(import "japl" "llm" (func $japl_llm (param i32 i32) (result i32 i32)))');
+    this.line('');
+  }
+
+  private scanForLLMUsage(module: IR.IrModule): boolean {
+    for (const decl of module.decls) {
+      if (decl.kind === 'fn' || decl.kind === 'test') {
+        if (this.exprUsesLLM(decl.body)) return true;
+      }
+    }
+    return false;
+  }
+
+  private exprUsesLLM(expr: IR.IrExpr): boolean {
+    switch (expr.kind) {
+      case 'app':
+        if (expr.fn.kind === 'var' && expr.fn.name === 'llm') return true;
+        return this.exprUsesLLM(expr.fn) || expr.args.some(a => this.exprUsesLLM(a));
+      case 'let':
+        return this.exprUsesLLM(expr.value) || this.exprUsesLLM(expr.body);
+      case 'if':
+        return this.exprUsesLLM(expr.cond) || this.exprUsesLLM(expr.then) || this.exprUsesLLM(expr.else);
+      case 'block':
+        return expr.exprs.some(e => this.exprUsesLLM(e));
+      case 'match':
+        return this.exprUsesLLM(expr.scrutinee) || expr.arms.some(a => this.exprUsesLLM(a.body));
+      case 'binop':
+        return this.exprUsesLLM(expr.left) || this.exprUsesLLM(expr.right);
+      case 'lambda':
+        return this.exprUsesLLM(expr.body);
+      case 'construct':
+        return expr.args.some(a => this.exprUsesLLM(a));
+      case 'concat':
+        return this.exprUsesLLM(expr.left) || this.exprUsesLLM(expr.right);
+      case 'tail_loop':
+        return this.exprUsesLLM(expr.body);
+      case 'return':
+        return this.exprUsesLLM(expr.expr);
+      case 'spawn':
+        return this.exprUsesLLM(expr.fn);
+      case 'send':
+        return this.exprUsesLLM(expr.pid) || this.exprUsesLLM(expr.msg);
+      case 'receive':
+        return expr.arms.some(a => this.exprUsesLLM(a.body));
+      default:
+        return false;
+    }
   }
 
   private scanForProcessPrimitives(module: IR.IrModule): boolean {
@@ -633,6 +695,15 @@ export class WatEmitter {
           this.currentFnLocals.set('__closure_tmp', 'i64');
           this.declaredLocals.push('__closure_tmp');
         }
+        // LLM builtin temp locals
+        if (expr.fn.kind === 'var' && expr.fn.name === 'llm') {
+          for (const llmLocal of ['__llm_str_ptr', '__llm_res_ptr', '__llm_res_len', '__llm_out_ptr']) {
+            if (!this.currentFnLocals.has(llmLocal)) {
+              this.currentFnLocals.set(llmLocal, 'i32');
+              this.declaredLocals.push(llmLocal);
+            }
+          }
+        }
         this.collectLocals(expr.fn);
         for (const a of expr.args) this.collectLocals(a);
         break;
@@ -852,6 +923,7 @@ export class WatEmitter {
       switch (expr.fn.name) {
         case 'println': return 'void';
         case 'show': return 'i32'; // returns string pointer
+        case 'llm': return 'i32'; // returns string pointer
         case 'self': return 'i64'; // returns pid
         default: {
           // Check if this is a variant constructor
@@ -1121,6 +1193,42 @@ export class WatEmitter {
             lines.push('i32.wrap_i64');
           }
           lines.push('call $println');
+        }
+        return lines;
+      }
+
+      // Built-in: llm(prompt) -> string pointer
+      if (fnName === 'llm') {
+        if (expr.args.length === 1) {
+          lines.push(...this.emitExpr(expr.args[0]));
+          // Argument is a string pointer (i32). We need ptr+4 (data) and load length.
+          const argType = this.inferExprType(expr.args[0]);
+          if (argType === 'i64') {
+            lines.push('i32.wrap_i64');
+          }
+          // Stack has string pointer (length-prefixed). Extract data ptr and len.
+          lines.push('(local.set $__llm_str_ptr)');
+          // Push data pointer (str_ptr + 4, skip length prefix)
+          lines.push('(i32.add (local.get $__llm_str_ptr) (i32.const 4))');
+          // Push length
+          lines.push('(i32.load (local.get $__llm_str_ptr))');
+          // Call host: (param i32 i32) (result i32 i32) -> result_ptr, result_len
+          lines.push('call $japl_llm');
+          // Host returns (ptr, len). We need to construct a length-prefixed string.
+          // Store len in a temp, then build the string at heap_ptr.
+          lines.push('(local.set $__llm_res_len)');
+          lines.push('(local.set $__llm_res_ptr)');
+          // Allocate a new length-prefixed string: [len:4][data:len]
+          lines.push('(global.get $heap_ptr)');
+          lines.push('(local.set $__llm_out_ptr)');
+          // Store length at heap_ptr
+          lines.push('(i32.store (local.get $__llm_out_ptr) (local.get $__llm_res_len))');
+          // Copy response data: memory.copy(dst=out_ptr+4, src=res_ptr, len=res_len)
+          lines.push('(memory.copy (i32.add (local.get $__llm_out_ptr) (i32.const 4)) (local.get $__llm_res_ptr) (local.get $__llm_res_len))');
+          // Advance heap_ptr
+          lines.push('(global.set $heap_ptr (i32.add (local.get $__llm_out_ptr) (i32.add (i32.const 4) (local.get $__llm_res_len))))');
+          // Result: the new string pointer
+          lines.push('(local.get $__llm_out_ptr)');
         }
         return lines;
       }
@@ -1799,7 +1907,7 @@ export class WatEmitter {
       case 'var':
         if (!bound.has(expr.name) && !this.userFunctions.has(expr.name) && !this.variantRegistry.has(expr.name)) {
           // It's a free variable (not a local/param, not a top-level function, not a constructor)
-          if (expr.name !== 'println' && expr.name !== 'show') {
+          if (expr.name !== 'println' && expr.name !== 'show' && expr.name !== 'llm') {
             free.add(expr.name);
           }
         }

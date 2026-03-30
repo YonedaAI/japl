@@ -48,7 +48,7 @@ export type Type = {
     kind: "option";
     some: Type;
 };
-export type Effect = "pure" | "io" | "async" | "process" | "fail";
+export type Effect = "pure" | "io" | "async" | "process" | "fail" | "llm";
 export type EffectRow = {
     effects: Set<Effect>;
     open: boolean;

@@ -19,7 +19,7 @@ export type Type =
   | { kind: "result"; ok: Type; err: Type }
   | { kind: "option"; some: Type };
 
-export type Effect = "pure" | "io" | "async" | "process" | "fail";
+export type Effect = "pure" | "io" | "async" | "process" | "fail" | "llm";
 
 export type EffectRow = {
   effects: Set<Effect>;
@@ -114,6 +114,7 @@ export function effectRowToString(e: EffectRow): string {
       case "async": return "Async";
       case "process": return "Process";
       case "fail": return "Fail";
+      case "llm": return "LLM";
       case "pure": return "Pure";
       default: return eff;
     }

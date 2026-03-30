@@ -74,6 +74,7 @@ export function effectRowToString(e) {
             case "async": return "Async";
             case "process": return "Process";
             case "fail": return "Fail";
+            case "llm": return "LLM";
             case "pure": return "Pure";
             default: return eff;
         }

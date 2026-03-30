@@ -114,12 +114,13 @@ export class Parser {
     switch (tok.kind) {
       case TokenKind.Pub: {
         this.advance();
-        if (this.current().kind === TokenKind.Fn) {
+        if (this.current().kind === TokenKind.Fn || this.current().kind === TokenKind.Tool) {
           return this.parseFnDecl(true);
         }
-        throw this.error(`Expected 'fn' after 'pub'`);
+        throw this.error(`Expected 'fn' or 'tool' after 'pub'`);
       }
       case TokenKind.Fn:         return this.parseFnDecl(false);
+      case TokenKind.Tool:       return this.parseFnDecl(false);
       case TokenKind.Type:       return this.parseTypeDecl();
       case TokenKind.Trait:      return this.parseTraitDecl();
       case TokenKind.Impl:       return this.parseImplDecl();
@@ -135,7 +136,12 @@ export class Parser {
 
   private parseFnDecl(pub: boolean): AST.Decl {
     const startPos = this.pos;
-    this.expect(TokenKind.Fn);
+    // Accept both 'fn' and 'tool' keywords ('tool' desugars to 'fn')
+    if (this.current().kind === TokenKind.Tool) {
+      this.advance();
+    } else {
+      this.expect(TokenKind.Fn);
+    }
     const name = this.expect(TokenKind.Ident).value;
     this.expect(TokenKind.LParen);
     const params = this.parseParamList();

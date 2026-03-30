@@ -1,76 +1,196 @@
 # JAPL -- Just Another Programming Language
 
-**A strict, typed, effect-aware functional language combining Rust's ownership, Go's simplicity, Erlang's processes, and FP semantics.**
+A typed actor language with immutable values, supervision, and explicit resource safety.
 
-> *Pure by default, concurrent by design, resource-safe by construction, distributed without apology.*
-
----
-
-## Language Design DNA
-
-JAPL draws from four programming traditions, unified by a coherent type theory:
-
-| Tradition | Contribution |
-|---|---|
-| **ML / OCaml / Gleam** | Algebraic types, pattern matching, parametric polymorphism, type inference |
-| **Rust** | Ownership, borrowing, linear types, memory safety without GC |
-| **Erlang / OTP** | Lightweight processes, message passing, supervision trees, "let it crash" |
-| **Go** | Fast compilation, static binaries, simple tooling, pragmatic deployment |
+> Pure functions handle logic. Supervised processes handle time and failure. Ownership handles resources.
 
 ---
 
-## Core Principles
+## What JAPL Is
 
-1. **Values Are Primary** -- Data is immutable by default. Values flow through functions without hidden state.
-2. **Mutation Is Local and Explicit** -- When mutation is needed, it is confined to explicit scopes with linear ownership.
-3. **Concurrency Is Process-Based** -- Lightweight, supervised processes communicate through typed messages. No threads, no locks.
-4. **Failures Are Normal and Typed** -- Errors are values. Recovery strategies are declared in types. Supervision handles the unexpected.
-5. **Distribution Is Native** -- Processes can span nodes. Location transparency and typed protocols make networked systems first-class.
-6. **Functions Are the Unit of Composition** -- Pipelines, higher-order functions, and algebraic effects compose cleanly.
-7. **Runtime Simplicity = Type Power** -- The type system does the heavy lifting at compile time so the runtime stays minimal and fast.
+JAPL compiles to WebAssembly and runs on a custom Rust runtime with real OS-thread processes, typed message passing, and supervision trees.
 
----
+```japl
+type KVCommand =
+  | Put(Int, Int, Pid)
+  | Get(Int, Pid)
+  | Size(Pid)
 
-## Code Example
-
-```
--- A typed web server with process-based concurrency
-
-type Request =
-  | Get(String)
-  | Post(String, Body)
-
-type Response =
-  | Ok(Body)
+type KVResponse =
+  | Found(Int)
   | NotFound
-  | Error(String)
+  | Stored
+  | Count(Int)
 
-fn handle(req: Request) -> Response = match req with
-  | Get("/health")    -> Ok("ok")
-  | Get(path)         -> lookup(path)
-  | Post(path, body)  -> store(path, body)
+fn partition(data_count: Int) {
+  receive {
+    Put(key, val, reply) =>
+      let _ = send(reply, Stored)
+      partition(data_count + 1),
+    Get(key, reply) =>
+      let _ = send(reply, Found(key * 10))
+      partition(data_count),
+    Size(reply) =>
+      let _ = send(reply, Count(data_count))
+      partition(data_count)
+  }
+}
 
-fn counter(count: Int) -> Int = receive
-  | Increment(n) -> counter(count + n)
-  | GetCount     -> count
-  | Shutdown     -> count
-
-fn main() -> Result[Unit, Error] =
-  let pid = spawn(counter, 0)
-  let server = listen(8080, handle)
-  supervise([pid, server], OneForOne)
+fn main() {
+  let p1 = spawn(fn() { partition(0) })
+  let _ = send(p1, Put(1, 100, self()))
+  let _ = receive { Stored => println("Stored key=1") }
+  let _ = send(p1, Get(1, self()))
+  let _ = receive {
+    Found(v) => println("Got key=1: " <> show(v)),
+    NotFound => println("key=1 not found")
+  }
+}
 ```
 
+This is a real program. It compiles to WASM and runs on the JAPL runtime with actual OS-thread processes.
+
+---
+
+## Quick Start
+
+**Prerequisites:** Node.js 20+, wat2wasm (`brew install wabt`), wasmtime (`brew install wasmtime`)
+
+For process support: Rust toolchain (`rustup`), then `cd japl-runtime && cargo build`
+
+```bash
+# Hello world
+echo 'fn main() { println("Hello from JAPL!") }' > hello.japl
+japl run hello.japl
+
+# Build to WASM
+japl build hello.japl
+wasmtime build/hello.wasm
+
+# With processes (requires japl-runtime)
+japl run --runtime apps/kvstore/kvstore.japl
 ```
--- Fibonacci with pattern matching
 
-fn fib(n: Int) -> Int = match n with
-  | 0 -> 0
-  | 1 -> 1
-  | n -> fib(n - 1) + fib(n - 2)
+---
 
-fn main() =
-  println(int_to_string(fib(10)))
+## Features
+
+### Working
+
+- Immutable values, algebraic data types, pattern matching
+- First-class functions, closures, higher-order functions
+- Pipe operator (`|>`)
+- Records (creation, field access, update)
+- Type inference (bidirectional)
+- Effect tracking (`Pure`, `IO`, `LLM`, `Process`, `Fail`)
+- Exhaustive pattern matching (`--strict` mode)
+- Tail call optimization
+- Module system with imports
+- Foreign function interface (WASI)
+- String interpolation
+- Checked integer arithmetic (no silent overflow)
+- Byte type (`u8`)
+- Process spawn/send/receive (real OS threads via WASM)
+- Supervision trees (`OneForOne`, `AllForOne`, `RestForOne`)
+- TCP distribution between runtime instances
+
+### Prototype
+
+- Distributed typed message passing (local works, cross-machine in testing)
+- Standard library (`Math`, `String`, `Option`, `Result` compile; others in progress)
+
+### Planned
+
+- AI-native abstractions (LLM as effect, tool contracts, budget types, replay)
+- Package manager
+- LSP / editor support
+- Formatter
+- REPL
+
+---
+
+## Architecture
+
+```
+.japl source
+    |
+    v
+JAPL Compiler (TypeScript)
+  Lexer -> Parser -> Type Checker -> IR -> WAT Codegen
+    |
+    v
+.wat (WebAssembly Text)
+    |  wat2wasm
+    v
+.wasm (WebAssembly Binary)
+    |
+    v
++------------------------------------------+
+| wasmtime          (simple programs)      |
+| japl-runtime      (processes, TCP)       |
++------------------------------------------+
+```
+
+248 compiler tests passing. 12 applications verified on WASM.
+
+---
+
+## Code Examples
+
+**Pattern matching and algebraic types:**
+
+```japl
+type Light =
+  | Red
+  | Yellow
+  | Green
+
+type Action =
+  | Next
+  | Emergency
+
+fn transition(light: Light, action: Action) -> Light {
+  match action {
+    Emergency => Red
+    Next => match light {
+      Red => Green
+      Green => Yellow
+      Yellow => Red
+    }
+  }
+}
+```
+
+**Closures and pipes:**
+
+```japl
+fn make_adder(n: Int) {
+  fn(x: Int) { x + n }
+}
+
+fn double(x: Int) -> Int { x * 2 }
+
+fn main() {
+  let add5 = make_adder(5)
+  println(show(add5(3)))          -- 8
+  println(show(5 |> double |> double))  -- 20
+}
+```
+
+---
+
+## Project Structure
+
+```
+compiler/ts/        Compiler (lexer, parser, checker, IR, WAT codegen)
+japl-runtime/       Runtime (Rust + wasmtime, processes, distribution)
+stdlib/             Standard library (.japl files)
+test/               Test programs (12 verified on WASM)
+apps/               Applications (distributed KV store, time tracker)
+spec/               Language specification
+plans/              Development plans and reviews
+papers/             Research papers (7 JAPL papers)
+docs/               Project website
 ```
 
 ---
@@ -88,61 +208,6 @@ Seven papers developing the theoretical and practical foundations of the languag
 | V | Native Distribution | [PDF](papers/pdf/native-distribution.pdf) |
 | VI | Function Composition | [PDF](papers/pdf/function-composition.pdf) |
 | VII | Runtime Simplicity | [PDF](papers/pdf/runtime-simplicity.pdf) |
-
----
-
-## Compiler Architecture
-
-The compiler is implemented as a **Rust workspace** with modular crates:
-
-| Crate | Role |
-|---|---|
-| `japl-common` | Shared types and utilities |
-| `japl-lexer` | Tokenization (logos-based) |
-| `japl-parser` | Recursive-descent parser producing AST |
-| `japl-ast` | Abstract syntax tree definitions |
-| `japl-types` | Type representations and type environment |
-| `japl-checker` | Type inference, unification, linearity checking, effect tracking |
-| `japl-ir` | Intermediate representation and lowering |
-| `japl-codegen` | Code generation / tree-walking interpreter |
-| `japl-driver` | CLI driver orchestrating the pipeline |
-| `japl-runtime` | Process scheduler, mailboxes, supervision, GC |
-| `japl-stdlib` | Standard library primitives |
-
-**167 tests** pass across all crates.
-
----
-
-## Build and Run
-
-```bash
-# Build the compiler
-cd compiler
-cargo build --release
-
-# Run tests
-cargo test
-
-# Run a JAPL program
-cargo run -- run tests/fibonacci.japl
-```
-
----
-
-## Project Structure
-
-```
-japl/
-  compiler/          Rust workspace (lexer, parser, checker, codegen, runtime)
-  docs/              Project homepage (HTML/CSS)
-  papers/
-    latex/           LaTeX sources for the seven research papers
-    pdf/             Compiled PDF deliverables
-  spec/              Language specification and compiler architecture docs
-  scripts/           Build and utility scripts
-  posts/             Blog posts and writeups
-  reviews/           Paper reviews and notes
-```
 
 ---
 

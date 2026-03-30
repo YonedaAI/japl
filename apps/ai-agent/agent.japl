@@ -1,0 +1,34 @@
+type AgentMsg =
+  | Ask(String, Pid)
+  | Done
+
+type AgentResponse =
+  | Answer(String)
+
+fn agent_loop(count: Int) {
+  receive {
+    Ask(question, reply_to) =>
+      let answer = llm("Answer concisely: " <> question)
+      let _ = send(reply_to, Answer(answer))
+      agent_loop(count + 1),
+    Done =>
+      let _ = println("Agent shutting down after " <> show(count) <> " queries")
+      agent_loop(count)
+  }
+}
+
+fn main() {
+  let _ = println("=== JAPL AI Agent ===")
+
+  let me = self()
+  let agent = spawn(fn() { agent_loop(0) })
+
+  let _ = send(agent, Ask("What is JAPL?", me))
+  let _ = receive { Answer(resp) => println("Agent says: " <> resp) }
+
+  let _ = send(agent, Ask("What is WebAssembly?", me))
+  let _ = receive { Answer(resp) => println("Agent says: " <> resp) }
+
+  let _ = send(agent, Done)
+  println("=== Done ===")
+}

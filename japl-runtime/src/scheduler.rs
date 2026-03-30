@@ -180,14 +180,58 @@ impl Scheduler {
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         // Spawn main process (PID 0)
-        let _main_pid = self.spawn_process("_start")?;
+        let main_pid = self.spawn_process("_start")?;
 
         // Process scheduler commands until all processes exit.
         let cmd_rx = self.cmd_rx.take().unwrap();
         let mut alive_count: usize = 1; // main process
+        let mut main_exited = false;
 
         loop {
-            if alive_count == 0 {
+            if alive_count == 0 || (main_exited && self.distribution.is_none()) {
+                if self.distribution.is_some() {
+                    // Keep listening for remote commands even after all local
+                    // processes have exited (the node is acting as a service).
+                    loop {
+                        match cmd_rx.recv() {
+                            Ok(cmd) => match cmd {
+                                SchedulerCommand::Spawn { func_name, reply } => {
+                                    match self.spawn_process(&func_name) {
+                                        Ok(new_pid) => {
+                                            alive_count += 1;
+                                            let _ = reply.send(new_pid);
+                                        }
+                                        Err(e) => eprintln!("spawn error: {}", e),
+                                    }
+                                }
+                                SchedulerCommand::SpawnClosure { closure_ptr, closure_bytes, reply } => {
+                                    match self.spawn_closure_process(closure_ptr, closure_bytes) {
+                                        Ok(new_pid) => {
+                                            alive_count += 1;
+                                            let _ = reply.send(new_pid);
+                                        }
+                                        Err(e) => eprintln!("spawn closure error: {}", e),
+                                    }
+                                }
+                                SchedulerCommand::Send { target_pid, message_bytes } => {
+                                    let procs = self.processes.lock().unwrap();
+                                    if let Some(tx) = procs.get(&target_pid) {
+                                        let _ = tx.send(ProcessMessage::Deliver(message_bytes));
+                                    }
+                                }
+                                SchedulerCommand::Exited { pid } => {
+                                    self.processes.lock().unwrap().remove(&pid);
+                                    alive_count = alive_count.saturating_sub(1);
+                                }
+                            },
+                            Err(_) => break, // channel closed
+                        }
+                    }
+                } else {
+                    // No distribution layer -- force-exit so child threads
+                    // stuck in receive loops don't keep the process alive.
+                    std::process::exit(0);
+                }
                 break;
             }
 
@@ -228,6 +272,9 @@ impl Scheduler {
                 Ok(SchedulerCommand::Exited { pid }) => {
                     self.processes.lock().unwrap().remove(&pid);
                     alive_count = alive_count.saturating_sub(1);
+                    if pid == main_pid {
+                        main_exited = true;
+                    }
                 }
                 Err(_) => {
                     break;

@@ -10,7 +10,7 @@ export var TokenKind;
     // Identifiers
     TokenKind[TokenKind["Ident"] = 6] = "Ident";
     TokenKind[TokenKind["UpperIdent"] = 7] = "UpperIdent";
-    // Keywords (37)
+    // Keywords (38)
     TokenKind[TokenKind["Fn"] = 8] = "Fn";
     TokenKind[TokenKind["Let"] = 9] = "Let";
     TokenKind[TokenKind["Type"] = 10] = "Type";
@@ -48,47 +48,48 @@ export var TokenKind;
     TokenKind[TokenKind["Continue"] = 42] = "Continue";
     TokenKind[TokenKind["Property"] = 43] = "Property";
     TokenKind[TokenKind["Bench"] = 44] = "Bench";
+    TokenKind[TokenKind["Tool"] = 45] = "Tool";
     // Operators
-    TokenKind[TokenKind["Plus"] = 45] = "Plus";
-    TokenKind[TokenKind["Minus"] = 46] = "Minus";
-    TokenKind[TokenKind["Star"] = 47] = "Star";
-    TokenKind[TokenKind["Slash"] = 48] = "Slash";
-    TokenKind[TokenKind["Percent"] = 49] = "Percent";
-    TokenKind[TokenKind["Eq"] = 50] = "Eq";
-    TokenKind[TokenKind["NotEq"] = 51] = "NotEq";
-    TokenKind[TokenKind["Lt"] = 52] = "Lt";
-    TokenKind[TokenKind["Gt"] = 53] = "Gt";
-    TokenKind[TokenKind["LtEq"] = 54] = "LtEq";
-    TokenKind[TokenKind["GtEq"] = 55] = "GtEq";
-    TokenKind[TokenKind["And"] = 56] = "And";
-    TokenKind[TokenKind["Or"] = 57] = "Or";
-    TokenKind[TokenKind["Not"] = 58] = "Not";
-    TokenKind[TokenKind["Pipe"] = 59] = "Pipe";
-    TokenKind[TokenKind["Compose"] = 60] = "Compose";
-    TokenKind[TokenKind["Concat"] = 61] = "Concat";
-    TokenKind[TokenKind["Arrow"] = 62] = "Arrow";
-    TokenKind[TokenKind["FatArrow"] = 63] = "FatArrow";
-    TokenKind[TokenKind["Question"] = 64] = "Question";
-    TokenKind[TokenKind["Assign"] = 65] = "Assign";
-    TokenKind[TokenKind["Bar"] = 66] = "Bar";
-    TokenKind[TokenKind["Dot"] = 67] = "Dot";
-    TokenKind[TokenKind["DotDot"] = 68] = "DotDot";
-    TokenKind[TokenKind["Colon"] = 69] = "Colon";
-    TokenKind[TokenKind["ColonColon"] = 70] = "ColonColon";
-    TokenKind[TokenKind["Comma"] = 71] = "Comma";
-    TokenKind[TokenKind["Semicolon"] = 72] = "Semicolon";
-    TokenKind[TokenKind["Ampersand"] = 73] = "Ampersand";
+    TokenKind[TokenKind["Plus"] = 46] = "Plus";
+    TokenKind[TokenKind["Minus"] = 47] = "Minus";
+    TokenKind[TokenKind["Star"] = 48] = "Star";
+    TokenKind[TokenKind["Slash"] = 49] = "Slash";
+    TokenKind[TokenKind["Percent"] = 50] = "Percent";
+    TokenKind[TokenKind["Eq"] = 51] = "Eq";
+    TokenKind[TokenKind["NotEq"] = 52] = "NotEq";
+    TokenKind[TokenKind["Lt"] = 53] = "Lt";
+    TokenKind[TokenKind["Gt"] = 54] = "Gt";
+    TokenKind[TokenKind["LtEq"] = 55] = "LtEq";
+    TokenKind[TokenKind["GtEq"] = 56] = "GtEq";
+    TokenKind[TokenKind["And"] = 57] = "And";
+    TokenKind[TokenKind["Or"] = 58] = "Or";
+    TokenKind[TokenKind["Not"] = 59] = "Not";
+    TokenKind[TokenKind["Pipe"] = 60] = "Pipe";
+    TokenKind[TokenKind["Compose"] = 61] = "Compose";
+    TokenKind[TokenKind["Concat"] = 62] = "Concat";
+    TokenKind[TokenKind["Arrow"] = 63] = "Arrow";
+    TokenKind[TokenKind["FatArrow"] = 64] = "FatArrow";
+    TokenKind[TokenKind["Question"] = 65] = "Question";
+    TokenKind[TokenKind["Assign"] = 66] = "Assign";
+    TokenKind[TokenKind["Bar"] = 67] = "Bar";
+    TokenKind[TokenKind["Dot"] = 68] = "Dot";
+    TokenKind[TokenKind["DotDot"] = 69] = "DotDot";
+    TokenKind[TokenKind["Colon"] = 70] = "Colon";
+    TokenKind[TokenKind["ColonColon"] = 71] = "ColonColon";
+    TokenKind[TokenKind["Comma"] = 72] = "Comma";
+    TokenKind[TokenKind["Semicolon"] = 73] = "Semicolon";
+    TokenKind[TokenKind["Ampersand"] = 74] = "Ampersand";
     // Delimiters
-    TokenKind[TokenKind["LParen"] = 74] = "LParen";
-    TokenKind[TokenKind["RParen"] = 75] = "RParen";
-    TokenKind[TokenKind["LBrace"] = 76] = "LBrace";
-    TokenKind[TokenKind["RBrace"] = 77] = "RBrace";
-    TokenKind[TokenKind["LBracket"] = 78] = "LBracket";
-    TokenKind[TokenKind["RBracket"] = 79] = "RBracket";
+    TokenKind[TokenKind["LParen"] = 75] = "LParen";
+    TokenKind[TokenKind["RParen"] = 76] = "RParen";
+    TokenKind[TokenKind["LBrace"] = 77] = "LBrace";
+    TokenKind[TokenKind["RBrace"] = 78] = "RBrace";
+    TokenKind[TokenKind["LBracket"] = 79] = "LBracket";
+    TokenKind[TokenKind["RBracket"] = 80] = "RBracket";
     // Special
-    TokenKind[TokenKind["Newline"] = 80] = "Newline";
-    TokenKind[TokenKind["EOF"] = 81] = "EOF";
-    TokenKind[TokenKind["Comment"] = 82] = "Comment";
+    TokenKind[TokenKind["Newline"] = 81] = "Newline";
+    TokenKind[TokenKind["EOF"] = 82] = "EOF";
+    TokenKind[TokenKind["Comment"] = 83] = "Comment";
 })(TokenKind || (TokenKind = {}));
 export const KEYWORDS = new Map([
     ['fn', TokenKind.Fn],
@@ -128,6 +129,7 @@ export const KEYWORDS = new Map([
     ['continue', TokenKind.Continue],
     ['property', TokenKind.Property],
     ['bench', TokenKind.Bench],
+    ['tool', TokenKind.Tool],
     ['true', TokenKind.True],
     ['false', TokenKind.False],
 ]);
@@ -177,6 +179,7 @@ const TOKEN_KIND_NAMES = {
     [TokenKind.Continue]: 'Continue',
     [TokenKind.Property]: 'Property',
     [TokenKind.Bench]: 'Bench',
+    [TokenKind.Tool]: 'Tool',
     [TokenKind.Plus]: 'Plus',
     [TokenKind.Minus]: 'Minus',
     [TokenKind.Star]: 'Star',

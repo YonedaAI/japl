@@ -242,10 +242,10 @@ describe('Lexer', () => {
     ]);
   });
 
-  // 20. All 37 keywords are in the KEYWORDS map
-  it('has all 37 keywords plus true/false in KEYWORDS map', () => {
-    // 37 keywords + true + false = 39
-    expect(KEYWORDS.size).toBe(39);
+  // 20. All 38 keywords are in the KEYWORDS map
+  it('has all 38 keywords plus true/false in KEYWORDS map', () => {
+    // 38 keywords + true + false = 40
+    expect(KEYWORDS.size).toBe(40);
   });
 
   // 21. tokenKindName helper

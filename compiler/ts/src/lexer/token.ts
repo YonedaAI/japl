@@ -13,7 +13,7 @@ export enum TokenKind {
   Ident,
   UpperIdent,
 
-  // Keywords (37)
+  // Keywords (38)
   Fn,
   Let,
   Type,
@@ -51,6 +51,7 @@ export enum TokenKind {
   Continue,
   Property,
   Bench,
+  Tool,
 
   // Operators
   Plus,
@@ -141,6 +142,7 @@ export const KEYWORDS: ReadonlyMap<string, TokenKind> = new Map<string, TokenKin
   ['continue', TokenKind.Continue],
   ['property', TokenKind.Property],
   ['bench', TokenKind.Bench],
+  ['tool', TokenKind.Tool],
   ['true', TokenKind.True],
   ['false', TokenKind.False],
 ]);
@@ -191,6 +193,7 @@ const TOKEN_KIND_NAMES: Record<number, string> = {
   [TokenKind.Continue]: 'Continue',
   [TokenKind.Property]: 'Property',
   [TokenKind.Bench]: 'Bench',
+  [TokenKind.Tool]: 'Tool',
   [TokenKind.Plus]: 'Plus',
   [TokenKind.Minus]: 'Minus',
   [TokenKind.Star]: 'Star',

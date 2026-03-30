@@ -22,9 +22,9 @@ wait $ALPHA_PID 2>/dev/null || true
 wait $BETA_PID 2>/dev/null || true
 
 echo ""
-echo "=== Test 2: Node with processes.wasm in distributed mode ==="
-# processes.wasm finishes quickly, so just test that --node + --listen works
-./target/debug/japl-runtime run tests/processes.wasm --node alpha2 --listen :9877 &
+echo "=== Test 2: Node with process_test.wasm in distributed mode ==="
+# process_test.wasm finishes quickly, so just test that --node + --listen works
+./target/debug/japl-runtime run tests/process_test.wasm --node alpha2 --listen :9877 &
 ALPHA_PID=$!
 sleep 2
 kill $ALPHA_PID 2>/dev/null || true
@@ -33,7 +33,7 @@ wait $ALPHA_PID 2>/dev/null || true
 echo ""
 echo "=== Test 3: Local-only mode still works ==="
 ./target/debug/japl-runtime run tests/hello.wasm
-./target/debug/japl-runtime run tests/processes.wasm
+./target/debug/japl-runtime run tests/process_test.wasm
 
 echo ""
 echo "=== All distribution tests passed ==="

@@ -1082,7 +1082,7 @@ export class TypeChecker {
     const effects = new Set<Effect>();
     for (const eff of ee.effects) {
       const lower = eff.toLowerCase();
-      if (lower === "io" || lower === "async" || lower === "process" || lower === "fail" || lower === "pure") {
+      if (lower === "io" || lower === "async" || lower === "process" || lower === "fail" || lower === "pure" || lower === "llm") {
         effects.add(lower as Effect);
       }
     }

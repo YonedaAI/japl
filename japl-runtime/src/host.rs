@@ -122,6 +122,45 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         caller.data().pid as i64
     })?;
 
+    // japl.llm(ptr, len) -> (result_ptr, result_len)
+    // Reads a prompt string from WASM memory, calls LLM API (or returns mock), writes response back
+    linker.func_wrap("japl", "llm", |mut caller: Caller<'_, ProcessState>, ptr: i32, len: i32| -> (i32, i32) {
+        // Read prompt string from WASM memory
+        let prompt = {
+            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = mem.data(&caller);
+            let start = ptr as usize;
+            let end = start + len as usize;
+            if end <= data.len() {
+                std::str::from_utf8(&data[start..end]).unwrap_or("").to_string()
+            } else {
+                String::new()
+            }
+        };
+
+        // Call LLM API or return mock
+        let response = call_llm_api(&prompt);
+
+        // Write response into WASM memory via heap_ptr
+        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let heap_ptr_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+        let heap_ptr = heap_ptr_global.get(&mut caller).i32().unwrap_or(0) as usize;
+
+        let response_bytes = response.as_bytes();
+        let result_ptr = heap_ptr;
+
+        let data = mem.data_mut(&mut caller);
+        if result_ptr + response_bytes.len() <= data.len() {
+            data[result_ptr..result_ptr + response_bytes.len()].copy_from_slice(response_bytes);
+        }
+
+        // Advance heap_ptr (aligned)
+        let new_heap = ((result_ptr + response_bytes.len() + 7) & !7) as i32;
+        let _ = heap_ptr_global.set(&mut caller, Val::I32(new_heap));
+
+        (result_ptr as i32, response_bytes.len() as i32)
+    })?;
+
     // japl.println(ptr, len) — read a UTF-8 string from WASM memory and print it
     linker.func_wrap("japl", "println", |mut caller: Caller<'_, ProcessState>, ptr: i32, len: i32| {
         let mem = caller.get_export("memory")
@@ -139,4 +178,89 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     })?;
 
     Ok(())
+}
+
+/// Call an LLM API. Checks for ANTHROPIC_API_KEY or OPENAI_API_KEY in environment.
+/// Falls back to a mock response if no key is set.
+fn call_llm_api(prompt: &str) -> String {
+    // Try Anthropic Claude API first
+    if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+        match call_anthropic_api(&api_key, prompt) {
+            Ok(response) => return response,
+            Err(e) => {
+                eprintln!("[JAPL LLM] Anthropic API error: {}", e);
+            }
+        }
+    }
+
+    // Try OpenAI API
+    if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+        match call_openai_api(&api_key, prompt) {
+            Ok(response) => return response,
+            Err(e) => {
+                eprintln!("[JAPL LLM] OpenAI API error: {}", e);
+            }
+        }
+    }
+
+    // Mock fallback
+    format!("[LLM mock] Received prompt: {}", prompt)
+}
+
+fn call_anthropic_api(api_key: &str, prompt: &str) -> Result<String, String> {
+    let body = format!(
+        r#"{{"model":"claude-sonnet-4-20250514","max_tokens":1024,"messages":[{{"role":"user","content":"{}"}}]}}"#,
+        prompt.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+
+    let resp_str = ureq::post("https://api.anthropic.com/v1/messages")
+        .set("x-api-key", api_key)
+        .set("anthropic-version", "2023-06-01")
+        .set("content-type", "application/json")
+        .send_string(&body)
+        .map_err(|e| format!("{}", e))?
+        .into_string()
+        .map_err(|e| format!("Read error: {}", e))?;
+
+    let json: serde_json::Value = serde_json::from_str(&resp_str)
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+
+    // Extract text from response
+    if let Some(content) = json["content"].as_array() {
+        for item in content {
+            if let Some(text) = item["text"].as_str() {
+                return Ok(text.to_string());
+            }
+        }
+    }
+
+    Err("Unexpected response format".to_string())
+}
+
+fn call_openai_api(api_key: &str, prompt: &str) -> Result<String, String> {
+    let body = format!(
+        r#"{{"model":"gpt-4o-mini","messages":[{{"role":"user","content":"{}"}}]}}"#,
+        prompt.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+
+    let resp_str = ureq::post("https://api.openai.com/v1/chat/completions")
+        .set("Authorization", &format!("Bearer {}", api_key))
+        .set("content-type", "application/json")
+        .send_string(&body)
+        .map_err(|e| format!("{}", e))?
+        .into_string()
+        .map_err(|e| format!("Read error: {}", e))?;
+
+    let json: serde_json::Value = serde_json::from_str(&resp_str)
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+
+    if let Some(choices) = json["choices"].as_array() {
+        for choice in choices {
+            if let Some(text) = choice["message"]["content"].as_str() {
+                return Ok(text.to_string());
+            }
+        }
+    }
+
+    Err("Unexpected response format".to_string())
 }
