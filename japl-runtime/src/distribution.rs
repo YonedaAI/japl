@@ -261,7 +261,7 @@ impl DistributionLayer {
                     // Deliver to local process via scheduler
                     let _ = scheduler_tx.send(SchedulerCommand::Send {
                         target_pid: to_pid,
-                        message: msg,
+                        message_bytes: msg.to_le_bytes().to_vec(),
                     });
                 }
                 WireMessage::Ping => {

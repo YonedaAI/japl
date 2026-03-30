@@ -5,7 +5,7 @@ pub type ProcessId = u64;
 
 pub struct ProcessState {
     pub pid: ProcessId,
-    pub mailbox: VecDeque<i64>,
+    pub mailbox: VecDeque<Vec<u8>>,
     pub receiver: mpsc::Receiver<ProcessMessage>,
     pub scheduler_tx: mpsc::Sender<SchedulerCommand>,
     pub wasi: wasmtime_wasi::p1::WasiP1Ctx,
@@ -14,8 +14,8 @@ pub struct ProcessState {
 /// Messages delivered to a process
 #[allow(dead_code)]
 pub enum ProcessMessage {
-    /// A message to add to the mailbox
-    Deliver(i64),
+    /// A message with serialized variant data (tag + fields as bytes)
+    Deliver(Vec<u8>),
     /// Kill this process
     Shutdown,
 }
@@ -27,10 +27,16 @@ pub enum SchedulerCommand {
         func_name: String,
         reply: mpsc::Sender<ProcessId>,
     },
-    /// Send a message to another process
+    /// Spawn a new process running a closure (calls __process_entry with closure_ptr)
+    SpawnClosure {
+        closure_ptr: i64,
+        closure_bytes: Vec<u8>,
+        reply: mpsc::Sender<ProcessId>,
+    },
+    /// Send a message to another process (serialized variant bytes)
     Send {
         target_pid: ProcessId,
-        message: i64,
+        message_bytes: Vec<u8>,
     },
     /// Notify the scheduler that a process has exited
     Exited {

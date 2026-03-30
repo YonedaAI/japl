@@ -26,16 +26,22 @@ export class WatEmitter {
   // Record type registry: type name -> sorted field names
   private recordTypeRegistry: Map<string, string[]> = new Map();
   // Lambda storage: generated functions to emit
-  private lambdaFunctions: { name: string; params: string[]; body: IR.IrExpr }[] = [];
+  private lambdaFunctions: { name: string; params: string[]; captures: string[]; body: IR.IrExpr }[] = [];
   private lambdaCounter: number = 0;
   // Track lambda names mapped to variable names
   private lambdaNameMap: Map<string, string> = new Map();
+  // Track lambda captures: lambda name -> captured variable names
+  private lambdaCaptureMap: Map<string, string[]> = new Map();
   // Heap start (after string data segments)
   private heapStart: number = 0;
   // Function table entries for call_indirect (higher-order functions)
   private tableFunctions: string[] = [];
   // Map function name -> table index
   private tableFunctionIndex: Map<string, number> = new Map();
+  // Whether the program uses process primitives (spawn/send/receive/self)
+  private usesProcesses: boolean = false;
+  // Track all needed call_indirect type signatures
+  private neededFnSigs: Set<number> = new Set();
 
   emit(module: IR.IrModule): string {
     this.output = [];
@@ -51,6 +57,8 @@ export class WatEmitter {
     this.lambdaNameMap.clear();
     this.tableFunctions = [];
     this.tableFunctionIndex.clear();
+    this.usesProcesses = false;
+    this.neededFnSigs = new Set();
 
     // Register type declarations (variants and record types)
     for (const decl of module.decls) {
@@ -105,9 +113,13 @@ export class WatEmitter {
     // Pre-scan for lambdas to generate named functions
     for (const decl of module.decls) {
       if (decl.kind === 'fn' || decl.kind === 'test') {
-        this.collectLambdas(decl.body);
+        const scope = new Set<string>(decl.kind === 'fn' ? decl.params : []);
+        this.collectLambdas(decl.body, scope);
       }
     }
+
+    // Detect process primitives usage
+    this.usesProcesses = this.scanForProcessPrimitives(module);
 
     this.line('(module');
     this.indent++;
@@ -115,12 +127,21 @@ export class WatEmitter {
     // WASI imports
     this.emitWasiImports();
 
+    // JAPL runtime imports (process primitives)
+    if (this.usesProcesses) {
+      this.emitJaplImports();
+    }
+
     // Memory
     this.line('(memory (export "memory") 1)');
     this.line('');
 
     // Build function table for call_indirect (higher-order functions)
     this.buildFunctionTable(module);
+    // Add all lambda functions to the table (they may be called via closures)
+    for (const lam of this.lambdaFunctions) {
+      this.addToFunctionTable(lam.name);
+    }
     if (this.tableFunctions.length > 0) {
       this.emitFunctionTable();
       this.line('');
@@ -132,7 +153,11 @@ export class WatEmitter {
 
     // Heap pointer global (placed after all string data)
     this.heapStart = (this.memoryOffset + 7) & ~7; // align to 8 bytes
-    this.line(`(global $heap_ptr (mut i32) (i32.const ${this.heapStart}))`);
+    if (this.usesProcesses) {
+      this.line(`(global $heap_ptr (export "heap_ptr") (mut i32) (i32.const ${this.heapStart}))`);
+    } else {
+      this.line(`(global $heap_ptr (mut i32) (i32.const ${this.heapStart}))`);
+    }
     this.line('');
 
     // Bump allocator
@@ -184,6 +209,11 @@ export class WatEmitter {
     // _start entry point
     this.emitStart();
 
+    // Process entry point (for spawned processes)
+    if (this.usesProcesses) {
+      this.emitProcessEntry();
+    }
+
     this.indent--;
     this.line(')');
 
@@ -202,6 +232,57 @@ export class WatEmitter {
     this.line('(import "wasi_snapshot_preview1" "proc_exit"');
     this.line('  (func $proc_exit (param i32)))');
     this.line('');
+  }
+
+  // ─── JAPL Runtime Imports ───
+
+  private emitJaplImports(): void {
+    this.line('(import "japl" "spawn" (func $japl_spawn (param i64) (result i64)))');
+    this.line('(import "japl" "send" (func $japl_send (param i64 i64)))');
+    this.line('(import "japl" "receive" (func $japl_receive (result i64)))');
+    this.line('(import "japl" "self_pid" (func $japl_self_pid (result i64)))');
+    this.line('');
+  }
+
+  private scanForProcessPrimitives(module: IR.IrModule): boolean {
+    for (const decl of module.decls) {
+      if (decl.kind === 'fn' || decl.kind === 'test') {
+        if (this.exprUsesProcesses(decl.body)) return true;
+      }
+    }
+    return false;
+  }
+
+  private exprUsesProcesses(expr: IR.IrExpr): boolean {
+    switch (expr.kind) {
+      case 'spawn': case 'send': case 'receive':
+        return true;
+      case 'app':
+        if (expr.fn.kind === 'var' && expr.fn.name === 'self') return true;
+        return this.exprUsesProcesses(expr.fn) || expr.args.some(a => this.exprUsesProcesses(a));
+      case 'let':
+        return this.exprUsesProcesses(expr.value) || this.exprUsesProcesses(expr.body);
+      case 'if':
+        return this.exprUsesProcesses(expr.cond) || this.exprUsesProcesses(expr.then) || this.exprUsesProcesses(expr.else);
+      case 'block':
+        return expr.exprs.some(e => this.exprUsesProcesses(e));
+      case 'match':
+        return this.exprUsesProcesses(expr.scrutinee) || expr.arms.some(a => this.exprUsesProcesses(a.body));
+      case 'binop':
+        return this.exprUsesProcesses(expr.left) || this.exprUsesProcesses(expr.right);
+      case 'lambda':
+        return this.exprUsesProcesses(expr.body);
+      case 'construct':
+        return expr.args.some(a => this.exprUsesProcesses(a));
+      case 'concat':
+        return this.exprUsesProcesses(expr.left) || this.exprUsesProcesses(expr.right);
+      case 'tail_loop':
+        return this.exprUsesProcesses(expr.body);
+      case 'return':
+        return this.exprUsesProcesses(expr.expr);
+      default:
+        return false;
+    }
   }
 
   // ─── String Collection ───
@@ -280,6 +361,19 @@ export class WatEmitter {
         break;
       case 'return':
         this.collectStringsFromExpr(expr.expr);
+        break;
+      case 'spawn':
+        this.collectStringsFromExpr(expr.fn);
+        break;
+      case 'send':
+        this.collectStringsFromExpr(expr.pid);
+        this.collectStringsFromExpr(expr.msg);
+        break;
+      case 'receive':
+        for (const arm of expr.arms) {
+          this.collectStringsFromExpr(arm.body);
+          if (arm.guard) this.collectStringsFromExpr(arm.guard);
+        }
         break;
       default:
         break;
@@ -512,7 +606,9 @@ export class WatEmitter {
     switch (expr.kind) {
       case 'let':
         if (!this.currentFnLocals.has(expr.name)) {
-          const type = this.inferExprType(expr.value);
+          let type = this.inferExprType(expr.value);
+          // Don't declare void locals - they're just used for sequencing (let _ = ...)
+          if (type === 'void') type = 'i64'; // use i64 as placeholder
           this.currentFnLocals.set(expr.name, type);
           this.declaredLocals.push(expr.name);
         }
@@ -532,6 +628,11 @@ export class WatEmitter {
         this.collectLocals(expr.operand);
         break;
       case 'app':
+        // Closure temp local needed for indirect calls
+        if (!this.currentFnLocals.has('__closure_tmp')) {
+          this.currentFnLocals.set('__closure_tmp', 'i64');
+          this.declaredLocals.push('__closure_tmp');
+        }
         this.collectLocals(expr.fn);
         for (const a of expr.args) this.collectLocals(a);
         break;
@@ -617,9 +718,15 @@ export class WatEmitter {
         for (const e of expr.elements) this.collectLocals(e);
         break;
       }
-      case 'lambda':
+      case 'lambda': {
+        // Pre-allocate closure pointer local if this lambda has captures
+        if (!this.currentFnLocals.has('__closure_ptr')) {
+          this.currentFnLocals.set('__closure_ptr', 'i32');
+          this.declaredLocals.push('__closure_ptr');
+        }
         this.collectLocals(expr.body);
         break;
+      }
       case 'tail_loop':
         this.collectLocals(expr.body);
         break;
@@ -639,6 +746,29 @@ export class WatEmitter {
       case 'return':
         this.collectLocals(expr.expr);
         break;
+      case 'spawn':
+        this.collectLocals(expr.fn);
+        break;
+      case 'send':
+        this.collectLocals(expr.pid);
+        this.collectLocals(expr.msg);
+        break;
+      case 'receive': {
+        // Pre-allocate match local for receive pattern matching
+        if (expr.arms.length > 0) {
+          const matchLocalName = `__match_${this.localCounter++}`;
+          if (!this.currentFnLocals.has(matchLocalName)) {
+            this.currentFnLocals.set(matchLocalName, 'i32');
+            this.declaredLocals.push(matchLocalName);
+          }
+          for (const arm of expr.arms) {
+            this.collectMatchPatternLocals(arm.pattern);
+            this.collectLocals(arm.body);
+            if (arm.guard) this.collectLocals(arm.guard);
+          }
+        }
+        break;
+      }
       default:
         break;
     }
@@ -707,6 +837,12 @@ export class WatEmitter {
       case 'tail_loop': return this.inferExprType(expr.body);
       case 'tail_continue': return 'void'; // tail_continue doesn't produce a value (it branches)
       case 'return': return this.inferExprType(expr.expr);
+      case 'spawn': return 'i64'; // returns pid as i64
+      case 'send': return 'void'; // send is void
+      case 'receive': {
+        if (expr.arms.length > 0) return this.inferExprType(expr.arms[0].body);
+        return 'i64';
+      }
       default: return 'i64';
     }
   }
@@ -716,6 +852,7 @@ export class WatEmitter {
       switch (expr.fn.name) {
         case 'println': return 'void';
         case 'show': return 'i32'; // returns string pointer
+        case 'self': return 'i64'; // returns pid
         default: {
           // Check if this is a variant constructor
           if (this.variantRegistry.has(expr.fn.name)) return 'i64';
@@ -771,8 +908,14 @@ export class WatEmitter {
 
       case 'let': {
         const lines: string[] = [];
+        const valueType = this.inferExprType(expr.value);
         lines.push(...this.emitExpr(expr.value));
-        lines.push(`local.set $${expr.name}`);
+        if (valueType === 'void') {
+          // Value is void (e.g., send, println) - nothing to store
+          // Skip the local.set
+        } else {
+          lines.push(`local.set $${expr.name}`);
+        }
         lines.push(...this.emitExpr(expr.body, isVoid));
         return lines;
       }
@@ -796,7 +939,7 @@ export class WatEmitter {
         return this.emitConstruct(expr);
 
       case 'match':
-        return this.emitMatch(expr);
+        return this.emitMatch(expr, isVoid);
 
       case 'record':
         return this.emitRecord(expr);
@@ -824,6 +967,15 @@ export class WatEmitter {
 
       case 'return':
         return this.emitReturn(expr as IR.IrExpr & { kind: 'return' });
+
+      case 'spawn':
+        return this.emitSpawn(expr as IR.IrExpr & { kind: 'spawn' });
+
+      case 'send':
+        return this.emitSend(expr as IR.IrExpr & { kind: 'send' }, isVoid);
+
+      case 'receive':
+        return this.emitReceive(expr as IR.IrExpr & { kind: 'receive' }, isVoid);
 
       default:
         return [`;; TODO: ${expr.kind}`];
@@ -952,6 +1104,12 @@ export class WatEmitter {
     if (expr.fn.kind === 'var') {
       const fnName = expr.fn.name;
 
+      // Built-in: self() -> pid
+      if (fnName === 'self' && expr.args.length === 0) {
+        lines.push('call $japl_self_pid');
+        return lines;
+      }
+
       // Built-in: println
       if (fnName === 'println') {
         // println takes a string pointer (i32)
@@ -980,16 +1138,55 @@ export class WatEmitter {
       const lambdaName = this.lambdaNameMap.get(fnName);
       const callTarget = lambdaName ?? fnName;
 
-      // Check if this is a local variable holding a function reference (call_indirect)
+      // Check if this is a local variable holding a closure/function reference (call_indirect)
       if (this.currentFnLocals.has(fnName) && !this.userFunctions.has(fnName) && !lambdaName) {
-        // This is a parameter/local that holds a function ref - use call_indirect
-        for (const arg of expr.args) {
-          lines.push(...this.emitExpr(arg));
-        }
-        lines.push(`local.get $${fnName}`);
-        lines.push('i32.wrap_i64');
+        // The value is either:
+        //   - A direct table index (small i64 < 1024) for non-capturing lambdas
+        //   - A closure pointer (i64 >= 1024) with layout: [table_index: i64][num_captures: i64][captured_0: i64]...
         const paramCount = expr.args.length;
-        lines.push(`call_indirect (type $__fn_sig_${paramCount})`);
+        lines.push(`local.get $${fnName}`);
+        lines.push('i64.const 1024');
+        lines.push('i64.lt_u');
+        lines.push(`(if (result i64)`);
+        lines.push('  (then');
+        // Direct table index: standard call_indirect
+        for (const arg of expr.args) {
+          const argLines = this.emitExpr(arg);
+          for (const l of argLines) lines.push('    ' + l);
+        }
+        lines.push(`    (i32.wrap_i64 (local.get $${fnName}))`);
+        lines.push(`    call_indirect (type $__fn_sig_${paramCount})`);
+        lines.push('  )');
+        lines.push('  (else');
+        // Closure pointer: read num_captures, push regular args + captures, call_indirect
+        // Read num_captures to dispatch to the right signature
+        lines.push(`    ;; closure call - read captures from struct`);
+        // Read num_captures
+        lines.push(`    (i64.load offset=8 (i32.wrap_i64 (local.get $${fnName})))`);
+        lines.push(`    (i64.eqz)`);
+        lines.push(`    (if (result i64)`);
+        lines.push(`      (then`);
+        // 0 captures
+        for (const arg of expr.args) {
+          const argLines = this.emitExpr(arg);
+          for (const l of argLines) lines.push('        ' + l);
+        }
+        lines.push(`        (i32.wrap_i64 (i64.load (i32.wrap_i64 (local.get $${fnName}))))`);
+        lines.push(`        call_indirect (type $__fn_sig_${paramCount})`);
+        lines.push(`      )`);
+        lines.push(`      (else`);
+        // 1+ captures: for now support 1 capture (most common case: make_adder)
+        for (const arg of expr.args) {
+          const argLines = this.emitExpr(arg);
+          for (const l of argLines) lines.push('        ' + l);
+        }
+        lines.push(`        (i64.load offset=16 (i32.wrap_i64 (local.get $${fnName})))`);
+        lines.push(`        (i32.wrap_i64 (i64.load (i32.wrap_i64 (local.get $${fnName}))))`);
+        lines.push(`        call_indirect (type $__fn_sig_${paramCount + 1})`);
+        lines.push(`      )`);
+        lines.push(`    )`);
+        lines.push('  )');
+        lines.push(')');
         if (isVoid) {
           lines.push('drop');
         }
@@ -1012,8 +1209,7 @@ export class WatEmitter {
       return lines;
     }
 
-    // Indirect call: the function expression evaluates to a table index (i64)
-    // Push args first, then the function index, then call_indirect
+    // Indirect call: the function expression evaluates to a table index or closure pointer
     for (const arg of expr.args) {
       lines.push(...this.emitExpr(arg));
     }
@@ -1053,9 +1249,14 @@ export class WatEmitter {
     const lines: string[] = [];
     const info = this.variantRegistry.get(expr.tag);
     if (info) {
-      // Call the generated constructor function
+      // Call the generated constructor function (all params are i64)
       for (const arg of expr.args) {
         lines.push(...this.emitExpr(arg));
+        // Widen i32 values (strings, bools) to i64 for the constructor
+        const argType = this.inferExprType(arg);
+        if (argType === 'i32') {
+          lines.push('i64.extend_i32_u');
+        }
       }
       lines.push(`call $${expr.tag}`);
     } else {
@@ -1066,7 +1267,7 @@ export class WatEmitter {
 
   // ─── Match Expression ───
 
-  private emitMatch(expr: IR.IrExpr & { kind: 'match' }): string[] {
+  private emitMatch(expr: IR.IrExpr & { kind: 'match' }, isVoid: boolean = false): string[] {
     const lines: string[] = [];
     const matchLocal = `__match_${this.localCounter++}`;
 
@@ -1082,7 +1283,11 @@ export class WatEmitter {
     lines.push(`local.set $${matchLocal}`);
 
     // Determine result type from first arm body
-    const resultType = expr.arms.length > 0 ? this.inferExprType(expr.arms[0].body) : 'i64';
+    let resultType = expr.arms.length > 0 ? this.inferExprType(expr.arms[0].body) : 'i64';
+    // If the match is in void context or the arms are void, treat as void
+    if (isVoid || resultType === 'void') {
+      resultType = 'void';
+    }
 
     // Generate nested if/else chain
     const matchLines = this.emitMatchArms(expr.arms, matchLocal, resultType, 0);
@@ -1092,6 +1297,7 @@ export class WatEmitter {
   }
 
   private emitMatchArms(arms: IR.IrMatchArm[], matchLocal: string, resultType: string, index: number): string[] {
+    const isVoid = resultType === 'void';
     if (index >= arms.length) {
       // Unreachable fallback
       return ['unreachable'];
@@ -1102,7 +1308,7 @@ export class WatEmitter {
 
     // If this is a wildcard or variable pattern (catch-all), just emit the body
     if (pat.kind === 'pwildcard') {
-      return this.emitExpr(arm.body);
+      return this.emitExpr(arm.body, isVoid);
     }
     if (pat.kind === 'pvar') {
       const lines: string[] = [];
@@ -1110,7 +1316,7 @@ export class WatEmitter {
       lines.push(`local.get $${matchLocal}`);
       lines.push('i64.extend_i32_u');
       lines.push(`local.set $${pat.name}`);
-      lines.push(...this.emitExpr(arm.body));
+      lines.push(...this.emitExpr(arm.body, isVoid));
       return lines;
     }
     if (pat.kind === 'pliteral') {
@@ -1121,9 +1327,13 @@ export class WatEmitter {
       lines.push('i64.extend_i32_u');
       lines.push(...this.emitExpr(pat.value));
       lines.push('i64.eq');
-      lines.push(`(if (result ${resultType})`);
+      if (isVoid) {
+        lines.push('(if');
+      } else {
+        lines.push(`(if (result ${resultType})`);
+      }
       lines.push('  (then');
-      const bodyLines = this.emitExpr(arm.body);
+      const bodyLines = this.emitExpr(arm.body, isVoid);
       for (const l of bodyLines) lines.push('    ' + l);
       lines.push('  )');
       lines.push('  (else');
@@ -1147,14 +1357,18 @@ export class WatEmitter {
       lines.push(`i32.const ${info.tagId}`);
       lines.push('i32.eq');
 
-      lines.push(`(if (result ${resultType})`);
+      if (isVoid) {
+        lines.push('(if');
+      } else {
+        lines.push(`(if (result ${resultType})`);
+      }
       lines.push('  (then');
 
       // Extract fields and bind pattern variables
       const bindLines = this.emitPatternBindings(pat, matchLocal);
       for (const l of bindLines) lines.push('    ' + l);
 
-      const bodyLines = this.emitExpr(arm.body);
+      const bodyLines = this.emitExpr(arm.body, isVoid);
       for (const l of bodyLines) lines.push('    ' + l);
 
       lines.push('  )');
@@ -1165,7 +1379,10 @@ export class WatEmitter {
         const restLines = this.emitMatchArms(arms, matchLocal, resultType, index + 1);
         for (const l of restLines) lines.push('    ' + l);
       } else {
-        lines.push('    unreachable');
+        // In void context, no need for unreachable in last else — just do nothing
+        if (!isVoid) {
+          lines.push('    unreachable');
+        }
       }
 
       lines.push('  )');
@@ -1174,7 +1391,7 @@ export class WatEmitter {
     }
 
     // Fallback: emit body directly (e.g., for unsupported patterns)
-    return this.emitExpr(arm.body);
+    return this.emitExpr(arm.body, isVoid);
   }
 
   private emitPatternBindings(pat: IR.IrPattern, matchLocal: string): string[] {
@@ -1418,17 +1635,37 @@ export class WatEmitter {
 
   private emitLambdaRef(expr: IR.IrExpr & { kind: 'lambda' }): string[] {
     // The lambda was already registered during collectLambdas.
-    // Find it by matching params + body identity (use counter-based name).
-    // For now, return a reference to the lambda function as i64.
-    // Since we don't have real closure support (no captured vars),
-    // we just return a sentinel that maps to the function index.
-    // The caller will use call $__lambda_N directly.
     const name = `__lambda_${this.lambdaCounter++}`;
-    // Actually, lambdas are pre-registered with lower counters.
-    // Let's look up the last registered lambda matching these params.
-    // Simple approach: we store the function name, and emit i64.const 0 as placeholder.
-    // Real calls go through emitApp which resolves lambda var names.
-    return [`i64.const 0 ;; lambda ref placeholder`];
+    const captures = this.lambdaCaptureMap.get(name) ?? [];
+    const tableIdx = this.tableFunctionIndex.get(name);
+
+    if (tableIdx === undefined) {
+      return [`i64.const 0 ;; lambda ref (not in table): ${name}`];
+    }
+
+    if (captures.length === 0) {
+      // No captures: return the table index directly as i64
+      return [`i64.const ${tableIdx} ;; fn ref: ${name}`];
+    }
+
+    // Build a closure struct in memory
+    // Layout: [table_index: i64][num_captures: i64][captured_0: i64][captured_1: i64]...
+    const structSize = 8 + 8 + captures.length * 8; // table_idx + num_captures + captures
+    const lines: string[] = [];
+    // Allocate closure struct
+    lines.push(`(local.set $__closure_ptr (call $alloc (i32.const ${structSize})))`);
+    // Store table index
+    lines.push(`(i64.store (local.get $__closure_ptr) (i64.const ${tableIdx}))`);
+    // Store num_captures
+    lines.push(`(i64.store offset=8 (local.get $__closure_ptr) (i64.const ${captures.length}))`);
+    // Store captured values
+    for (let i = 0; i < captures.length; i++) {
+      const offset = 16 + i * 8;
+      lines.push(`(i64.store offset=${offset} (local.get $__closure_ptr) (local.get $${captures[i]}))`);
+    }
+    // Return closure pointer as i64
+    lines.push(`(i64.extend_i32_u (local.get $__closure_ptr))`);
+    return lines;
   }
 
   // ─── Bump Allocator ───
@@ -1549,98 +1786,263 @@ export class WatEmitter {
     this.line(')');
   }
 
-  // ─── Lambda Collection and Emission ───
+  // ─── Free Variable Analysis ───
 
-  private collectLambdas(expr: IR.IrExpr): void {
+  private findFreeVars(body: IR.IrExpr, boundVars: Set<string>): string[] {
+    const free = new Set<string>();
+    this._collectFreeVars(body, boundVars, free);
+    return [...free];
+  }
+
+  private _collectFreeVars(expr: IR.IrExpr, bound: Set<string>, free: Set<string>): void {
     switch (expr.kind) {
-      case 'let':
-        if (expr.value.kind === 'lambda') {
-          // Register this lambda with a name based on the let binding
-          const lamName = `__lambda_${this.lambdaFunctions.length}`;
-          this.lambdaFunctions.push({
-            name: lamName,
-            params: expr.value.params,
-            body: expr.value.body,
-          });
-          this.lambdaNameMap.set(expr.name, lamName);
-          this.userFunctions.add(lamName);
-          this.collectLambdas(expr.value.body);
-        } else {
-          this.collectLambdas(expr.value);
+      case 'var':
+        if (!bound.has(expr.name) && !this.userFunctions.has(expr.name) && !this.variantRegistry.has(expr.name)) {
+          // It's a free variable (not a local/param, not a top-level function, not a constructor)
+          if (expr.name !== 'println' && expr.name !== 'show') {
+            free.add(expr.name);
+          }
         }
-        this.collectLambdas(expr.body);
         break;
+      case 'let': {
+        this._collectFreeVars(expr.value, bound, free);
+        const newBound = new Set(bound);
+        newBound.add(expr.name);
+        this._collectFreeVars(expr.body, newBound, free);
+        break;
+      }
       case 'lambda': {
-        // Anonymous lambda (not bound to let)
-        const lamName = `__lambda_${this.lambdaFunctions.length}`;
-        this.lambdaFunctions.push({
-          name: lamName,
-          params: expr.params,
-          body: expr.body,
-        });
-        this.userFunctions.add(lamName);
-        this.collectLambdas(expr.body);
+        const newBound = new Set(bound);
+        for (const p of expr.params) newBound.add(p);
+        this._collectFreeVars(expr.body, newBound, free);
         break;
       }
       case 'app':
-        this.collectLambdas(expr.fn);
-        for (const a of expr.args) this.collectLambdas(a);
+        this._collectFreeVars(expr.fn, bound, free);
+        for (const a of expr.args) this._collectFreeVars(a, bound, free);
         break;
       case 'if':
-        this.collectLambdas(expr.cond);
-        this.collectLambdas(expr.then);
-        this.collectLambdas(expr.else);
+        this._collectFreeVars(expr.cond, bound, free);
+        this._collectFreeVars(expr.then, bound, free);
+        this._collectFreeVars(expr.else, bound, free);
         break;
       case 'binop':
-        this.collectLambdas(expr.left);
-        this.collectLambdas(expr.right);
+        this._collectFreeVars(expr.left, bound, free);
+        this._collectFreeVars(expr.right, bound, free);
         break;
       case 'unaryop':
-        this.collectLambdas(expr.operand);
+        this._collectFreeVars(expr.operand, bound, free);
         break;
       case 'block':
-        for (const e of expr.exprs) this.collectLambdas(e);
+        for (const e of expr.exprs) this._collectFreeVars(e, bound, free);
         break;
       case 'match':
-        this.collectLambdas(expr.scrutinee);
-        for (const arm of expr.arms) this.collectLambdas(arm.body);
+        this._collectFreeVars(expr.scrutinee, bound, free);
+        for (const arm of expr.arms) {
+          const armBound = new Set(bound);
+          this._collectPatternBindings(arm.pattern, armBound);
+          if (arm.guard) this._collectFreeVars(arm.guard, armBound, free);
+          this._collectFreeVars(arm.body, armBound, free);
+        }
         break;
       case 'construct':
-        for (const a of expr.args) this.collectLambdas(a);
+        for (const a of expr.args) this._collectFreeVars(a, bound, free);
         break;
       case 'concat':
-        this.collectLambdas(expr.left);
-        this.collectLambdas(expr.right);
+        this._collectFreeVars(expr.left, bound, free);
+        this._collectFreeVars(expr.right, bound, free);
         break;
       case 'record':
-        for (const [, val] of expr.fields) this.collectLambdas(val);
+        for (const [, val] of expr.fields) this._collectFreeVars(val, bound, free);
         break;
       case 'field_access':
-        this.collectLambdas(expr.expr);
+        this._collectFreeVars(expr.expr, bound, free);
         break;
       case 'record_update':
-        this.collectLambdas(expr.record);
-        for (const [, val] of expr.updates) this.collectLambdas(val);
+        this._collectFreeVars(expr.record, bound, free);
+        for (const [, val] of expr.updates) this._collectFreeVars(val, bound, free);
         break;
       case 'list':
-        for (const e of expr.elements) this.collectLambdas(e);
+        for (const e of expr.elements) this._collectFreeVars(e, bound, free);
         break;
       case 'tail_loop':
-        this.collectLambdas(expr.body);
+        this._collectFreeVars(expr.body, bound, free);
         break;
       case 'tail_continue':
-        for (const a of expr.args) this.collectLambdas(a);
+        for (const a of expr.args) this._collectFreeVars(a, bound, free);
         break;
       case 'return':
-        this.collectLambdas(expr.expr);
+        this._collectFreeVars(expr.expr, bound, free);
+        break;
+      case 'spawn':
+        this._collectFreeVars(expr.fn, bound, free);
+        break;
+      case 'send':
+        this._collectFreeVars(expr.pid, bound, free);
+        this._collectFreeVars(expr.msg, bound, free);
+        break;
+      case 'receive':
+        for (const arm of expr.arms) {
+          const armBound = new Set(bound);
+          this._collectPatternBindings(arm.pattern, armBound);
+          if (arm.guard) this._collectFreeVars(arm.guard, armBound, free);
+          this._collectFreeVars(arm.body, armBound, free);
+        }
         break;
       default:
         break;
     }
   }
 
-  private emitLambdaFunction(lam: { name: string; params: string[]; body: IR.IrExpr }): void {
-    // Emit as a regular function
+  private _collectPatternBindings(pat: IR.IrPattern, bound: Set<string>): void {
+    switch (pat.kind) {
+      case 'pvar':
+        bound.add(pat.name);
+        break;
+      case 'pconstructor':
+        for (const arg of pat.args) this._collectPatternBindings(arg, bound);
+        break;
+      case 'plist':
+        for (const el of pat.elements) this._collectPatternBindings(el, bound);
+        if (pat.rest) bound.add(pat.rest);
+        break;
+      default:
+        break;
+    }
+  }
+
+  // ─── Lambda Collection and Emission ───
+
+  private collectLambdas(expr: IR.IrExpr, scope: Set<string> = new Set()): void {
+    switch (expr.kind) {
+      case 'let':
+        if (expr.value.kind === 'lambda') {
+          // Compute free variables: vars used in lambda body that aren't lambda params
+          const lamParams = new Set(expr.value.params);
+          const captures = this.findFreeVars(expr.value.body, lamParams);
+
+          // Register this lambda with a name based on the let binding
+          const lamName = `__lambda_${this.lambdaFunctions.length}`;
+          this.lambdaFunctions.push({
+            name: lamName,
+            params: expr.value.params,
+            captures,
+            body: expr.value.body,
+          });
+          this.lambdaNameMap.set(expr.name, lamName);
+          this.lambdaCaptureMap.set(lamName, captures);
+          this.userFunctions.add(lamName);
+          // Track param count: regular + captures (actual WASM signature)
+          this.userFunctionParamCounts.set(lamName, expr.value.params.length + captures.length);
+          const bodyScope = new Set(scope);
+          for (const p of expr.value.params) bodyScope.add(p);
+          this.collectLambdas(expr.value.body, bodyScope);
+        } else {
+          this.collectLambdas(expr.value, scope);
+        }
+        const letScope = new Set(scope);
+        letScope.add(expr.name);
+        this.collectLambdas(expr.body, letScope);
+        break;
+      case 'lambda': {
+        // Anonymous lambda (not bound to let)
+        const lamParams = new Set(expr.params);
+        const captures = this.findFreeVars(expr.body, lamParams);
+
+        const lamName = `__lambda_${this.lambdaFunctions.length}`;
+        this.lambdaFunctions.push({
+          name: lamName,
+          params: expr.params,
+          captures,
+          body: expr.body,
+        });
+        this.lambdaCaptureMap.set(lamName, captures);
+        this.userFunctions.add(lamName);
+        this.userFunctionParamCounts.set(lamName, expr.params.length + captures.length);
+        const lambdaScope = new Set(scope);
+        for (const p of expr.params) lambdaScope.add(p);
+        this.collectLambdas(expr.body, lambdaScope);
+        break;
+      }
+      case 'app':
+        this.collectLambdas(expr.fn, scope);
+        for (const a of expr.args) this.collectLambdas(a, scope);
+        break;
+      case 'if':
+        this.collectLambdas(expr.cond, scope);
+        this.collectLambdas(expr.then, scope);
+        this.collectLambdas(expr.else, scope);
+        break;
+      case 'binop':
+        this.collectLambdas(expr.left, scope);
+        this.collectLambdas(expr.right, scope);
+        break;
+      case 'unaryop':
+        this.collectLambdas(expr.operand, scope);
+        break;
+      case 'block':
+        for (const e of expr.exprs) this.collectLambdas(e, scope);
+        break;
+      case 'match':
+        this.collectLambdas(expr.scrutinee, scope);
+        for (const arm of expr.arms) {
+          const armScope = new Set(scope);
+          this._collectPatternBindings(arm.pattern, armScope);
+          this.collectLambdas(arm.body, armScope);
+        }
+        break;
+      case 'construct':
+        for (const a of expr.args) this.collectLambdas(a, scope);
+        break;
+      case 'concat':
+        this.collectLambdas(expr.left, scope);
+        this.collectLambdas(expr.right, scope);
+        break;
+      case 'record':
+        for (const [, val] of expr.fields) this.collectLambdas(val, scope);
+        break;
+      case 'field_access':
+        this.collectLambdas(expr.expr, scope);
+        break;
+      case 'record_update':
+        this.collectLambdas(expr.record, scope);
+        for (const [, val] of expr.updates) this.collectLambdas(val, scope);
+        break;
+      case 'list':
+        for (const e of expr.elements) this.collectLambdas(e, scope);
+        break;
+      case 'tail_loop':
+        this.collectLambdas(expr.body, scope);
+        break;
+      case 'tail_continue':
+        for (const a of expr.args) this.collectLambdas(a, scope);
+        break;
+      case 'return':
+        this.collectLambdas(expr.expr, scope);
+        break;
+      case 'spawn':
+        this.collectLambdas(expr.fn, scope);
+        break;
+      case 'send':
+        this.collectLambdas(expr.pid, scope);
+        this.collectLambdas(expr.msg, scope);
+        break;
+      case 'receive':
+        for (const arm of expr.arms) {
+          const armScope = new Set(scope);
+          this._collectPatternBindings(arm.pattern, armScope);
+          this.collectLambdas(arm.body, armScope);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  private emitLambdaFunction(lam: { name: string; params: string[]; captures: string[]; body: IR.IrExpr }): void {
+    // Emit as a regular function.
+    // Captures are passed as additional i64 params after the regular params.
+    // Signature: (regular_params..., captured_params...) -> result
     const savedLocals = this.currentFnLocals;
     const savedDeclared = this.declaredLocals;
     const savedCounter = this.localCounter;
@@ -1649,19 +2051,26 @@ export class WatEmitter {
     this.declaredLocals = [];
     this.localCounter = 0;
 
-    // Register params
+    // Register all params (regular + captured)
     for (const p of lam.params) {
       this.currentFnLocals.set(p, 'i64');
     }
+    for (const c of lam.captures) {
+      this.currentFnLocals.set(c, 'i64');
+    }
 
-    // Pre-scan body for locals
+    // Pre-scan body for additional locals
     this.collectLocals(lam.body);
 
     const resultType = this.inferExprType(lam.body);
-    const params = lam.params.map(p => `(param $${p} i64)`).join(' ');
+    // Build param list: regular params + captured params (all i64)
+    const allParams = [
+      ...lam.params.map(p => `(param $${p} i64)`),
+      ...lam.captures.map(c => `(param $${c} i64)`),
+    ].join(' ');
     const resultStr = resultType === 'void' ? '' : ` (result ${resultType})`;
 
-    this.line(`(func $${lam.name} ${params}${resultStr}`);
+    this.line(`(func $${lam.name} ${allParams}${resultStr}`);
     this.indent++;
 
     for (const localName of this.declaredLocals) {
@@ -1681,6 +2090,65 @@ export class WatEmitter {
     this.currentFnLocals = savedLocals;
     this.declaredLocals = savedDeclared;
     this.localCounter = savedCounter;
+  }
+
+  // ─── Process Primitives (spawn/send/receive) ───
+
+  private emitSpawn(expr: IR.IrExpr & { kind: 'spawn' }): string[] {
+    const lines: string[] = [];
+    // spawn takes a function reference (table index as i64)
+    // The spawned function is a lambda - emit it to get closure pointer
+    lines.push(...this.emitExpr(expr.fn));
+    lines.push('call $japl_spawn');
+    return lines;
+  }
+
+  private emitSend(expr: IR.IrExpr & { kind: 'send' }, isVoid: boolean): string[] {
+    const lines: string[] = [];
+    // send(pid, msg) - both are i64
+    lines.push(...this.emitExpr(expr.pid));
+    lines.push(...this.emitExpr(expr.msg));
+    lines.push('call $japl_send');
+    return lines;
+  }
+
+  private emitReceive(expr: IR.IrExpr & { kind: 'receive' }, isVoid: boolean): string[] {
+    const lines: string[] = [];
+    // receive blocks until a message arrives, returns i64 (tagged union pointer)
+    // Then pattern match on the received message
+    lines.push('call $japl_receive');
+
+    if (expr.arms.length === 0) {
+      // No arms - just receive and ignore
+      if (!isVoid) {
+        // leave the value on the stack
+      } else {
+        lines.push('drop');
+      }
+      return lines;
+    }
+
+    // Store received message in a match local and pattern match
+    const matchLocal = `__match_${this.localCounter++}`;
+    if (!this.currentFnLocals.has(matchLocal)) {
+      this.currentFnLocals.set(matchLocal, 'i32');
+      this.declaredLocals.push(matchLocal);
+    }
+
+    // Convert i64 message to i32 pointer for pattern matching
+    lines.push('i32.wrap_i64');
+    lines.push(`local.set $${matchLocal}`);
+
+    // Determine result type from arms
+    let resultType = this.inferExprType(expr.arms[0].body);
+    if (isVoid || resultType === 'void') {
+      resultType = 'void';
+    }
+
+    const matchLines = this.emitMatchArms(expr.arms, matchLocal, resultType, 0);
+    lines.push(...matchLines);
+
+    return lines;
   }
 
   // ─── Tail Loop / Continue ───
@@ -1833,12 +2301,25 @@ export class WatEmitter {
     this.line(`(table ${this.tableFunctions.length} funcref)`);
     this.line(`(elem (i32.const 0) func ${refs})`);
     // Emit type signatures for call_indirect
-    // For now, emit the common signatures we need
-    // All user functions take i64 params and return i64
-    const maxParams = Math.max(...this.tableFunctions.map(n => this.userFunctionParamCounts.get(n) ?? 1));
-    for (let i = 1; i <= maxParams; i++) {
-      const params = Array.from({ length: i }, () => 'i64').join(' ');
-      this.line(`(type $__fn_sig_${i} (func (param ${params}) (result i64)))`);
+    // All functions in the table use the closure calling convention:
+    //   (param i64 x N) (param i32 $__env) (result i64)
+    // where N is the number of regular params
+    // Compute max param count across all table functions
+    let maxParams = 0;
+    for (const n of this.tableFunctions) {
+      const pc = this.userFunctionParamCounts.get(n) ?? 1;
+      if (pc > maxParams) maxParams = pc;
+    }
+    // Also account for closure dispatch: call sites use paramCount+1 for captured vars
+    maxParams = Math.max(maxParams + 1, maxParams);
+    // Generate all type signatures from 0 to maxParams
+    for (let i = 0; i <= maxParams; i++) {
+      if (i === 0) {
+        this.line(`(type $__fn_sig_0 (func (result i64)))`);
+      } else {
+        const params = Array.from({ length: i }, () => 'i64').join(' ');
+        this.line(`(type $__fn_sig_${i} (func (param ${params}) (result i64)))`);
+      }
     }
   }
 
@@ -1854,6 +2335,30 @@ export class WatEmitter {
     } else {
       this.line('call $main');
     }
+    this.indent--;
+    this.line(')');
+  }
+
+  private emitProcessEntry(): void {
+    // __process_entry(closure_ptr: i64) - called by runtime for spawned processes
+    // closure_ptr is either a direct table index (< 1024) or a closure struct pointer.
+    // For spawn, lambdas are typically 0-param. Closure layout: [table_index: i64][num_captures: i64][captures...]
+    this.line('(func (export "__process_entry") (param $closure i64)');
+    this.indent++;
+    this.line('(local $func_idx i32)');
+    // Check if it's a direct table index or closure pointer
+    this.line('(if (i64.lt_u (local.get $closure) (i64.const 1024))');
+    this.line('  (then');
+    // Direct table index
+    this.line('    (local.set $func_idx (i32.wrap_i64 (local.get $closure)))');
+    this.line('    (drop (call_indirect (type $__fn_sig_0) (local.get $func_idx)))');
+    this.line('  )');
+    this.line('  (else');
+    // Closure pointer: read table index from closure[0]
+    this.line('    (local.set $func_idx (i32.wrap_i64 (i64.load (i32.wrap_i64 (local.get $closure)))))');
+    this.line('    (drop (call_indirect (type $__fn_sig_0) (local.get $func_idx)))');
+    this.line('  )');
+    this.line(')');
     this.indent--;
     this.line(')');
   }

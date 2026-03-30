@@ -107,6 +107,77 @@ impl Scheduler {
         Ok(pid)
     }
 
+    /// Spawn a process that calls __process_entry(closure_ptr) with shared memory state.
+    fn spawn_closure_process(&self, closure_ptr: i64, closure_bytes: Vec<u8>) -> anyhow::Result<ProcessId> {
+        let pid = self.alloc_pid();
+        let (msg_tx, msg_rx) = mpsc::channel::<ProcessMessage>();
+        self.processes.lock().unwrap().insert(pid, msg_tx);
+
+        let engine_arc = self.engine.as_ref().unwrap().clone();
+        let cmd_tx = self.cmd_tx.clone();
+
+        std::thread::spawn(move || {
+            let wasi = JaplEngine::build_wasi_ctx();
+            let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi);
+            let mut store = Store::new(&engine_arc.engine, state);
+
+            let linker = match engine_arc.build_linker() {
+                Ok(l) => l,
+                Err(e) => {
+                    eprintln!("[pid {}] linker error: {}", pid, e);
+                    let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
+                    return;
+                }
+            };
+
+            let instance = match linker.instantiate(&mut store, &engine_arc.module) {
+                Ok(i) => i,
+                Err(e) => {
+                    eprintln!("[pid {}] instantiation error: {}", pid, e);
+                    let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
+                    return;
+                }
+            };
+
+            // Copy closure bytes into the child's memory at the same address
+            // and advance the heap pointer past them so the child doesn't overwrite
+            if !closure_bytes.is_empty() {
+                if let Some(mem) = instance.get_memory(&mut store, "memory") {
+                    let ptr = closure_ptr as usize;
+                    let data = mem.data_mut(&mut store);
+                    let end = (ptr + closure_bytes.len()).min(data.len());
+                    let copy_len = end - ptr;
+                    data[ptr..end].copy_from_slice(&closure_bytes[..copy_len]);
+                }
+                // Update the heap_ptr global so child allocations don't conflict
+                if let Some(heap_ptr) = instance.get_global(&mut store, "heap_ptr") {
+                    let new_heap = (closure_ptr as i32) + (closure_bytes.len() as i32);
+                    // Align to 8
+                    let aligned = (new_heap + 7) & !7;
+                    let _ = heap_ptr.set(&mut store, Val::I32(aligned));
+                }
+            }
+
+            // Call __process_entry(closure_ptr)
+            let func = match instance.get_typed_func::<(i64,), ()>(&mut store, "__process_entry") {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("[pid {}] could not find export '__process_entry': {}", pid, e);
+                    let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
+                    return;
+                }
+            };
+
+            if let Err(e) = func.call(&mut store, (closure_ptr,)) {
+                eprintln!("[pid {}] runtime error: {}", pid, e);
+            }
+
+            let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
+        });
+
+        Ok(pid)
+    }
+
     pub fn run(&mut self) -> anyhow::Result<()> {
         // Spawn main process (PID 0)
         let _main_pid = self.spawn_process("_start")?;
@@ -132,13 +203,24 @@ impl Scheduler {
                         }
                     }
                 }
+                Ok(SchedulerCommand::SpawnClosure { closure_ptr, closure_bytes, reply }) => {
+                    match self.spawn_closure_process(closure_ptr, closure_bytes) {
+                        Ok(new_pid) => {
+                            alive_count += 1;
+                            let _ = reply.send(new_pid);
+                        }
+                        Err(e) => {
+                            eprintln!("spawn closure error: {}", e);
+                        }
+                    }
+                }
                 Ok(SchedulerCommand::Send {
                     target_pid,
-                    message,
+                    message_bytes,
                 }) => {
                     let procs = self.processes.lock().unwrap();
                     if let Some(tx) = procs.get(&target_pid) {
-                        let _ = tx.send(ProcessMessage::Deliver(message));
+                        let _ = tx.send(ProcessMessage::Deliver(message_bytes));
                     } else {
                         eprintln!("send to unknown pid {}", target_pid);
                     }

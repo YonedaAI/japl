@@ -1,0 +1,62 @@
+type KVCommand =
+  | Put(Int, Int, Pid)
+  | Get(Int, Pid)
+  | Size(Pid)
+
+type KVResponse =
+  | Found(Int)
+  | NotFound
+  | Stored
+  | Count(Int)
+
+fn partition(data_count: Int) {
+  receive {
+    Put(key, val, reply) =>
+      let _ = send(reply, Stored)
+      partition(data_count + 1),
+    Get(key, reply) =>
+      let _ = send(reply, Found(key * 10))
+      partition(data_count),
+    Size(reply) =>
+      let _ = send(reply, Count(data_count))
+      partition(data_count)
+  }
+}
+
+fn main() {
+  let _ = println("=== JAPL Distributed Key-Value Store ===")
+
+  let p1 = spawn(fn() { partition(0) })
+  let p2 = spawn(fn() { partition(0) })
+
+  let _ = println("Spawned 2 partitions")
+
+  let _ = send(p1, Put(1, 100, self()))
+  let _ = receive { Stored => println("Stored key=1 on partition 1") }
+
+  let _ = send(p1, Put(2, 200, self()))
+  let _ = receive { Stored => println("Stored key=2 on partition 1") }
+
+  let _ = send(p2, Put(3, 300, self()))
+  let _ = receive { Stored => println("Stored key=3 on partition 2") }
+
+  let _ = send(p1, Get(1, self()))
+  let _ = receive {
+    Found(v) => println("Got key=1: " <> show(v)),
+    NotFound => println("key=1 not found")
+  }
+
+  let _ = send(p2, Get(3, self()))
+  let _ = receive {
+    Found(v) => println("Got key=3: " <> show(v)),
+    NotFound => println("key=3 not found")
+  }
+
+  let _ = send(p1, Size(self()))
+  let _ = receive { Count(n) => println("Partition 1 size: " <> show(n)) }
+
+  let _ = send(p2, Size(self()))
+  let _ = receive { Count(n) => println("Partition 2 size: " <> show(n)) }
+
+  println("=== KV Store Test Complete ===")
+}
