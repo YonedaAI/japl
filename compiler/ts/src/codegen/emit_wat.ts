@@ -16,6 +16,10 @@ export class WatEmitter {
   private currentFnLocals: Map<string, string> = new Map(); // name -> wasm type
   private declaredLocals: string[] = [];
   private userFunctions: Set<string> = new Set();
+  // Track user function return types: fn name -> wasm type string
+  private userFunctionReturnTypes: Map<string, string> = new Map();
+  // Track user function param counts for call_indirect type signatures
+  private userFunctionParamCounts: Map<string, number> = new Map();
 
   // Tagged union registry: variant name -> { typeName, tagId, fieldCount }
   private variantRegistry: Map<string, { typeName: string; tagId: number; fieldCount: number }> = new Map();
@@ -28,17 +32,25 @@ export class WatEmitter {
   private lambdaNameMap: Map<string, string> = new Map();
   // Heap start (after string data segments)
   private heapStart: number = 0;
+  // Function table entries for call_indirect (higher-order functions)
+  private tableFunctions: string[] = [];
+  // Map function name -> table index
+  private tableFunctionIndex: Map<string, number> = new Map();
 
   emit(module: IR.IrModule): string {
     this.output = [];
     this.stringData = [];
     this.memoryOffset = 1024; // reserve 0-1023 for iov/scratch
     this.userFunctions.clear();
+    this.userFunctionReturnTypes.clear();
+    this.userFunctionParamCounts.clear();
     this.variantRegistry.clear();
     this.recordTypeRegistry.clear();
     this.lambdaFunctions = [];
     this.lambdaCounter = 0;
     this.lambdaNameMap.clear();
+    this.tableFunctions = [];
+    this.tableFunctionIndex.clear();
 
     // Register type declarations (variants and record types)
     for (const decl of module.decls) {
@@ -62,10 +74,32 @@ export class WatEmitter {
     for (const decl of module.decls) {
       if (decl.kind === 'fn') {
         this.userFunctions.add(decl.name);
+        this.userFunctionParamCounts.set(decl.name, decl.params.length);
       }
     }
-    for (const [name] of this.variantRegistry) {
+    for (const [name, info] of this.variantRegistry) {
       this.userFunctions.add(name);
+      this.userFunctionParamCounts.set(name, info.fieldCount);
+    }
+
+    // Pre-compute return types for all user functions
+    // This requires a temporary pass through function bodies
+    for (const decl of module.decls) {
+      if (decl.kind === 'fn') {
+        // Temporarily set up locals context for type inference
+        const savedLocals = this.currentFnLocals;
+        this.currentFnLocals = new Map();
+        for (const p of decl.params) {
+          this.currentFnLocals.set(p, 'i64');
+        }
+        const retType = this.inferResultType(decl.body);
+        this.userFunctionReturnTypes.set(decl.name, retType);
+        this.currentFnLocals = savedLocals;
+      }
+    }
+    // Variant constructors always return i64
+    for (const [name] of this.variantRegistry) {
+      this.userFunctionReturnTypes.set(name, 'i64');
     }
 
     // Pre-scan for lambdas to generate named functions
@@ -84,6 +118,13 @@ export class WatEmitter {
     // Memory
     this.line('(memory (export "memory") 1)');
     this.line('');
+
+    // Build function table for call_indirect (higher-order functions)
+    this.buildFunctionTable(module);
+    if (this.tableFunctions.length > 0) {
+      this.emitFunctionTable();
+      this.line('');
+    }
 
     // Collect strings and emit data segments
     this.collectStrings(module);
@@ -230,6 +271,15 @@ export class WatEmitter {
         break;
       case 'list':
         for (const e of expr.elements) this.collectStringsFromExpr(e);
+        break;
+      case 'tail_loop':
+        this.collectStringsFromExpr(expr.body);
+        break;
+      case 'tail_continue':
+        for (const a of expr.args) this.collectStringsFromExpr(a);
+        break;
+      case 'return':
+        this.collectStringsFromExpr(expr.expr);
         break;
       default:
         break;
@@ -570,6 +620,25 @@ export class WatEmitter {
       case 'lambda':
         this.collectLocals(expr.body);
         break;
+      case 'tail_loop':
+        this.collectLocals(expr.body);
+        break;
+      case 'tail_continue':
+        // Pre-allocate temp locals for multi-arg tail continue
+        if (expr.args.length > 1) {
+          for (let i = 0; i < expr.args.length; i++) {
+            const tmpName = `__tc_tmp_${i}`;
+            if (!this.currentFnLocals.has(tmpName)) {
+              this.currentFnLocals.set(tmpName, 'i64');
+              this.declaredLocals.push(tmpName);
+            }
+          }
+        }
+        for (const a of expr.args) this.collectLocals(a);
+        break;
+      case 'return':
+        this.collectLocals(expr.expr);
+        break;
       default:
         break;
     }
@@ -635,6 +704,9 @@ export class WatEmitter {
       case 'list': return 'i64';
       case 'concat': return 'i64'; // returns string pointer as i64
       case 'lambda': return 'i64'; // function reference as i64
+      case 'tail_loop': return this.inferExprType(expr.body);
+      case 'tail_continue': return 'void'; // tail_continue doesn't produce a value (it branches)
+      case 'return': return this.inferExprType(expr.expr);
       default: return 'i64';
     }
   }
@@ -649,6 +721,9 @@ export class WatEmitter {
           if (this.variantRegistry.has(expr.fn.name)) return 'i64';
           // Check if this is a lambda reference
           if (this.lambdaNameMap.has(expr.fn.name)) return 'i64';
+          // Check pre-computed return type
+          const retType = this.userFunctionReturnTypes.get(expr.fn.name);
+          if (retType) return retType;
           return 'i64'; // user functions return i64 by default
         }
       }
@@ -685,8 +760,14 @@ export class WatEmitter {
       case 'unit':
         return [];
 
-      case 'var':
+      case 'var': {
+        // If this var is a function reference (in function table) AND not a local/param variable
+        const tableIdx = this.tableFunctionIndex.get(expr.name);
+        if (tableIdx !== undefined && !this.currentFnLocals.has(expr.name)) {
+          return [`i64.const ${tableIdx} ;; fn ref: ${expr.name}`];
+        }
         return [`local.get $${expr.name}`];
+      }
 
       case 'let': {
         const lines: string[] = [];
@@ -734,6 +815,15 @@ export class WatEmitter {
 
       case 'lambda':
         return this.emitLambdaRef(expr);
+
+      case 'tail_loop':
+        return this.emitTailLoop(expr as IR.IrExpr & { kind: 'tail_loop' }, isVoid);
+
+      case 'tail_continue':
+        return this.emitTailContinue(expr as IR.IrExpr & { kind: 'tail_continue' });
+
+      case 'return':
+        return this.emitReturn(expr as IR.IrExpr & { kind: 'return' });
 
       default:
         return [`;; TODO: ${expr.kind}`];
@@ -890,6 +980,22 @@ export class WatEmitter {
       const lambdaName = this.lambdaNameMap.get(fnName);
       const callTarget = lambdaName ?? fnName;
 
+      // Check if this is a local variable holding a function reference (call_indirect)
+      if (this.currentFnLocals.has(fnName) && !this.userFunctions.has(fnName) && !lambdaName) {
+        // This is a parameter/local that holds a function ref - use call_indirect
+        for (const arg of expr.args) {
+          lines.push(...this.emitExpr(arg));
+        }
+        lines.push(`local.get $${fnName}`);
+        lines.push('i32.wrap_i64');
+        const paramCount = expr.args.length;
+        lines.push(`call_indirect (type $__fn_sig_${paramCount})`);
+        if (isVoid) {
+          lines.push('drop');
+        }
+        return lines;
+      }
+
       // User function call (or lambda call)
       for (const arg of expr.args) {
         lines.push(...this.emitExpr(arg));
@@ -906,8 +1012,18 @@ export class WatEmitter {
       return lines;
     }
 
-    // Fallback: indirect call not supported yet
-    lines.push(`;; TODO: indirect call`);
+    // Indirect call: the function expression evaluates to a table index (i64)
+    // Push args first, then the function index, then call_indirect
+    for (const arg of expr.args) {
+      lines.push(...this.emitExpr(arg));
+    }
+    lines.push(...this.emitExpr(expr.fn));
+    lines.push('i32.wrap_i64'); // table index is i32
+    const paramCount = expr.args.length;
+    lines.push(`call_indirect (type $__fn_sig_${paramCount})`);
+    if (isVoid) {
+      lines.push('drop');
+    }
     return lines;
   }
 
@@ -1509,6 +1625,15 @@ export class WatEmitter {
       case 'list':
         for (const e of expr.elements) this.collectLambdas(e);
         break;
+      case 'tail_loop':
+        this.collectLambdas(expr.body);
+        break;
+      case 'tail_continue':
+        for (const a of expr.args) this.collectLambdas(a);
+        break;
+      case 'return':
+        this.collectLambdas(expr.expr);
+        break;
       default:
         break;
     }
@@ -1558,12 +1683,177 @@ export class WatEmitter {
     this.localCounter = savedCounter;
   }
 
+  // ─── Tail Loop / Continue ───
+
+  private emitTailLoop(expr: IR.IrExpr & { kind: 'tail_loop' }, isVoid: boolean): string[] {
+    const lines: string[] = [];
+    // tail_loop { body } compiles to:
+    //   (block $break (loop $continue ... (br $continue) ... ))
+    // The loop params are already the function params (set up by the caller).
+    // tail_continue sets the params and branches to $continue.
+
+    // Store current tail loop params so emitTailContinue can reference them
+    this._tailLoopParams = expr.params;
+
+    const bodyType = this.inferExprType(expr.body);
+    const resultType = isVoid ? 'void' : bodyType;
+
+    if (resultType === 'void') {
+      lines.push('(block $__tail_break');
+      lines.push('  (loop $__tail_continue');
+    } else {
+      lines.push(`(block $__tail_break (result ${resultType})`);
+      lines.push(`  (loop $__tail_continue (result ${resultType})`);
+    }
+
+    const bodyLines = this.emitExpr(expr.body, isVoid);
+    for (const l of bodyLines) {
+      lines.push('    ' + l);
+    }
+
+    // If body falls through (non-looping path), break out
+    lines.push('    br $__tail_break');
+    lines.push('  )');
+    lines.push(')');
+
+    this._tailLoopParams = undefined;
+    return lines;
+  }
+
+  private _tailLoopParams?: string[];
+
+  private emitTailContinue(expr: IR.IrExpr & { kind: 'tail_continue' }): string[] {
+    const lines: string[] = [];
+    const params = this._tailLoopParams ?? [];
+
+    // Evaluate new values for each param and set them
+    // We need to evaluate all args first, then set all params (to avoid overwriting)
+    if (expr.args.length === 1) {
+      // Simple case: single param, evaluate and set
+      lines.push(...this.emitExpr(expr.args[0]));
+      if (params.length > 0) {
+        lines.push(`local.set $${params[0]}`);
+      }
+    } else {
+      // Multi-param: use temp locals to avoid order-dependent overwrites
+      const tempNames: string[] = [];
+      for (let i = 0; i < expr.args.length; i++) {
+        lines.push(...this.emitExpr(expr.args[i]));
+        const tmpName = `__tc_tmp_${i}`;
+        if (!this.currentFnLocals.has(tmpName)) {
+          this.currentFnLocals.set(tmpName, 'i64');
+          this.declaredLocals.push(tmpName);
+        }
+        lines.push(`local.set $${tmpName}`);
+        tempNames.push(tmpName);
+      }
+      for (let i = 0; i < params.length && i < tempNames.length; i++) {
+        lines.push(`local.get $${tempNames[i]}`);
+        lines.push(`local.set $${params[i]}`);
+      }
+    }
+
+    lines.push('br $__tail_continue');
+    return lines;
+  }
+
+  private emitReturn(expr: IR.IrExpr & { kind: 'return' }): string[] {
+    const lines: string[] = [];
+    lines.push(...this.emitExpr(expr.expr));
+    lines.push('return');
+    return lines;
+  }
+
+  // ─── Function Table (for higher-order functions) ───
+
+  private buildFunctionTable(module: IR.IrModule): void {
+    // Scan for function references passed as arguments
+    // Any function name used as a var in an app argument position (not as the callee)
+    // needs to be in the function table
+    for (const decl of module.decls) {
+      if (decl.kind === 'fn') {
+        this.scanForFunctionRefs(decl.body);
+      }
+    }
+  }
+
+  private scanForFunctionRefs(expr: IR.IrExpr): void {
+    switch (expr.kind) {
+      case 'app':
+        // Check if any argument is a direct reference to a user function
+        for (const arg of expr.args) {
+          if (arg.kind === 'var' && this.userFunctions.has(arg.name) && !this.variantRegistry.has(arg.name)) {
+            this.addToFunctionTable(arg.name);
+          }
+          this.scanForFunctionRefs(arg);
+        }
+        if (expr.fn.kind !== 'var') this.scanForFunctionRefs(expr.fn);
+        break;
+      case 'let':
+        this.scanForFunctionRefs(expr.value);
+        this.scanForFunctionRefs(expr.body);
+        break;
+      case 'if':
+        this.scanForFunctionRefs(expr.cond);
+        this.scanForFunctionRefs(expr.then);
+        this.scanForFunctionRefs(expr.else);
+        break;
+      case 'binop':
+        this.scanForFunctionRefs(expr.left);
+        this.scanForFunctionRefs(expr.right);
+        break;
+      case 'block':
+        for (const e of expr.exprs) this.scanForFunctionRefs(e);
+        break;
+      case 'match':
+        this.scanForFunctionRefs(expr.scrutinee);
+        for (const arm of expr.arms) this.scanForFunctionRefs(arm.body);
+        break;
+      case 'tail_loop':
+        this.scanForFunctionRefs(expr.body);
+        break;
+      case 'tail_continue':
+        for (const a of expr.args) this.scanForFunctionRefs(a);
+        break;
+      default:
+        break;
+    }
+  }
+
+  private addToFunctionTable(name: string): void {
+    if (!this.tableFunctionIndex.has(name)) {
+      const idx = this.tableFunctions.length;
+      this.tableFunctions.push(name);
+      this.tableFunctionIndex.set(name, idx);
+    }
+  }
+
+  private emitFunctionTable(): void {
+    const refs = this.tableFunctions.map(n => `$${n}`).join(' ');
+    this.line(`(table ${this.tableFunctions.length} funcref)`);
+    this.line(`(elem (i32.const 0) func ${refs})`);
+    // Emit type signatures for call_indirect
+    // For now, emit the common signatures we need
+    // All user functions take i64 params and return i64
+    const maxParams = Math.max(...this.tableFunctions.map(n => this.userFunctionParamCounts.get(n) ?? 1));
+    for (let i = 1; i <= maxParams; i++) {
+      const params = Array.from({ length: i }, () => 'i64').join(' ');
+      this.line(`(type $__fn_sig_${i} (func (param ${params}) (result i64)))`);
+    }
+  }
+
   // ─── _start ───
 
   private emitStart(): void {
     this.line('(func (export "_start")');
     this.indent++;
-    this.line('call $main');
+    const mainRetType = this.userFunctionReturnTypes.get('main');
+    if (mainRetType && mainRetType !== 'void') {
+      this.line('call $main');
+      this.line('drop');
+    } else {
+      this.line('call $main');
+    }
     this.indent--;
     this.line(')');
   }

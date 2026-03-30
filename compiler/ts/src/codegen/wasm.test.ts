@@ -420,4 +420,101 @@ fn main() {
       expect(output).toBe('42\n');
     });
   });
+
+  describe('void functions (tail recursion)', () => {
+    it('countdown with println and recursion', () => {
+      const wat = compileToWat(`fn countdown(n: Int) {
+  if n <= 0 { println("done") }
+  else {
+    println(show(n))
+    countdown(n - 1)
+  }
+}
+fn main() { countdown(5) }`);
+      const output = runWat(wat);
+      if (output === null) return;
+      expect(output).toBe('5\n4\n3\n2\n1\ndone\n');
+    });
+
+    it('state machine: traffic light with match, recursion, and string return', () => {
+      const wat = compileToWat(`type Light = | Red | Green | Yellow
+
+fn next(l: Light) -> Light {
+  match l { Red => Green, Green => Yellow, Yellow => Red }
+}
+
+fn name(l: Light) -> String {
+  match l { Red => "RED", Green => "GREEN", Yellow => "YELLOW" }
+}
+
+fn run(l: Light, n: Int) {
+  if n <= 0 { println("done") }
+  else {
+    println(name(l))
+    run(next(l), n - 1)
+  }
+}
+
+fn main() { run(Red, 6) }`);
+      const output = runWat(wat);
+      if (output === null) return;
+      expect(output).toBe('RED\nGREEN\nYELLOW\nRED\nGREEN\nYELLOW\ndone\n');
+    });
+  });
+
+  describe('string return from match', () => {
+    it('match returning string values', () => {
+      const wat = compileToWat(`type Color = | Red | Green | Blue
+fn name(c: Color) -> String {
+  match c { Red => "red", Green => "green", Blue => "blue" }
+}
+fn main() {
+  println(name(Red))
+  println(name(Blue))
+}`);
+      const output = runWat(wat);
+      if (output === null) return;
+      expect(output).toBe('red\nblue\n');
+    });
+  });
+
+  describe('pipe operator', () => {
+    it('pipes chain function calls', () => {
+      const wat = compileToWat(`fn double(x: Int) -> Int { x * 2 }
+fn main() {
+  println(show(5 |> double |> double))
+}`);
+      const output = runWat(wat);
+      if (output === null) return;
+      expect(output).toBe('20\n');
+    });
+  });
+
+  describe('higher-order functions', () => {
+    it('apply(double, 5) = 10', () => {
+      const wat = compileToWat(`fn apply(f: fn(Int) -> Int, x: Int) -> Int { f(x) }
+fn double(x: Int) -> Int { x * 2 }
+fn main() { println(show(apply(double, 5))) }`);
+      const output = runWat(wat);
+      if (output === null) return;
+      expect(output).toBe('10\n');
+    });
+
+    it('apply with add1', () => {
+      const wat = compileToWat(`fn apply(f: fn(Int) -> Int, x: Int) -> Int { f(x) }
+fn add1(x: Int) -> Int { x + 1 }
+fn main() { println(show(apply(add1, 99))) }`);
+      const output = runWat(wat);
+      if (output === null) return;
+      expect(output).toBe('100\n');
+    });
+
+    it('emits function table for call_indirect', () => {
+      const wat = compileToWat(`fn apply(f: fn(Int) -> Int, x: Int) -> Int { f(x) }
+fn double(x: Int) -> Int { x * 2 }
+fn main() { println(show(apply(double, 5))) }`);
+      expect(wat).toContain('(table');
+      expect(wat).toContain('call_indirect');
+    });
+  });
 });
