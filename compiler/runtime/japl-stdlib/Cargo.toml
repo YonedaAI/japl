@@ -1,9 +1,0 @@
-[package]
-name = "japl-stdlib"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-japl-runtime = { path = "../japl-runtime" }
-
-[dev-dependencies]

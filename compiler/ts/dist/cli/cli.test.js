@@ -156,7 +156,7 @@ describe('WASM build pipeline', () => {
     });
     it('buildToWasm produces a .wasm file', () => {
         const inputPath = path.join(tmpDir, 'hello.japl');
-        fs.writeFileSync(inputPath, `fn add(x: Int, y: Int) -> Int { x + y }`);
+        fs.writeFileSync(inputPath, `fn add(x: Int, y: Int) -> Int { x + y }\nfn main() { println(show(add(1, 2))) }`);
         const wasmPath = buildToWasm(inputPath, tmpDir);
         expect(wasmPath).toBe(path.join(tmpDir, 'hello.wasm'));
         expect(fs.existsSync(wasmPath)).toBe(true);
@@ -165,7 +165,7 @@ describe('WASM build pipeline', () => {
     });
     it('buildToWasm cleans up .wat intermediate file', () => {
         const inputPath = path.join(tmpDir, 'test.japl');
-        fs.writeFileSync(inputPath, `fn id(x: Int) -> Int { x }`);
+        fs.writeFileSync(inputPath, `fn id(x: Int) -> Int { x }\nfn main() { println(show(id(1))) }`);
         buildToWasm(inputPath, tmpDir);
         const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.wat'));
         expect(files).toHaveLength(0);

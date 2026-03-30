@@ -1,8 +1,0 @@
-[package]
-name = "japl-types"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-japl-common.workspace = true
-smol_str.workspace = true
