@@ -26,6 +26,14 @@ pub fn flat_map_result<T, U, E>(r: Result, f: fn(T) -> Result) -> Result {
   match r { Ok(x) => f(x), Err(e) => Err(e) }
 }
 
+pub fn and_then_result<T, U, E>(r: Result, f: fn(T) -> Result) -> Result {
+  match r { Ok(x) => f(x), Err(e) => Err(e) }
+}
+
+pub fn or_else_result<T, E, F>(r: Result, f: fn(E) -> Result) -> Result {
+  match r { Ok(x) => Ok(x), Err(e) => f(e) }
+}
+
 fn main() {
   let a = Ok(42)
   let b = Err("oops")
@@ -33,4 +41,16 @@ fn main() {
   println("is_ok(Err)=" <> show(is_ok(b)))
   println("unwrap_or(Ok(42),0)=" <> show(unwrap_or_result(a, 0)))
   println("unwrap_or(Err,0)=" <> show(unwrap_or_result(b, 0)))
+  let at1 = and_then_result(Ok(10), fn(x: Int) -> Result { Ok(x + 1) })
+  println("and_then(Ok(10),+1)=" <> show(unwrap_or_result(at1, 0)))
+  let at2 = and_then_result(Err("fail"), fn(x: Int) -> Result { Ok(x + 1) })
+  println("and_then(Err,+1)=" <> show(unwrap_or_result(at2, 0)))
+  let me1 = map_err(Err("bad"), fn(e: String) -> String { e <> "!" })
+  println("map_err(Err)=" <> show(is_err(me1)))
+  let me2 = map_err(Ok(5), fn(e: String) -> String { e <> "!" })
+  println("map_err(Ok)=" <> show(is_ok(me2)))
+  let oe1 = or_else_result(Err("bad"), fn(e: String) -> Result { Ok(99) })
+  println("or_else(Err)=" <> show(unwrap_or_result(oe1, 0)))
+  let oe2 = or_else_result(Ok(42), fn(e: String) -> Result { Ok(99) })
+  println("or_else(Ok)=" <> show(unwrap_or_result(oe2, 0)))
 }

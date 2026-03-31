@@ -26,6 +26,23 @@ pub fn or_else<T>(o: Option, f: fn() -> Option) -> Option {
   match o { Some(x) => Some(x), None => f() }
 }
 
+pub fn and_then<T, U>(o: Option, f: fn(T) -> Option) -> Option {
+  match o { Some(x) => f(x), None => None }
+}
+
+pub fn filter<T>(o: Option, pred: fn(T) -> Int) -> Option {
+  match o {
+    Some(x) =>
+      if pred(x) == 1 { Some(x) }
+      else { None },
+    None => None
+  }
+}
+
+pub fn get_or_else<T>(o: Option, f: fn() -> T) -> T {
+  match o { Some(x) => x, None => f() }
+}
+
 fn main() {
   let a = Some(42)
   let b = None
@@ -33,4 +50,16 @@ fn main() {
   println("is_some(None)=" <> show(is_some(b)))
   println("unwrap_or(Some(42),0)=" <> show(unwrap_or(a, 0)))
   println("unwrap_or(None,0)=" <> show(unwrap_or(b, 0)))
+  let at1 = and_then(Some(10), fn(x: Int) -> Option { Some(x + 1) })
+  println("and_then(Some(10),+1)=" <> show(unwrap_or(at1, 0)))
+  let at2 = and_then(None, fn(x: Int) -> Option { Some(x + 1) })
+  println("and_then(None,+1)=" <> show(unwrap_or(at2, 0)))
+  let f1 = filter(Some(10), fn(x: Int) -> Int { if x > 5 { 1 } else { 0 } })
+  println("filter(Some(10),>5)=" <> show(unwrap_or(f1, 0)))
+  let f2 = filter(Some(3), fn(x: Int) -> Int { if x > 5 { 1 } else { 0 } })
+  println("filter(Some(3),>5)=" <> show(unwrap_or(f2, 0)))
+  let g1 = get_or_else(Some(42), fn() -> Int { 99 })
+  println("get_or_else(Some(42))=" <> show(g1))
+  let g2 = get_or_else(None, fn() -> Int { 99 })
+  println("get_or_else(None)=" <> show(g2))
 }

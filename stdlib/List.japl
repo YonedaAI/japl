@@ -24,18 +24,31 @@ pub fn tail<T>(l: List) -> List {
 }
 
 pub fn map<T, U>(l: List, f: fn(T) -> U) -> List {
+  reverse(map_acc(l, f, Nil))
+}
+
+pub fn cons_val<T>(val: T, rest: List) -> List {
+  Cons(val, rest)
+}
+
+pub fn map_acc<T, U>(l: List, f: fn(T) -> U, acc: List) -> List {
   match l {
-    Nil => Nil,
-    Cons(x, rest) => Cons(f(x), map(rest, f))
+    Nil => acc,
+    Cons(x, rest) =>
+      map_acc(rest, f, cons_val(f(x), acc))
   }
 }
 
 pub fn filter<T>(l: List, f: fn(T) -> Int) -> List {
+  reverse(filter_acc(l, f, Nil))
+}
+
+pub fn filter_acc<T>(l: List, f: fn(T) -> Int, acc: List) -> List {
   match l {
-    Nil => Nil,
+    Nil => acc,
     Cons(x, rest) =>
-      if f(x) == 1 { Cons(x, filter(rest, f)) }
-      else { filter(rest, f) }
+      if f(x) == 1 { filter_acc(rest, f, Cons(x, acc)) }
+      else { filter_acc(rest, f, acc) }
   }
 }
 
@@ -99,4 +112,13 @@ fn main() {
   println("List sum: " <> show(list_sum(l)))
   println("Contains 2: " <> show(contains(l, 2)))
   println("Contains 5: " <> show(contains(l, 5)))
+  let doubled = map(l, fn(x: Int) -> Int { x * 2 })
+  println("map(*2) head: " <> show(head(doubled, 0)))
+  let evens = filter(l, fn(x: Int) -> Int { if x == 2 { 1 } else { 0 } })
+  println("filter(==2) len: " <> show(length(evens)))
+  let product = fold(l, 1, fn(acc: Int, x: Int) -> Int { acc * x })
+  println("fold(*) product: " <> show(product))
+  println("head: " <> show(head(l, 0)))
+  let tl = tail(l)
+  println("tail head: " <> show(head(tl, 0)))
 }
