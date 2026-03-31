@@ -270,6 +270,7 @@ impl Checker {
                             Type::Int
                         }
                         "llm" => {
+<<<<<<< HEAD
                             self.record_effect(Effect::IO);
                             for arg in args {
                                 self.infer_expr(arg);
@@ -280,6 +281,24 @@ impl Checker {
                             self.record_effect(Effect::IO);
                             for arg in args {
                                 self.infer_expr(arg);
+=======
+                            self.record_effect(Effect::LLM);
+                            if let Some(arg) = args.first() {
+                                let arg_ty = self.infer_expr(arg);
+                                if arg_ty != Type::String && arg_ty != Type::Var(0) {
+                                    self.errors.push(format!("type error: llm expects String, got {}", arg_ty));
+                                }
+                            }
+                            Type::String
+                        }
+                        "llm_structured" => {
+                            self.record_effect(Effect::LLM);
+                            for arg in args {
+                                let arg_ty = self.infer_expr(arg);
+                                if arg_ty != Type::String && arg_ty != Type::Var(0) {
+                                    self.errors.push(format!("type error: llm_structured expects String args, got {}", arg_ty));
+                                }
+>>>>>>> worktree-agent-a1b9242d
                             }
                             Type::String
                         }

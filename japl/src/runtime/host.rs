@@ -288,6 +288,72 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         (result_ptr as i32, response_bytes.len() as i32)
     })?;
 
+    // japl.llm_str(str_ptr) -> str_ptr
+    // Takes a JAPL string pointer [len:i32][data:bytes], calls LLM, returns JAPL string pointer
+    linker.func_wrap("japl", "llm_str", |mut caller: Caller<'_, ProcessState>, str_ptr: i32| -> i32 {
+        let prompt = read_japl_string(&mut caller, str_ptr);
+        let response = call_llm_api(&prompt);
+        write_japl_string(&mut caller, &response)
+    })?;
+
+    // japl.llm_structured_str(prompt_ptr, type_ptr) -> str_ptr
+    // Takes two JAPL string pointers, calls LLM with JSON schema instruction, returns JAPL string pointer
+    linker.func_wrap("japl", "llm_structured_str", |mut caller: Caller<'_, ProcessState>, prompt_ptr: i32, type_ptr: i32| -> i32 {
+        let prompt = read_japl_string(&mut caller, prompt_ptr);
+        let type_tag = read_japl_string(&mut caller, type_ptr);
+        let full_prompt = format!("{}\nRespond as JSON matching this schema: {}", prompt, type_tag);
+        let response = call_llm_api(&full_prompt);
+        write_japl_string(&mut caller, &response)
+    })?;
+
+    // japl.llm_structured(prompt_ptr, prompt_len, type_ptr, type_len) -> (result_ptr, result_len)
+    // Like llm but appends a JSON schema instruction based on the type tag
+    linker.func_wrap("japl", "llm_structured", |mut caller: Caller<'_, ProcessState>, prompt_ptr: i32, prompt_len: i32, type_ptr: i32, type_len: i32| -> (i32, i32) {
+        // Read prompt string from WASM memory
+        let (prompt, type_tag) = {
+            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = mem.data(&caller);
+            let p_start = prompt_ptr as usize;
+            let p_end = p_start + prompt_len as usize;
+            let prompt = if p_end <= data.len() {
+                std::str::from_utf8(&data[p_start..p_end]).unwrap_or("").to_string()
+            } else {
+                String::new()
+            };
+            let t_start = type_ptr as usize;
+            let t_end = t_start + type_len as usize;
+            let type_tag = if t_end <= data.len() {
+                std::str::from_utf8(&data[t_start..t_end]).unwrap_or("").to_string()
+            } else {
+                String::new()
+            };
+            (prompt, type_tag)
+        };
+
+        // Append JSON schema instruction to the prompt
+        let full_prompt = format!("{}\nRespond as JSON matching this schema: {}", prompt, type_tag);
+        let response = call_llm_api(&full_prompt);
+
+        // Write response into WASM memory via heap_ptr
+        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let heap_ptr_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+        let heap_ptr = heap_ptr_global.get(&mut caller).i32().unwrap_or(0) as usize;
+
+        let response_bytes = response.as_bytes();
+        let result_ptr = heap_ptr;
+
+        let data = mem.data_mut(&mut caller);
+        if result_ptr + response_bytes.len() <= data.len() {
+            data[result_ptr..result_ptr + response_bytes.len()].copy_from_slice(response_bytes);
+        }
+
+        // Advance heap_ptr (aligned)
+        let new_heap = ((result_ptr + response_bytes.len() + 7) & !7) as i32;
+        let _ = heap_ptr_global.set(&mut caller, Val::I32(new_heap));
+
+        (result_ptr as i32, response_bytes.len() as i32)
+    })?;
+
     // japl.println(ptr, len) — read a UTF-8 string from WASM memory and print it
     linker.func_wrap("japl", "println", |mut caller: Caller<'_, ProcessState>, ptr: i32, len: i32| {
         let mem = caller.get_export("memory")
@@ -817,6 +883,48 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
 
 /// Call an LLM API. Checks for ANTHROPIC_API_KEY or OPENAI_API_KEY in environment.
 /// Falls back to a mock response if no key is set.
+/// Read a JAPL string from WASM memory. JAPL strings are stored as [len:i32][data:bytes].
+fn read_japl_string(caller: &mut Caller<'_, ProcessState>, str_ptr: i32) -> String {
+    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+    let data = mem.data(&caller);
+    let ptr = str_ptr as usize;
+    if ptr + 4 > data.len() {
+        return String::new();
+    }
+    let len = u32::from_le_bytes([data[ptr], data[ptr+1], data[ptr+2], data[ptr+3]]) as usize;
+    let start = ptr + 4;
+    let end = start + len;
+    if end > data.len() {
+        return String::new();
+    }
+    std::str::from_utf8(&data[start..end]).unwrap_or("").to_string()
+}
+
+/// Write a string into WASM memory in JAPL string format [len:i32][data:bytes].
+/// Returns the pointer to the JAPL string.
+fn write_japl_string(caller: &mut Caller<'_, ProcessState>, s: &str) -> i32 {
+    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+    let heap_ptr_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+    let heap_ptr = heap_ptr_global.get(&mut *caller).i32().unwrap_or(0) as usize;
+
+    let bytes = s.as_bytes();
+    let result_ptr = heap_ptr;
+
+    let data = mem.data_mut(&mut *caller);
+    // Write length as i32
+    let len_bytes = (bytes.len() as u32).to_le_bytes();
+    if result_ptr + 4 + bytes.len() <= data.len() {
+        data[result_ptr..result_ptr+4].copy_from_slice(&len_bytes);
+        data[result_ptr+4..result_ptr+4+bytes.len()].copy_from_slice(bytes);
+    }
+
+    // Advance heap_ptr (aligned to 8)
+    let new_heap = ((result_ptr + 4 + bytes.len() + 7) & !7) as i32;
+    let _ = heap_ptr_global.set(&mut *caller, Val::I32(new_heap));
+
+    result_ptr as i32
+}
+
 fn call_llm_api(prompt: &str) -> String {
     // Try Anthropic Claude API first
     if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {

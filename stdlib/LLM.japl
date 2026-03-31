@@ -1,0 +1,28 @@
+type LlmResult = | LlmOk(String) | LlmErr(String)
+
+pub fn ask(prompt: String) -> String {
+  let result = llm(prompt)
+  result
+}
+
+pub fn ask_with_context(context: String, prompt: String) -> String {
+  let full = context <> "\n" <> prompt
+  let result = llm(full)
+  result
+}
+
+pub fn classify(prompt: String, labels: String) -> String {
+  let full = "Classify the following into one of these labels: " <> labels <> "\nText: " <> prompt <> "\nRespond with only the label."
+  let result = llm(full)
+  result
+}
+
+pub fn summarize(text: String) -> String {
+  let full = "Summarize the following text concisely:\n" <> text
+  let result = llm(full)
+  result
+}
+
+fn main() {
+  println("LLM module loaded")
+}

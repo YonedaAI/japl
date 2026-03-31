@@ -16,6 +16,9 @@ fn runtime_signature(module: &str, name: &str) -> Option<(Vec<WasmType>, Vec<Was
         "self_pid"       => Some((vec![], vec![I64])),
         "println"        => Some((vec![I32, I32], vec![])),
         "llm"            => Some((vec![I32, I32], vec![I32, I32])),
+        "llm_structured" => Some((vec![I32, I32, I32, I32], vec![I32, I32])),
+        "llm_str"        => Some((vec![I32], vec![I32])),
+        "llm_structured_str" => Some((vec![I32, I32], vec![I32])),
         "time_now"       => Some((vec![], vec![I64])),
         "time_sleep"     => Some((vec![I64], vec![])),
         "tcp_listen"     => Some((vec![I32], vec![I64])),
@@ -88,6 +91,8 @@ pub struct Lowerer {
     bool_vars: HashSet<String>,
     // Whether the program uses process operations
     uses_processes: bool,
+    // Whether the program uses LLM operations
+    uses_llm: bool,
     // Constants
     constants: HashMap<String, i64>,
 }
@@ -112,6 +117,7 @@ impl Lowerer {
             known_foreign_fns: HashSet::new(),
             bool_vars: HashSet::new(),
             uses_processes: false,
+            uses_llm: false,
             constants: HashMap::new(),
         }
     }
@@ -228,6 +234,26 @@ impl Lowerer {
             }
         }
 
+        // If LLM builtins are used, add LLM-related imports
+        if self.uses_llm {
+            let llm_fns = [
+                ("llm_str",            vec![WasmType::I32], vec![WasmType::I32]),
+                ("llm_structured_str", vec![WasmType::I32, WasmType::I32], vec![WasmType::I32]),
+            ];
+            for (name, ptypes, rtypes) in &llm_fns {
+                if !self.known_foreign_fns.contains(*name) {
+                    self.foreign_imports.push(IrForeignImport {
+                        module: "japl".to_string(),
+                        name: name.to_string(),
+                        param_count: ptypes.len(),
+                        has_return: !rtypes.is_empty(),
+                        param_types: ptypes.clone(),
+                        return_types: rtypes.clone(),
+                    });
+                }
+            }
+        }
+
         let mut all_functions = std::mem::take(&mut self.functions);
         all_functions.append(&mut self.closure_funcs);
 
@@ -249,6 +275,7 @@ impl Lowerer {
             string_data: std::mem::take(&mut self.string_data),
             heap_start,
             uses_processes: self.uses_processes,
+            uses_llm: self.uses_llm,
             constants: const_list,
         }
     }
@@ -762,6 +789,17 @@ impl Lowerer {
                     self.uses_processes = true;
                     return IrExpr::SelfPid;
                 }
+                "llm" => {
+                    self.uses_llm = true;
+                    let arg = self.lower_expr(&args[0], false);
+                    return IrExpr::Call("$llm".to_string(), vec![arg]);
+                }
+                "llm_structured" => {
+                    self.uses_llm = true;
+                    let prompt = self.lower_expr(&args[0], false);
+                    let type_tag = self.lower_expr(&args[1], false);
+                    return IrExpr::Call("$llm_structured".to_string(), vec![prompt, type_tag]);
+                }
                 _ => {}
             }
             // Check if it's a variant constructor with fields
@@ -944,7 +982,7 @@ impl Lowerer {
         &self, expr: &ast::Expr, bound: &HashSet<String>,
         seen: &mut HashSet<String>, result: &mut Vec<String>,
     ) {
-        let builtins: HashSet<&str> = ["println", "show", "spawn", "send", "self_pid", "self"].iter().copied().collect();
+        let builtins: HashSet<&str> = ["println", "show", "spawn", "send", "self_pid", "self", "llm", "llm_structured"].iter().copied().collect();
         match expr {
             ast::Expr::Ident(name) => {
                 if !bound.contains(name) && !seen.contains(name) {
