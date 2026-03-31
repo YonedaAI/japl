@@ -46,6 +46,7 @@ fn ast_type_to_type_with_params(t: &ast::Type, type_params: &[String]) -> Type {
                 "Bool" => Type::Bool,
                 "Byte" => Type::Byte,
                 "Unit" => Type::Unit,
+                "Pid" => Type::Int, // Pid is an alias for Int (process IDs are integers at runtime)
                 _ => Type::Named(name.clone(), vec![]),
             }
         }
@@ -763,21 +764,23 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
                     let has_declared = declared_effect.is_some();
 
                     if has_any_effect && !has_declared {
+                        // Effect mismatches are warnings, not errors, until
+                        // proper effect annotation syntax is in the main compile path
                         if has_io && has_process {
-                            checker.errors.push(format!(
-                                "effect error in fn {}: performs IO and uses processes but not declared with effect annotation",
+                            eprintln!(
+                                "warning: effect: fn {} performs IO and uses processes but not declared with effect annotation",
                                 fd.name
-                            ));
+                            );
                         } else if has_io {
-                            checker.errors.push(format!(
-                                "effect error in fn {}: performs IO but not declared with IO effect",
+                            eprintln!(
+                                "warning: effect: fn {} performs IO but not declared with IO effect",
                                 fd.name
-                            ));
+                            );
                         } else {
-                            checker.errors.push(format!(
-                                "effect error in fn {}: uses processes but not declared with Process effect",
+                            eprintln!(
+                                "warning: effect: fn {} uses processes but not declared with Process effect",
                                 fd.name
-                            ));
+                            );
                         }
                     }
                 }
