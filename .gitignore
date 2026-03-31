@@ -26,3 +26,4 @@ bin/japl-compiler
 japl-compiler/target/
 japl-http-adapter/target/
 japl-serve/target/
+japl/target/

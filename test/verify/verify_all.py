@@ -1,8 +1,11 @@
 import subprocess, os, sys, time
 
 JAPL_HOME = os.path.join(os.path.dirname(__file__), "..", "..")
-COMPILER = os.path.join(JAPL_HOME, "japl-compiler/target/release/japl-compiler")
+JAPL_BIN = os.path.join(JAPL_HOME, "japl/target/release/japl")
+# Fallback to old binaries if unified not built
+COMPILER = JAPL_BIN if os.path.exists(JAPL_BIN) else os.path.join(JAPL_HOME, "japl-compiler/target/release/japl-compiler")
 RUNTIME = os.path.join(JAPL_HOME, "japl-runtime/target/release/japl-runtime")
+JAPL_SERVE_BIN = os.path.join(JAPL_HOME, "japl/target/release/japl")
 PASS = 0
 FAIL = 0
 
