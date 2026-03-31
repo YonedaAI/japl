@@ -5,6 +5,30 @@ use std::sync::mpsc;
 
 pub type ProcessId = u64;
 
+// ---------------------------------------------------------------------------
+// Location-transparent PID helpers
+// ---------------------------------------------------------------------------
+
+/// A local PID has node_id == 0 in the high 32 bits.
+pub fn is_local_pid(pid: u64) -> bool {
+    pid >> 32 == 0
+}
+
+/// Extract the node ID from a PID (high 32 bits). 0 means local.
+pub fn node_id_from_pid(pid: u64) -> u32 {
+    (pid >> 32) as u32
+}
+
+/// Extract the local process ID from a PID (low 32 bits).
+pub fn local_id_from_pid(pid: u64) -> u32 {
+    (pid & 0xFFFFFFFF) as u32
+}
+
+/// Build a remote PID from a node_id and local process id.
+pub fn make_remote_pid(node_id: u32, local_id: u32) -> u64 {
+    ((node_id as u64) << 32) | (local_id as u64)
+}
+
 pub enum Resource {
     TcpListener(TcpListener),
     TcpStream(TcpStream),
@@ -46,6 +70,20 @@ pub enum SchedulerCommand {
     Send {
         target_pid: ProcessId,
         message_bytes: Vec<u8>,
+    },
+    /// Send a message to a remote process (routed via distribution layer)
+    RemoteSend {
+        node_id: u32,
+        target_pid: ProcessId,
+        from_pid: ProcessId,
+        message_bytes: Vec<u8>,
+    },
+    /// Spawn a process on a remote node
+    RemoteSpawn {
+        node_id: u32,
+        closure_ptr: i64,
+        closure_bytes: Vec<u8>,
+        reply: mpsc::Sender<ProcessId>,
     },
     /// Notify the scheduler that a process has exited
     Exited {

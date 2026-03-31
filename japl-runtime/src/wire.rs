@@ -18,8 +18,8 @@ use std::net::TcpStream;
 pub enum WireMessage {
     Handshake { node_name: String, cookie: String },
     HandshakeOk { node_name: String },
-    Send { to_pid: u64, from_pid: u64, msg: i64 },
-    SpawnRequest { request_id: u64 },
+    Send { to_pid: u64, from_pid: u64, msg_bytes: Vec<u8> },
+    SpawnRequest { request_id: u64, closure_ptr: i64, closure_bytes: Vec<u8> },
     SpawnResponse { request_id: u64, pid: u64 },
     Ping,
     Pong,
@@ -52,14 +52,18 @@ pub fn encode(msg: &WireMessage) -> Vec<u8> {
             payload.extend_from_slice(name_bytes);
             MSG_HANDSHAKE_OK
         }
-        WireMessage::Send { to_pid, from_pid, msg } => {
+        WireMessage::Send { to_pid, from_pid, msg_bytes } => {
             payload.extend_from_slice(&to_pid.to_be_bytes());
             payload.extend_from_slice(&from_pid.to_be_bytes());
-            payload.extend_from_slice(&msg.to_be_bytes());
+            payload.extend_from_slice(&(msg_bytes.len() as u32).to_be_bytes());
+            payload.extend_from_slice(msg_bytes);
             MSG_SEND
         }
-        WireMessage::SpawnRequest { request_id } => {
+        WireMessage::SpawnRequest { request_id, closure_ptr, closure_bytes } => {
             payload.extend_from_slice(&request_id.to_be_bytes());
+            payload.extend_from_slice(&closure_ptr.to_be_bytes());
+            payload.extend_from_slice(&(closure_bytes.len() as u32).to_be_bytes());
+            payload.extend_from_slice(closure_bytes);
             MSG_SPAWN_REQUEST
         }
         WireMessage::SpawnResponse { request_id, pid } => {
@@ -121,24 +125,34 @@ pub fn decode(bytes: &[u8]) -> anyhow::Result<WireMessage> {
             Ok(WireMessage::HandshakeOk { node_name })
         }
         MSG_SEND => {
-            if payload.len() < 24 {
+            if payload.len() < 20 {
                 anyhow::bail!("send too short");
             }
             let to_pid = u64::from_be_bytes(payload[0..8].try_into()?);
             let from_pid = u64::from_be_bytes(payload[8..16].try_into()?);
-            let msg = i64::from_be_bytes(payload[16..24].try_into()?);
+            let msg_len = u32::from_be_bytes(payload[16..20].try_into()?) as usize;
+            if payload.len() < 20 + msg_len {
+                anyhow::bail!("send msg_bytes truncated");
+            }
+            let msg_bytes = payload[20..20 + msg_len].to_vec();
             Ok(WireMessage::Send {
                 to_pid,
                 from_pid,
-                msg,
+                msg_bytes,
             })
         }
         MSG_SPAWN_REQUEST => {
-            if payload.len() < 8 {
+            if payload.len() < 20 {
                 anyhow::bail!("spawn_request too short");
             }
             let request_id = u64::from_be_bytes(payload[0..8].try_into()?);
-            Ok(WireMessage::SpawnRequest { request_id })
+            let closure_ptr = i64::from_be_bytes(payload[8..16].try_into()?);
+            let closure_len = u32::from_be_bytes(payload[16..20].try_into()?) as usize;
+            if payload.len() < 20 + closure_len {
+                anyhow::bail!("spawn_request closure truncated");
+            }
+            let closure_bytes = payload[20..20 + closure_len].to_vec();
+            Ok(WireMessage::SpawnRequest { request_id, closure_ptr, closure_bytes })
         }
         MSG_SPAWN_RESPONSE => {
             if payload.len() < 16 {

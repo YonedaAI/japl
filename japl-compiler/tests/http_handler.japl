@@ -1,0 +1,7 @@
+fn handle_request(method: String, path: String, body: String) -> String {
+  "HTTP 200 OK: " <> method <> " " <> path
+}
+
+fn main() {
+  println(handle_request("GET", "/hello", ""))
+}

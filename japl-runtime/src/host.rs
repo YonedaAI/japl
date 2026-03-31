@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 use std::sync::mpsc;
 use wasmtime::*;
 
-use crate::process::{ProcessMessage, ProcessState, Resource, SchedulerCommand};
+use crate::process::{self, ProcessMessage, ProcessState, Resource, SchedulerCommand};
 
 /// Register JAPL host functions on the linker.
 pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Result<()> {
@@ -38,6 +38,39 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         }
     })?;
 
+    // japl.spawn_remote(node_id, closure_ptr) -> pid
+    // Like spawn, but the process is created on a remote node identified by node_id.
+    // Returns a remote PID (high 32 bits = node_id, low 32 bits = remote local pid).
+    linker.func_wrap("japl", "spawn_remote", |mut caller: Caller<'_, ProcessState>, node_id: i32, closure_ptr: i64| -> i64 {
+        let mem = caller.get_export("memory").and_then(|e| e.into_memory());
+        let closure_bytes = if let Some(mem) = mem {
+            let data = mem.data(&caller);
+            let ptr = closure_ptr as usize;
+            let end = (ptr + 256).min(data.len());
+            data[ptr..end].to_vec()
+        } else {
+            vec![]
+        };
+
+        let state = caller.data();
+        let (reply_tx, reply_rx) = mpsc::channel();
+        let _ = state.scheduler_tx.send(SchedulerCommand::RemoteSpawn {
+            node_id: node_id as u32,
+            closure_ptr,
+            closure_bytes,
+            reply: reply_tx,
+        });
+
+        // Block until the remote node replies with the new PID
+        match reply_rx.recv() {
+            Ok(remote_local_pid) => {
+                // Encode the remote PID with the node_id in the high bits
+                process::make_remote_pid(node_id as u32, remote_local_pid as u32) as i64
+            }
+            Err(_) => -1,
+        }
+    })?;
+
     // japl.send(pid, msg_ptr)
     // msg_ptr is an i64 pointer to a variant struct in linear memory.
     // Read the variant struct (tag + field_count + fields) and send as bytes.
@@ -62,10 +95,24 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
                 msg_ptr.to_le_bytes().to_vec()
             }
         };
-        let _ = caller.data().scheduler_tx.send(SchedulerCommand::Send {
-            target_pid: pid as u64,
-            message_bytes: msg_bytes,
-        });
+        let target_pid = pid as u64;
+        let from_pid = caller.data().pid;
+        if process::is_local_pid(target_pid) {
+            // Local send -- goes through scheduler's local mailbox delivery
+            let _ = caller.data().scheduler_tx.send(SchedulerCommand::Send {
+                target_pid,
+                message_bytes: msg_bytes,
+            });
+        } else {
+            // Remote send -- route through distribution layer via scheduler
+            let node_id = process::node_id_from_pid(target_pid);
+            let _ = caller.data().scheduler_tx.send(SchedulerCommand::RemoteSend {
+                node_id,
+                target_pid,
+                from_pid,
+                message_bytes: msg_bytes,
+            });
+        }
     })?;
 
     // japl.receive() -> msg_ptr

@@ -1,0 +1,13 @@
+type Msg = | Ping(Int)
+
+fn worker() {
+  receive {
+    Ping(n) => println("remote got: " <> show(n))
+  }
+}
+
+fn main() {
+  let pid = spawn(fn() { worker() })
+  send(pid, Ping(42))
+  println("sent to worker")
+}

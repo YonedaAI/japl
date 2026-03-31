@@ -71,6 +71,8 @@ run_test("constants", "japl-compiler/tests/constants.japl", ["100"])
 run_test("guards", "japl-compiler/tests/guards.japl", [])
 run_test("generics", "japl-compiler/tests/generics_fn.japl", ["42", "hello"])
 run_test("exhaustive_match", "japl-compiler/tests/exhaustive.japl", ["red", "blue"])
+run_test("http_handler", "japl-compiler/tests/http_handler.japl", ["HTTP 200 OK: GET /hello"])
+run_test("dist_test", "japl-compiler/tests/dist_test.japl", ["remote got: 42"], use_runtime=True, retries=3)
 
 print("\n--- Processes ---")
 run_test("processes", "japl-compiler/tests/process.japl", ["got"], use_runtime=True, retries=3)

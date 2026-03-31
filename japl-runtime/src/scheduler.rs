@@ -5,7 +5,7 @@ use wasmtime::*;
 
 use crate::distribution::DistributionLayer;
 use crate::engine::JaplEngine;
-use crate::process::{ProcessId, ProcessMessage, ProcessState, SchedulerCommand};
+use crate::process::{self, ProcessId, ProcessMessage, ProcessState, SchedulerCommand};
 
 pub struct Scheduler {
     engine: Option<Arc<JaplEngine>>,
@@ -182,6 +182,84 @@ impl Scheduler {
         Ok(pid)
     }
 
+    /// Route a send to local mailbox or remote node based on PID.
+    fn route_send(&self, target_pid: ProcessId, from_pid: ProcessId, message_bytes: Vec<u8>) {
+        if process::is_local_pid(target_pid) {
+            // Local delivery
+            let procs = self.processes.lock().unwrap();
+            if let Some(tx) = procs.get(&target_pid) {
+                let _ = tx.send(ProcessMessage::Deliver(message_bytes));
+            } else {
+                eprintln!("send to unknown local pid {}", target_pid);
+            }
+        } else {
+            // Remote delivery
+            let node_id = process::node_id_from_pid(target_pid);
+            if let Some(dist) = &self.distribution {
+                if let Err(e) = dist.remote_send_by_id(node_id, target_pid, from_pid, message_bytes) {
+                    eprintln!("remote send to node_id {} failed: {}", node_id, e);
+                }
+            } else {
+                eprintln!("send to remote pid {} but no distribution layer", target_pid);
+            }
+        }
+    }
+
+    /// Handle a single scheduler command. Returns true if a process exited.
+    fn handle_command(&mut self, cmd: SchedulerCommand, alive_count: &mut usize) -> Option<ProcessId> {
+        match cmd {
+            SchedulerCommand::Spawn { func_name, reply } => {
+                match self.spawn_process(&func_name) {
+                    Ok(new_pid) => {
+                        *alive_count += 1;
+                        let _ = reply.send(new_pid);
+                    }
+                    Err(e) => eprintln!("spawn error: {}", e),
+                }
+                None
+            }
+            SchedulerCommand::SpawnClosure { closure_ptr, closure_bytes, reply } => {
+                match self.spawn_closure_process(closure_ptr, closure_bytes) {
+                    Ok(new_pid) => {
+                        *alive_count += 1;
+                        let _ = reply.send(new_pid);
+                    }
+                    Err(e) => eprintln!("spawn closure error: {}", e),
+                }
+                None
+            }
+            SchedulerCommand::Send { target_pid, message_bytes } => {
+                self.route_send(target_pid, 0, message_bytes);
+                None
+            }
+            SchedulerCommand::RemoteSend { node_id, target_pid, from_pid, message_bytes } => {
+                if let Some(dist) = &self.distribution {
+                    if let Err(e) = dist.remote_send_by_id(node_id, target_pid, from_pid, message_bytes) {
+                        eprintln!("remote send failed: {}", e);
+                    }
+                } else {
+                    eprintln!("RemoteSend but no distribution layer");
+                }
+                None
+            }
+            SchedulerCommand::RemoteSpawn { node_id, closure_ptr, closure_bytes, reply } => {
+                if let Some(dist) = &self.distribution {
+                    if let Err(e) = dist.remote_spawn(node_id, closure_ptr, closure_bytes, reply) {
+                        eprintln!("remote spawn failed: {}", e);
+                    }
+                } else {
+                    eprintln!("RemoteSpawn but no distribution layer");
+                }
+                None
+            }
+            SchedulerCommand::Exited { pid } => {
+                self.processes.lock().unwrap().remove(&pid);
+                *alive_count = alive_count.saturating_sub(1);
+                Some(pid)
+            }
+        }
+    }
+
     pub fn run(&mut self) -> anyhow::Result<()> {
         // Spawn main process (PID 0)
         let main_pid = self.spawn_process("_start")?;
@@ -198,36 +276,9 @@ impl Scheduler {
                     // processes have exited (the node is acting as a service).
                     loop {
                         match cmd_rx.recv() {
-                            Ok(cmd) => match cmd {
-                                SchedulerCommand::Spawn { func_name, reply } => {
-                                    match self.spawn_process(&func_name) {
-                                        Ok(new_pid) => {
-                                            alive_count += 1;
-                                            let _ = reply.send(new_pid);
-                                        }
-                                        Err(e) => eprintln!("spawn error: {}", e),
-                                    }
-                                }
-                                SchedulerCommand::SpawnClosure { closure_ptr, closure_bytes, reply } => {
-                                    match self.spawn_closure_process(closure_ptr, closure_bytes) {
-                                        Ok(new_pid) => {
-                                            alive_count += 1;
-                                            let _ = reply.send(new_pid);
-                                        }
-                                        Err(e) => eprintln!("spawn closure error: {}", e),
-                                    }
-                                }
-                                SchedulerCommand::Send { target_pid, message_bytes } => {
-                                    let procs = self.processes.lock().unwrap();
-                                    if let Some(tx) = procs.get(&target_pid) {
-                                        let _ = tx.send(ProcessMessage::Deliver(message_bytes));
-                                    }
-                                }
-                                SchedulerCommand::Exited { pid } => {
-                                    self.processes.lock().unwrap().remove(&pid);
-                                    alive_count = alive_count.saturating_sub(1);
-                                }
-                            },
+                            Ok(cmd) => {
+                                self.handle_command(cmd, &mut alive_count);
+                            }
                             Err(_) => break, // channel closed
                         }
                     }
@@ -240,44 +291,11 @@ impl Scheduler {
             }
 
             match cmd_rx.recv() {
-                Ok(SchedulerCommand::Spawn { func_name, reply }) => {
-                    match self.spawn_process(&func_name) {
-                        Ok(new_pid) => {
-                            alive_count += 1;
-                            let _ = reply.send(new_pid);
+                Ok(cmd) => {
+                    if let Some(exited_pid) = self.handle_command(cmd, &mut alive_count) {
+                        if exited_pid == main_pid {
+                            main_exited = true;
                         }
-                        Err(e) => {
-                            eprintln!("spawn error: {}", e);
-                        }
-                    }
-                }
-                Ok(SchedulerCommand::SpawnClosure { closure_ptr, closure_bytes, reply }) => {
-                    match self.spawn_closure_process(closure_ptr, closure_bytes) {
-                        Ok(new_pid) => {
-                            alive_count += 1;
-                            let _ = reply.send(new_pid);
-                        }
-                        Err(e) => {
-                            eprintln!("spawn closure error: {}", e);
-                        }
-                    }
-                }
-                Ok(SchedulerCommand::Send {
-                    target_pid,
-                    message_bytes,
-                }) => {
-                    let procs = self.processes.lock().unwrap();
-                    if let Some(tx) = procs.get(&target_pid) {
-                        let _ = tx.send(ProcessMessage::Deliver(message_bytes));
-                    } else {
-                        eprintln!("send to unknown pid {}", target_pid);
-                    }
-                }
-                Ok(SchedulerCommand::Exited { pid }) => {
-                    self.processes.lock().unwrap().remove(&pid);
-                    alive_count = alive_count.saturating_sub(1);
-                    if pid == main_pid {
-                        main_exited = true;
                     }
                 }
                 Err(_) => {

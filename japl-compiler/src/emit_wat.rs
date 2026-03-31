@@ -198,6 +198,15 @@ impl WatEmitter {
             self.pop(")");
         }
 
+        // __handle_http export for wasmCloud HTTP handler
+        // Emitted when the user defines: fn handle_request(method, path, body) -> String
+        let has_http_handler = functions.iter().any(|f| {
+            f.name == "handle_request" && f.params.len() == 3 && f.has_return
+        });
+        if has_http_handler {
+            self.emit_http_handler();
+        }
+
         // Constants as globals
         let constants = self.module.constants.clone();
         for (name, val) in &constants {
@@ -588,6 +597,98 @@ impl WatEmitter {
         self.line("local.get $ptr");
         self.line("i64.extend_i32_u");
         self.pop(")");
+    }
+
+    fn emit_http_handler(&mut self) {
+        // __handle_http: bridge from raw ptr/len pairs to JAPL's string-as-i64 calling convention
+        // Signature: (method_ptr, method_len, path_ptr, path_len, body_ptr, body_len) -> (resp_ptr, resp_len)
+        self.push("(func $__handle_http (export \"__handle_http\") (param $method_ptr i32) (param $method_len i32) (param $path_ptr i32) (param $path_len i32) (param $body_ptr i32) (param $body_len i32) (result i32 i32)");
+        self.line("(local $m i64)");
+        self.line("(local $p i64)");
+        self.line("(local $b i64)");
+        self.line("(local $result i64)");
+        self.line("(local $str_ptr i32)");
+        self.line("(local $r_ptr i32)");
+        self.line("(local $r_len i32)");
+        self.line("(local $i i32)");
+
+        // Build JAPL string for method: allocate [len][bytes], copy data
+        self.emit_http_pack_string("$method_ptr", "$method_len", "$m");
+        // Build JAPL string for path
+        self.emit_http_pack_string("$path_ptr", "$path_len", "$p");
+        // Build JAPL string for body
+        self.emit_http_pack_string("$body_ptr", "$body_len", "$b");
+
+        // Call handle_request(method, path, body)
+        self.line("local.get $m");
+        self.line("local.get $p");
+        self.line("local.get $b");
+        self.line("call $handle_request");
+        self.line("local.set $result");
+
+        // Unpack result: i64 -> ptr (low 32 bits), string is [i32 len][bytes] at ptr
+        self.line("local.get $result");
+        self.line("i32.wrap_i64");
+        self.line("local.set $r_ptr");
+        // Read length from [r_ptr]
+        self.line("local.get $r_ptr");
+        self.line("i32.load");
+        self.line("local.set $r_len");
+        // Return (data_ptr = r_ptr + 4, length = r_len)
+        self.line("local.get $r_ptr");
+        self.line("i32.const 4");
+        self.line("i32.add");
+        self.line("local.get $r_len");
+        self.pop(")");
+    }
+
+    fn emit_http_pack_string(&mut self, ptr_local: &str, len_local: &str, dest_local: &str) {
+        // Allocate 4 + len bytes, store len at offset 0, copy bytes at offset 4
+        self.line(&format!("i32.const 4"));
+        self.line(&format!("local.get {}", len_local));
+        self.line("i32.add");
+        self.line("call $alloc");
+        self.line("local.set $str_ptr");
+
+        // Store length
+        self.line("local.get $str_ptr");
+        self.line(&format!("local.get {}", len_local));
+        self.line("i32.store");
+
+        // Copy bytes: loop from 0 to len
+        self.line("i32.const 0");
+        self.line("local.set $i");
+        self.push(&format!("block $pack_done_{}", dest_local.trim_start_matches('$')));
+        self.push(&format!("loop $pack_loop_{}", dest_local.trim_start_matches('$')));
+        self.line("local.get $i");
+        self.line(&format!("local.get {}", len_local));
+        self.line("i32.ge_u");
+        self.line(&format!("br_if $pack_done_{}", dest_local.trim_start_matches('$')));
+
+        // dest[4+i] = src[ptr+i]
+        self.line("local.get $str_ptr");
+        self.line("i32.const 4");
+        self.line("i32.add");
+        self.line("local.get $i");
+        self.line("i32.add");
+        self.line(&format!("local.get {}", ptr_local));
+        self.line("local.get $i");
+        self.line("i32.add");
+        self.line("i32.load8_u");
+        self.line("i32.store8");
+
+        self.line("local.get $i");
+        self.line("i32.const 1");
+        self.line("i32.add");
+        self.line("local.set $i");
+        self.line(&format!("br $pack_loop_{}", dest_local.trim_start_matches('$')));
+        self.pop("end");
+        self.pop("end");
+
+        // Set dest = str_ptr as i64
+        self.line("local.get $str_ptr");
+        self.line("i64.extend_i32_u");
+        self.line(&format!("local.set {}", dest_local));
     }
 
     fn emit_function(&mut self, func: &IrFunction) {
