@@ -71,6 +71,10 @@ pub enum SchedulerCommand {
         target_pid: ProcessId,
         reply: mpsc::Sender<usize>,
     },
+    IsAlive {
+        target_pid: ProcessId,
+        reply: mpsc::Sender<bool>,
+    },
     Exited {
         pid: ProcessId,
     },

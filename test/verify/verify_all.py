@@ -95,7 +95,7 @@ run_test("stdlib/IO", "stdlib/IO.japl", ["IO module loaded", "42", "[debug] test
 run_test("stdlib/List", "stdlib/List.japl", ["length: 3", "sum: 6", "Contains 2: 1", "Contains 5: 0", "map(*2) head: 2", "filter(==2) len: 1", "fold(*) product: 6", "head: 1", "tail head: 2"])
 run_test("stdlib/Json", "stdlib/Json.japl", ["Int:  42", "Bool: true", "Null: null"])
 run_test("stdlib/Http", "stdlib/Http.japl", ["Method: GET", "Method: POST", "Status: 200 OK", "Status: 404 Not Found", "request=GET /api/users HTTP/1.1", "content_type=Content-Type: text/html", "header=X-Custom: value"])
-run_test("stdlib/Process", "stdlib/Process.japl", ["Process module loaded", "own mailbox: 0", "done"], use_runtime=True, retries=3)
+run_test("stdlib/Process", "stdlib/Process.japl", ["Process module loaded", "own mailbox: 0", "alive: ", "worker alive: ", "done"], use_runtime=True, retries=3)
 run_test("stdlib/Supervisor", "stdlib/Supervisor.japl", ["Supervisor module loaded", "child_spec ok", "restart_count: 0", "after inc_restart: 1", "done"], use_runtime=True, retries=3)
 run_test("stdlib/Registry", "stdlib/Registry.japl", ["Registry module loaded", "Registry size: 3", "Lookup 1: 100", "After overwrite, Lookup 2: 999", "After overwrite, size: 3", "reg_count: 3", "After update 1: 150", "done"])
 compile_only_test("stdlib/Net", "stdlib/Net.japl")

@@ -293,9 +293,16 @@ impl Scheduler {
     /// Handle a scheduler command during graceful shutdown.
     /// Only processes Exited commands; other commands are dropped.
     fn handle_cmd_during_shutdown(&self, cmd: SchedulerCommand) {
-        if let SchedulerCommand::Exited { pid } = cmd {
-            self.processes.lock().unwrap().remove(&pid);
-            self.mailbox_sizes.lock().unwrap().remove(&pid);
+        match cmd {
+            SchedulerCommand::Exited { pid } => {
+                self.processes.lock().unwrap().remove(&pid);
+                self.mailbox_sizes.lock().unwrap().remove(&pid);
+            }
+            SchedulerCommand::IsAlive { target_pid, reply } => {
+                let procs = self.processes.lock().unwrap();
+                let _ = reply.send(procs.contains_key(&target_pid));
+            }
+            _ => {}
         }
     }
 
@@ -347,6 +354,11 @@ impl Scheduler {
                     SchedulerCommand::MailboxSize { target_pid, reply } => {
                         let size = self.get_mailbox_size(target_pid);
                         let _ = reply.send(size);
+                    }
+                    SchedulerCommand::IsAlive { target_pid, reply } => {
+                        let procs = self.processes.lock().unwrap();
+                        let alive = procs.contains_key(&target_pid);
+                        let _ = reply.send(alive);
                     }
                     SchedulerCommand::Exited { pid } => {
                         self.processes.lock().unwrap().remove(&pid);
