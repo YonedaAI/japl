@@ -46,7 +46,7 @@ fn ast_type_to_type_with_params(t: &ast::Type, type_params: &[String]) -> Type {
                 "Bool" => Type::Bool,
                 "Byte" => Type::Byte,
                 "Unit" => Type::Unit,
-                "Pid" => Type::Int, // Pid is an alias for Int (process IDs are integers at runtime)
+                "Pid" => Type::Pid,
                 _ => Type::Named(name.clone(), vec![]),
             }
         }
@@ -84,16 +84,28 @@ fn substitute_type_params(ty: &Type, subst: &HashMap<String, Type>) -> Type {
     }
 }
 
+/// Check if two types are compatible, treating Pid and Int as interchangeable
+/// (Pid is represented as Int at runtime).
+fn types_compatible(a: &Type, b: &Type) -> bool {
+    if a == b {
+        return true;
+    }
+    matches!(
+        (a, b),
+        (Type::Pid, Type::Int) | (Type::Int, Type::Pid)
+    )
+}
+
 impl Checker {
     fn new(strict: bool) -> Self {
         let mut env = HashMap::new();
         // Builtins
         env.insert("println".to_string(), Type::Fn(vec![Type::String], Box::new(Type::Unit)));
         env.insert("show".to_string(), Type::Fn(vec![Type::Int], Box::new(Type::String)));
-        env.insert("spawn".to_string(), Type::Fn(vec![Type::Fn(vec![], Box::new(Type::Unit))], Box::new(Type::Int)));
+        env.insert("spawn".to_string(), Type::Fn(vec![Type::Fn(vec![], Box::new(Type::Unit))], Box::new(Type::Pid)));
         // send accepts any message type (Var(0) = polymorphic)
-        env.insert("send".to_string(), Type::Fn(vec![Type::Int, Type::Var(0)], Box::new(Type::Unit)));
-        env.insert("self_pid".to_string(), Type::Fn(vec![], Box::new(Type::Int)));
+        env.insert("send".to_string(), Type::Fn(vec![Type::Pid, Type::Var(0)], Box::new(Type::Unit)));
+        env.insert("self_pid".to_string(), Type::Fn(vec![], Box::new(Type::Pid)));
         env.insert("receive".to_string(), Type::Fn(vec![], Box::new(Type::Var(0))));
         // LLM/AI builtins
         env.insert("llm".to_string(), Type::Fn(vec![Type::String], Box::new(Type::String)));
@@ -172,8 +184,8 @@ impl Checker {
                 }
             }
             _ => {
-                // Concrete types: just check equality
-                *declared == *actual || *declared == Type::Var(0)
+                // Concrete types: check equality or Pid/Int compatibility
+                *declared == *actual || *declared == Type::Var(0) || types_compatible(declared, actual)
             }
         }
     }
@@ -256,7 +268,7 @@ impl Checker {
                             for arg in args {
                                 self.infer_expr(arg);
                             }
-                            Type::Int
+                            Type::Pid
                         }
                         "send" => {
                             self.record_effect(Effect::Process);
@@ -267,7 +279,7 @@ impl Checker {
                         }
                         "self_pid" | "self" => {
                             self.record_effect(Effect::Process);
-                            Type::Int
+                            Type::Pid
                         }
                         "llm" => {
                             self.record_effect(Effect::LLM);
@@ -347,6 +359,7 @@ impl Checker {
                                             && !matches!(expected, Type::TypeParam(_))
                                             && !matches!(actual, Type::TypeParam(_))
                                             && *expected != *actual
+                                            && !types_compatible(expected, actual)
                                         {
                                             // Allow variant of expected union type
                                             let is_variant = if let Type::Named(ref actual_name, _) = actual {
@@ -411,10 +424,10 @@ impl Checker {
                 let rt = self.infer_expr(right);
                 match op {
                     ast::BinOp::Add | ast::BinOp::Sub | ast::BinOp::Mul | ast::BinOp::Div | ast::BinOp::Mod => {
-                        if lt != Type::Var(0) && lt != Type::Int && !matches!(lt, Type::TypeParam(_)) {
+                        if lt != Type::Var(0) && lt != Type::Int && lt != Type::Pid && !matches!(lt, Type::TypeParam(_)) {
                             self.errors.push(format!("type error: arithmetic expects Int, got {}", lt));
                         }
-                        if rt != Type::Var(0) && rt != Type::Int && !matches!(rt, Type::TypeParam(_)) {
+                        if rt != Type::Var(0) && rt != Type::Int && rt != Type::Pid && !matches!(rt, Type::TypeParam(_)) {
                             self.errors.push(format!("type error: arithmetic expects Int, got {}", rt));
                         }
                         Type::Int
@@ -490,7 +503,7 @@ impl Checker {
                         ast::Stmt::LetTyped(name, declared_ty, e) => {
                             let expected = ast_type_to_type(declared_ty);
                             let actual = self.infer_expr(e);
-                            if actual != Type::Var(0) && expected != actual && !matches!(actual, Type::TypeParam(_)) {
+                            if actual != Type::Var(0) && expected != actual && !matches!(actual, Type::TypeParam(_)) && !types_compatible(&expected, &actual) {
                                 self.errors.push(format!("type error: expected {}, got {}", expected, actual));
                             }
                             self.env.insert(name.clone(), expected);
@@ -580,6 +593,7 @@ impl Checker {
                             && !matches!(expected, Type::TypeParam(_))
                             && !matches!(lt, Type::TypeParam(_))
                             && lt != *expected
+                            && !types_compatible(&lt, expected)
                         {
                             self.errors.push(format!(
                                 "type error: pipe argument has type {}, but function expects {}",
@@ -756,6 +770,7 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
                     && !is_variant_of_expected
                     && !matches!(body_ty, Type::TypeParam(_))
                     && !matches!(expected, Type::TypeParam(_))
+                    && !types_compatible(&expected, &body_ty)
                 {
                     checker.errors.push(format!(
                         "type error in fn {}: declared return type {} but body has type {}",
