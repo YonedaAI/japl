@@ -137,5 +137,26 @@ else:
     print("  FAIL type_checker")
     FAIL += 1
 
+print("\n--- Negative Checker Tests ---")
+neg_dir = os.path.join(JAPL_HOME, "test/checker-negative")
+if os.path.isdir(neg_dir):
+    neg_files = sorted([f for f in os.listdir(neg_dir) if f.endswith(".japl")])
+    neg_pass = 0
+    neg_total = len(neg_files)
+    for f in neg_files:
+        r = subprocess.run([JAPL, "check", os.path.join(neg_dir, f)],
+                           capture_output=True, text=True, timeout=10)
+        has_error = "error" in r.stdout.lower() or "error" in r.stderr.lower()
+        if has_error:
+            neg_pass += 1
+        else:
+            print(f"  FAIL neg/{f}: expected type error but got none")
+            FAIL += 1
+    if neg_pass == neg_total:
+        print(f"  PASS {neg_total}/{neg_total} negative tests reject correctly")
+        PASS += 1
+    else:
+        print(f"  {neg_pass}/{neg_total} negative tests passed")
+
 print(f"\n=== Results: {PASS} pass, {FAIL} fail ===")
 sys.exit(0 if FAIL == 0 else 1)

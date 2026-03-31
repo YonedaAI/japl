@@ -501,11 +501,13 @@ impl Checker {
                 self.infer_expr(scrutinee);
                 let mut result_ty = Type::Var(0);
                 for arm in arms {
+                    let saved_env = self.env.clone();
                     self.bind_pattern_vars(&arm.pattern);
                     if let Some(ref guard) = arm.guard {
                         self.infer_expr(guard);
                     }
                     let ty = self.infer_expr(&arm.body);
+                    self.env = saved_env; // Restore env — pattern bindings don't leak across arms
                     if result_ty == Type::Var(0) {
                         result_ty = ty;
                     }
@@ -516,11 +518,13 @@ impl Checker {
                 self.record_effect(Effect::Process);
                 let mut result_ty = Type::Var(0);
                 for arm in arms {
+                    let saved_env = self.env.clone();
                     self.bind_pattern_vars(&arm.pattern);
                     if let Some(ref guard) = arm.guard {
                         self.infer_expr(guard);
                     }
                     let ty = self.infer_expr(&arm.body);
+                    self.env = saved_env; // Restore env — pattern bindings don't leak across arms
                     if result_ty == Type::Var(0) {
                         result_ty = ty;
                     }

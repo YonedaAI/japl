@@ -426,7 +426,10 @@ pub fn check(path: &str) -> Result<(), String> {
     let mut visited = HashSet::new();
     let mut in_progress = Vec::new();
     let mut module_exports = HashMap::new();
-    let _ = resolve_imports(&mut program, &base_dir, &search_paths, &mut visited, &mut in_progress, &mut module_exports);
+    if let Err(e) = resolve_imports(&mut program, &base_dir, &search_paths, &mut visited, &mut in_progress, &mut module_exports) {
+        eprintln!("import error: {}", e);
+        // Continue type checking even with import errors, but report them
+    }
 
     let errors = checker::check_program(&program, true);
     if errors.is_empty() {

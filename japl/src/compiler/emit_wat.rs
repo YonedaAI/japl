@@ -857,14 +857,22 @@ impl WatEmitter {
         self.pop(")");
     }
 
-    // bytes_get(bytes, index) -> i64 byte value
+    // bytes_get(bytes, index) -> i64 byte value (returns 0 for out-of-bounds)
     fn emit_builtin_bytes_get(&mut self) {
         self.push("(func $bytes_get (param $bytes i64) (param $idx i64) (result i64)");
-        self.line("(i64.extend_i32_u");
-        self.line("  (i32.load8_u");
-        self.line("    (i32.add");
-        self.line("      (i32.add (i32.wrap_i64 (local.get $bytes)) (i32.const 4))");
-        self.line("      (i32.wrap_i64 (local.get $idx)))))");
+        self.line("(local $len i32)");
+        self.line("(local.set $len (i32.load (i32.wrap_i64 (local.get $bytes))))");
+        // Bounds check: idx >= 0 && idx < len
+        self.line("(if (result i64) (i32.and");
+        self.line("    (i32.ge_s (i32.wrap_i64 (local.get $idx)) (i32.const 0))");
+        self.line("    (i32.lt_u (i32.wrap_i64 (local.get $idx)) (local.get $len)))");
+        self.line("  (then");
+        self.line("    (i64.extend_i32_u");
+        self.line("      (i32.load8_u");
+        self.line("        (i32.add");
+        self.line("          (i32.add (i32.wrap_i64 (local.get $bytes)) (i32.const 4))");
+        self.line("          (i32.wrap_i64 (local.get $idx))))))");
+        self.line("  (else (i64.const 0)))");
         self.pop(")");
     }
 
@@ -884,8 +892,13 @@ impl WatEmitter {
         self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $bytes)) (i32.const 4)) (local.get $i))))");
         self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
         self.line("    (br $lp)))");
-        // Set the specific byte
-        self.line("(i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (i32.wrap_i64 (local.get $idx))) (i32.wrap_i64 (local.get $val)))");
+        // Set the specific byte (with bounds check)
+        self.line("(if (i32.and");
+        self.line("    (i32.ge_s (i32.wrap_i64 (local.get $idx)) (i32.const 0))");
+        self.line("    (i32.lt_u (i32.wrap_i64 (local.get $idx)) (local.get $len)))");
+        self.line("  (then");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (i32.wrap_i64 (local.get $idx))) (i32.wrap_i64 (local.get $val)))))");
+
         self.line("(i64.extend_i32_u (local.get $ptr))");
         self.pop(")");
     }
