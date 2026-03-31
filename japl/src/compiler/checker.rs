@@ -774,7 +774,8 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
                 if let Some(effects) = checker.fn_effects.get(&fd.name) {
                     let has_io = effects.contains(&Effect::IO);
                     let has_process = effects.contains(&Effect::Process);
-                    let has_any_effect = has_io || has_process;
+                    let has_llm = effects.contains(&Effect::LLM);
+                    let has_any_effect = has_io || has_process || has_llm;
 
                     // Check if function is annotated with any effect
                     let declared_effect = fd.effect.as_deref();
@@ -783,22 +784,14 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
                     if has_any_effect && !has_declared {
                         // Effect mismatches are warnings, not errors, until
                         // proper effect annotation syntax is in the main compile path
-                        if has_io && has_process {
-                            eprintln!(
-                                "warning: effect: fn {} performs IO and uses processes but not declared with effect annotation",
-                                fd.name
-                            );
-                        } else if has_io {
-                            eprintln!(
-                                "warning: effect: fn {} performs IO but not declared with IO effect",
-                                fd.name
-                            );
-                        } else {
-                            eprintln!(
-                                "warning: effect: fn {} uses processes but not declared with Process effect",
-                                fd.name
-                            );
-                        }
+                        let mut effect_names = Vec::new();
+                        if has_io { effect_names.push("IO"); }
+                        if has_process { effect_names.push("Process"); }
+                        if has_llm { effect_names.push("LLM"); }
+                        eprintln!(
+                            "warning: effect: fn {} uses {} but not declared with effect annotation",
+                            fd.name, effect_names.join(", ")
+                        );
                     }
                 }
             }

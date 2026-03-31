@@ -1,6 +1,5 @@
 type ToolSpec = | Tool(String, String, String)
 
-type ToolCall = | Call(String, String)
 type ToolResult = | ToolOk(String) | ToolErr(String)
 
 pub fn tool(name: String, description: String, schema: String) -> ToolSpec {

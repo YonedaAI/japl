@@ -913,10 +913,12 @@ fn write_japl_string(caller: &mut Caller<'_, ProcessState>, s: &str) -> i32 {
     let data = mem.data_mut(&mut *caller);
     // Write length as i32
     let len_bytes = (bytes.len() as u32).to_le_bytes();
-    if result_ptr + 4 + bytes.len() <= data.len() {
-        data[result_ptr..result_ptr+4].copy_from_slice(&len_bytes);
-        data[result_ptr+4..result_ptr+4+bytes.len()].copy_from_slice(bytes);
+    if result_ptr + 4 + bytes.len() > data.len() {
+        eprintln!("[japl::write_japl_string] OOB: need {} bytes at {}, memory size {}", 4 + bytes.len(), result_ptr, data.len());
+        return 0;
     }
+    data[result_ptr..result_ptr+4].copy_from_slice(&len_bytes);
+    data[result_ptr+4..result_ptr+4+bytes.len()].copy_from_slice(bytes);
 
     // Advance heap_ptr (aligned to 8)
     let new_heap = ((result_ptr + 4 + bytes.len() + 7) & !7) as i32;

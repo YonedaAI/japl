@@ -1,5 +1,3 @@
-type LlmResult = | LlmOk(String) | LlmErr(String)
-
 pub fn ask(prompt: String) -> String {
   let result = llm(prompt)
   result

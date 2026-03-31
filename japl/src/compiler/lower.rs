@@ -791,14 +791,18 @@ impl Lowerer {
                 }
                 "llm" => {
                     self.uses_llm = true;
-                    let arg = self.lower_expr(&args[0], false);
-                    return IrExpr::Call("$llm".to_string(), vec![arg]);
+                    if args.len() >= 1 {
+                        let arg = self.lower_expr(&args[0], false);
+                        return IrExpr::Call("$llm".to_string(), vec![arg]);
+                    }
                 }
                 "llm_structured" => {
                     self.uses_llm = true;
-                    let prompt = self.lower_expr(&args[0], false);
-                    let type_tag = self.lower_expr(&args[1], false);
-                    return IrExpr::Call("$llm_structured".to_string(), vec![prompt, type_tag]);
+                    if args.len() >= 2 {
+                        let prompt = self.lower_expr(&args[0], false);
+                        let type_tag = self.lower_expr(&args[1], false);
+                        return IrExpr::Call("$llm_structured".to_string(), vec![prompt, type_tag]);
+                    }
                 }
                 _ => {}
             }
