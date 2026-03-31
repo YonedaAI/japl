@@ -1,3 +1,137 @@
+foreign "japl" fn string_eq(a: String, b: String) -> Int
+
+type JsonList = | JCons(JsonValue, JsonList) | JNil
+type JsonPair = | JPair(String, JsonValue, JsonPair) | JPairNil
+type JsonValue =
+  | JsonNull
+  | JsonBool(Int)
+  | JsonInt(Int)
+  | JsonStr(String)
+  | JsonArray(JsonList)
+  | JsonObj(JsonPair)
+
+pub fn null() -> JsonValue {
+  JsonNull
+}
+
+pub fn bool(b: Int) -> JsonValue {
+  JsonBool(b)
+}
+
+pub fn int(n: Int) -> JsonValue {
+  JsonInt(n)
+}
+
+pub fn str(s: String) -> JsonValue {
+  JsonStr(s)
+}
+
+pub fn array(items: JsonList) -> JsonValue {
+  JsonArray(items)
+}
+
+pub fn object(pairs: JsonPair) -> JsonValue {
+  JsonObj(pairs)
+}
+
+pub fn is_null(v: JsonValue) -> Int {
+  match v {
+    JsonNull => 1,
+    JsonBool(_) => 0,
+    JsonInt(_) => 0,
+    JsonStr(_) => 0,
+    JsonArray(_) => 0,
+    JsonObj(_) => 0
+  }
+}
+
+pub fn to_int(v: JsonValue) -> Int {
+  match v {
+    JsonInt(n) => n,
+    JsonBool(b) => b,
+    JsonNull => 0,
+    JsonStr(_) => 0,
+    JsonArray(_) => 0,
+    JsonObj(_) => 0
+  }
+}
+
+pub fn to_str(v: JsonValue) -> String {
+  match v {
+    JsonStr(s) => s,
+    JsonNull => "",
+    JsonBool(_) => "",
+    JsonInt(_) => "",
+    JsonArray(_) => "",
+    JsonObj(_) => ""
+  }
+}
+
+pub fn get(obj: JsonValue, key: String) -> JsonValue {
+  match obj {
+    JsonObj(pairs) => get_pair(pairs, key),
+    JsonNull => JsonNull,
+    JsonBool(_) => JsonNull,
+    JsonInt(_) => JsonNull,
+    JsonStr(_) => JsonNull,
+    JsonArray(_) => JsonNull
+  }
+}
+
+fn get_pair(pairs: JsonPair, key: String) -> JsonValue {
+  match pairs {
+    JPairNil => JsonNull,
+    JPair(k, v, rest) =>
+      if string_eq(k, key) == 1 { v }
+      else { get_pair(rest, key) }
+  }
+}
+
+pub fn encode_null() -> String {
+  "null"
+}
+
+pub fn encode_bool(b: Int) -> String {
+  if b == 1 { "true" } else { "false" }
+}
+
+pub fn encode_int(n: Int) -> String {
+  show(n)
+}
+
+pub fn encode_string(s: String) -> String {
+  "\"" <> s <> "\""
+}
+
+pub fn encode(v: JsonValue) -> String {
+  match v {
+    JsonNull => encode_null(),
+    JsonBool(b) => encode_bool(b),
+    JsonInt(n) => encode_int(n),
+    JsonStr(s) => encode_string(s),
+    JsonArray(items) => "[" <> encode_list(items, 0) <> "]",
+    JsonObj(pairs) => "{" <> encode_pairs(pairs, 0) <> "}"
+  }
+}
+
+fn encode_list(items: JsonList, first: Int) -> String {
+  match items {
+    JNil => "",
+    JCons(v, rest) =>
+      if first == 0 { encode(v) <> encode_list(rest, 1) }
+      else { "," <> encode(v) <> encode_list(rest, 1) }
+  }
+}
+
+fn encode_pairs(pairs: JsonPair, first: Int) -> String {
+  match pairs {
+    JPairNil => "",
+    JPair(k, v, rest) =>
+      if first == 0 { encode_string(k) <> ":" <> encode(v) <> encode_pairs(rest, 1) }
+      else { "," <> encode_string(k) <> ":" <> encode(v) <> encode_pairs(rest, 1) }
+  }
+}
+
 fn json_int(n: Int) -> String {
   show(n)
 }
