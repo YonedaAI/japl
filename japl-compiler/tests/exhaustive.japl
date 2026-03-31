@@ -1,0 +1,14 @@
+type Color = | Red | Green | Blue
+
+fn describe(c: Color) -> String {
+  match c {
+    Red => "red",
+    Green => "green",
+    Blue => "blue"
+  }
+}
+
+fn main() {
+  println(describe(Red))
+  println(describe(Blue))
+}

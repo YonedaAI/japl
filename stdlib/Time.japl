@@ -3,3 +3,9 @@ foreign "japl" fn time_sleep(ms: Int)
 
 pub fn now() -> Int { time_now() }
 pub fn sleep(ms: Int) { time_sleep(ms) }
+
+fn main() {
+  println("Time module loaded")
+  let t = now()
+  println("Current time: " <> show(t))
+}

@@ -14,6 +14,7 @@ pub enum Type {
     Record(BTreeMap<std::string::String, Type>),
     Tuple(Vec<Type>),
     Var(u32), // unification variable
+    TypeParam(std::string::String), // generic type parameter (e.g. T)
 }
 
 impl std::fmt::Display for Type {
@@ -63,6 +64,7 @@ impl std::fmt::Display for Type {
                 write!(f, ")")
             }
             Type::Var(id) => write!(f, "?{}", id),
+            Type::TypeParam(name) => write!(f, "{}", name),
         }
     }
 }

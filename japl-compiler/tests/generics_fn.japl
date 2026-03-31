@@ -1,0 +1,10 @@
+fn identity<T>(x: T) -> T { x }
+fn apply<T, U>(f: fn(T) -> U, x: T) -> U { f(x) }
+fn main() {
+  let n = identity(42)
+  let s = identity("hello")
+  let doubled = apply(fn(x: Int) -> Int { x * 2 }, 21)
+  println(show(n))
+  println(s)
+  println(show(doubled))
+}

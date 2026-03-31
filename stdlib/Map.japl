@@ -1,23 +1,48 @@
-type MapEntry = | Entry(Int, Int, MapEntry) | Empty
+type MapEntry = | Cons(Int, Int, MapEntry) | Empty
 
-pub fn map_new() -> MapEntry { Empty }
+pub fn map_new() -> MapEntry {
+  Empty
+}
 
 pub fn map_put(m: MapEntry, key: Int, val: Int) -> MapEntry {
-  Entry(key, val, m)
+  Cons(key, val, m)
 }
 
 pub fn map_get(m: MapEntry, key: Int) -> Int {
   match m {
-    Empty => 0 - 1
-    Entry(k, v, rest) =>
+    Empty => 0 - 1,
+    Cons(k, v, rest) =>
       if k == key { v }
       else { map_get(rest, key) }
   }
 }
 
+pub fn map_contains(m: MapEntry, key: Int) -> Int {
+  match m {
+    Empty => 0,
+    Cons(k, _, rest) =>
+      if k == key { 1 }
+      else { map_contains(rest, key) }
+  }
+}
+
 pub fn map_size(m: MapEntry) -> Int {
   match m {
-    Empty => 0
-    Entry(_, _, rest) => 1 + map_size(rest)
+    Empty => 0,
+    Cons(_, _, rest) => 1 + map_size(rest)
   }
+}
+
+fn main() {
+  let m = map_new()
+  let m = map_put(m, 1, 100)
+  let m = map_put(m, 2, 200)
+  let m = map_put(m, 3, 300)
+  println("Map size: " <> show(map_size(m)))
+  println("Get 1: " <> show(map_get(m, 1)))
+  println("Get 2: " <> show(map_get(m, 2)))
+  println("Get 3: " <> show(map_get(m, 3)))
+  println("Get 99: " <> show(map_get(m, 99)))
+  println("Contains 2: " <> show(map_contains(m, 2)))
+  println("Contains 5: " <> show(map_contains(m, 5)))
 }

@@ -2,6 +2,18 @@ foreign "japl" fn file_read(path_ptr: Int, path_len: Int) -> Int
 foreign "japl" fn file_write(path_ptr: Int, path_len: Int, data_ptr: Int, data_len: Int) -> Int
 foreign "japl" fn file_exists(path_ptr: Int, path_len: Int) -> Int
 
+pub fn read_file(path_ptr: Int, path_len: Int) -> Int {
+  file_read(path_ptr, path_len)
+}
+
+pub fn write_file(path_ptr: Int, path_len: Int, data_ptr: Int, data_len: Int) -> Int {
+  file_write(path_ptr, path_len, data_ptr, data_len)
+}
+
 pub fn exists(path_ptr: Int, path_len: Int) -> Int {
   file_exists(path_ptr, path_len)
+}
+
+fn main() {
+  println("File module loaded")
 }

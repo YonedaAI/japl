@@ -14,17 +14,27 @@ pub enum Effect {
 
 struct Checker {
     errors: Vec<String>,
+    warnings: Vec<String>,
     env: HashMap<String, Type>,
     variant_types: HashMap<String, (String, Vec<Type>)>, // variant_name -> (type_name, field_types)
     fn_sigs: HashMap<String, (Vec<Type>, Type)>, // fn_name -> (param_types, return_type)
+    fn_type_params: HashMap<String, Vec<String>>, // fn_name -> type param names
     fn_effects: HashMap<String, Vec<Effect>>, // fn_name -> observed effects
     strict: bool,
     current_fn: Option<String>,
 }
 
 fn ast_type_to_type(t: &ast::Type) -> Type {
+    ast_type_to_type_with_params(t, &[])
+}
+
+/// Convert AST type to checker type, treating names in `type_params` as TypeParam.
+fn ast_type_to_type_with_params(t: &ast::Type, type_params: &[String]) -> Type {
     match t {
         ast::Type::Named(name) => {
+            if type_params.contains(name) {
+                return Type::TypeParam(name.clone());
+            }
             match name.as_str() {
                 "Int" => Type::Int,
                 "Float" => Type::Float,
@@ -36,14 +46,36 @@ fn ast_type_to_type(t: &ast::Type) -> Type {
             }
         }
         ast::Type::FnType(params, ret) => {
-            let pts: Vec<Type> = params.iter().map(|p| ast_type_to_type(p)).collect();
-            let rt = ast_type_to_type(ret);
+            let pts: Vec<Type> = params.iter().map(|p| ast_type_to_type_with_params(p, type_params)).collect();
+            let rt = ast_type_to_type_with_params(ret, type_params);
             Type::Fn(pts, Box::new(rt))
         }
         ast::Type::Tuple(types) => {
-            Type::Tuple(types.iter().map(|t| ast_type_to_type(t)).collect())
+            Type::Tuple(types.iter().map(|t| ast_type_to_type_with_params(t, type_params)).collect())
         }
         ast::Type::Void => Type::Unit,
+    }
+}
+
+/// Substitute TypeParam occurrences in a type using a substitution map.
+fn substitute_type_params(ty: &Type, subst: &HashMap<String, Type>) -> Type {
+    match ty {
+        Type::TypeParam(name) => {
+            subst.get(name).cloned().unwrap_or_else(|| ty.clone())
+        }
+        Type::Fn(params, ret) => {
+            let new_params: Vec<Type> = params.iter().map(|p| substitute_type_params(p, subst)).collect();
+            let new_ret = substitute_type_params(ret, subst);
+            Type::Fn(new_params, Box::new(new_ret))
+        }
+        Type::Tuple(types) => {
+            Type::Tuple(types.iter().map(|t| substitute_type_params(t, subst)).collect())
+        }
+        Type::Named(name, args) => {
+            let new_args: Vec<Type> = args.iter().map(|a| substitute_type_params(a, subst)).collect();
+            Type::Named(name.clone(), new_args)
+        }
+        _ => ty.clone(),
     }
 }
 
@@ -59,9 +91,11 @@ impl Checker {
 
         Checker {
             errors: Vec::new(),
+            warnings: Vec::new(),
             env,
             variant_types: HashMap::new(),
             fn_sigs: HashMap::new(),
+            fn_type_params: HashMap::new(),
             fn_effects: HashMap::new(),
             strict,
             current_fn: None,
@@ -73,6 +107,60 @@ impl Checker {
             self.fn_effects.entry(fn_name.clone())
                 .or_insert_with(Vec::new)
                 .push(effect);
+        }
+    }
+
+    /// Try to unify a declared param type (which may contain TypeParam) with an actual arg type.
+    /// Populates `subst` with bindings. Returns true if unification succeeds.
+    fn unify(&self, declared: &Type, actual: &Type, subst: &mut HashMap<String, Type>) -> bool {
+        // If actual is unknown, we can't learn anything
+        if *actual == Type::Var(0) {
+            return true;
+        }
+        match declared {
+            Type::TypeParam(name) => {
+                if let Some(existing) = subst.get(name) {
+                    // Already bound: check consistency
+                    *existing == *actual
+                } else {
+                    subst.insert(name.clone(), actual.clone());
+                    true
+                }
+            }
+            Type::Fn(d_params, d_ret) => {
+                if let Type::Fn(a_params, a_ret) = actual {
+                    if d_params.len() != a_params.len() {
+                        return false;
+                    }
+                    for (dp, ap) in d_params.iter().zip(a_params.iter()) {
+                        if !self.unify(dp, ap, subst) {
+                            return false;
+                        }
+                    }
+                    self.unify(d_ret, a_ret, subst)
+                } else {
+                    false
+                }
+            }
+            Type::Tuple(d_types) => {
+                if let Type::Tuple(a_types) = actual {
+                    if d_types.len() != a_types.len() {
+                        return false;
+                    }
+                    for (dt, at) in d_types.iter().zip(a_types.iter()) {
+                        if !self.unify(dt, at, subst) {
+                            return false;
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => {
+                // Concrete types: just check equality
+                *declared == *actual || *declared == Type::Var(0)
+            }
         }
     }
 
@@ -131,9 +219,36 @@ impl Checker {
                             Type::Int
                         }
                         _ => {
-                            for arg in args {
-                                self.infer_expr(arg);
+                            // Infer arg types first
+                            let arg_types: Vec<Type> = args.iter()
+                                .map(|a| self.infer_expr(a))
+                                .collect();
+
+                            // Check if this is a generic function call
+                            let tparams = self.fn_type_params.get(name).cloned();
+                            if let Some(ref tp) = tparams {
+                                if !tp.is_empty() {
+                                    // Get the declared signature (with TypeParam types)
+                                    if let Some((param_types, ret_ty)) = self.fn_sigs.get(name).cloned() {
+                                        // Unify declared param types with actual arg types
+                                        let mut subst = HashMap::new();
+                                        for (declared, actual) in param_types.iter().zip(arg_types.iter()) {
+                                            self.unify(declared, actual, &mut subst);
+                                        }
+
+                                        // Substitute type params in return type
+                                        let resolved_ret = substitute_type_params(&ret_ty, &subst);
+
+                                        // If return type still has unresolved type params, fall back to Var(0)
+                                        if let Type::TypeParam(_) = &resolved_ret {
+                                            return Type::Var(0);
+                                        }
+                                        return resolved_ret;
+                                    }
+                                }
                             }
+
+                            // Non-generic path
                             if let Some((_, ret)) = self.fn_sigs.get(name) {
                                 ret.clone()
                             } else if self.variant_types.contains_key(name) {
@@ -156,10 +271,10 @@ impl Checker {
                 let rt = self.infer_expr(right);
                 match op {
                     ast::BinOp::Add | ast::BinOp::Sub | ast::BinOp::Mul | ast::BinOp::Div | ast::BinOp::Mod => {
-                        if lt != Type::Var(0) && lt != Type::Int {
+                        if lt != Type::Var(0) && lt != Type::Int && !matches!(lt, Type::TypeParam(_)) {
                             self.errors.push(format!("type error: arithmetic expects Int, got {}", lt));
                         }
-                        if rt != Type::Var(0) && rt != Type::Int {
+                        if rt != Type::Var(0) && rt != Type::Int && !matches!(rt, Type::TypeParam(_)) {
                             self.errors.push(format!("type error: arithmetic expects Int, got {}", rt));
                         }
                         Type::Int
@@ -167,16 +282,16 @@ impl Checker {
                     ast::BinOp::Eq | ast::BinOp::Neq | ast::BinOp::Lt | ast::BinOp::Gt |
                     ast::BinOp::LtEq | ast::BinOp::GtEq => Type::Bool,
                     ast::BinOp::Concat => {
-                        if lt != Type::Var(0) && lt != Type::String {
+                        if lt != Type::Var(0) && lt != Type::String && !matches!(lt, Type::TypeParam(_)) {
                             self.errors.push(format!("type error: <> expects String, got {}", lt));
                         }
-                        if rt != Type::Var(0) && rt != Type::String {
+                        if rt != Type::Var(0) && rt != Type::String && !matches!(rt, Type::TypeParam(_)) {
                             self.errors.push(format!("type error: <> expects String, got {}", rt));
                         }
                         Type::String
                     }
                     ast::BinOp::And | ast::BinOp::Or => {
-                        if lt != Type::Var(0) && lt != Type::Bool {
+                        if lt != Type::Var(0) && lt != Type::Bool && !matches!(lt, Type::TypeParam(_)) {
                             self.errors.push(format!("type error: logical op expects Bool, got {}", lt));
                         }
                         Type::Bool
@@ -190,7 +305,7 @@ impl Checker {
                 }
                 let tt = self.infer_expr(then);
                 if let Some(e) = else_ {
-                    let et = self.infer_expr(e);
+                    let _et = self.infer_expr(e);
                     // Could check tt == et, but be lenient for now
                     tt
                 } else {
@@ -207,7 +322,7 @@ impl Checker {
                         ast::Stmt::LetTyped(name, declared_ty, e) => {
                             let expected = ast_type_to_type(declared_ty);
                             let actual = self.infer_expr(e);
-                            if actual != Type::Var(0) && expected != actual {
+                            if actual != Type::Var(0) && expected != actual && !matches!(actual, Type::TypeParam(_)) {
                                 self.errors.push(format!("type error: expected {}, got {}", expected, actual));
                             }
                             self.env.insert(name.clone(), expected);
@@ -223,7 +338,7 @@ impl Checker {
                     Type::Unit
                 }
             }
-            ast::Expr::Lambda(params, ret_ty, body) => {
+            ast::Expr::Lambda(params, _ret_ty, body) => {
                 let param_types: Vec<Type> = params.iter()
                     .map(|p| ast_type_to_type(&p.ty))
                     .collect();
@@ -299,7 +414,7 @@ impl Checker {
         let matched: Vec<&str> = arms.iter().filter_map(|arm| {
             match &arm.pattern {
                 ast::Pattern::Variant(name, _) => Some(name.as_str()),
-                ast::Pattern::Wildcard => return None, // wildcard covers all
+                ast::Pattern::Wildcard => None,
                 _ => None,
             }
         }).collect();
@@ -316,10 +431,16 @@ impl Checker {
             .collect();
 
         if !all_variants.is_empty() {
-            for v in &all_variants {
-                if !matched.contains(v) {
-                    self.errors.push(format!("non-exhaustive match: missing variant {}", v));
-                }
+            let missing: Vec<&str> = all_variants.iter()
+                .filter(|v| !matched.contains(*v))
+                .copied()
+                .collect();
+            if !missing.is_empty() {
+                self.warnings.push(format!(
+                    "warning: non-exhaustive match on {}: missing variants {}",
+                    scrutinee_type,
+                    missing.join(", ")
+                ));
             }
         }
     }
@@ -344,16 +465,22 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
         }
     }
 
-    // Collect function signatures
+    // Collect function signatures (with type param awareness)
     for item in &program.items {
         if let ast::TopLevel::FnDef(fd) = item {
+            let tp = &fd.type_params;
             let param_types: Vec<Type> = fd.params.iter()
-                .map(|p| ast_type_to_type(&p.ty))
+                .map(|p| ast_type_to_type_with_params(&p.ty, tp))
                 .collect();
             let ret_ty = fd.ret_ty.as_ref()
-                .map(|t| ast_type_to_type(t))
+                .map(|t| ast_type_to_type_with_params(t, tp))
                 .unwrap_or(Type::Unit);
             checker.fn_sigs.insert(fd.name.clone(), (param_types.clone(), ret_ty.clone()));
+
+            // Store type params if any
+            if !fd.type_params.is_empty() {
+                checker.fn_type_params.insert(fd.name.clone(), fd.type_params.clone());
+            }
 
             // Add params to env
             for (p, t) in fd.params.iter().zip(param_types.iter()) {
@@ -366,9 +493,10 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
     for item in &program.items {
         if let ast::TopLevel::FnDef(fd) = item {
             checker.current_fn = Some(fd.name.clone());
+            let tp = &fd.type_params;
             // Add params to env
             let param_types: Vec<Type> = fd.params.iter()
-                .map(|p| ast_type_to_type(&p.ty))
+                .map(|p| ast_type_to_type_with_params(&p.ty, tp))
                 .collect();
             for (p, t) in fd.params.iter().zip(param_types.iter()) {
                 checker.env.insert(p.name.clone(), t.clone());
@@ -376,10 +504,22 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
 
             let body_ty = checker.infer_expr(&fd.body);
 
-            // Check return type matches
+            // Check return type matches (skip if body type is a TypeParam -- generic bodies are permissive)
             if let Some(ref ret_ty) = fd.ret_ty {
-                let expected = ast_type_to_type(ret_ty);
-                if body_ty != Type::Var(0) && expected != body_ty {
+                let expected = ast_type_to_type_with_params(ret_ty, tp);
+                // Check if body type is a variant of the expected union type
+                let is_variant_of_expected = if let Type::Named(body_name, _) = &body_ty {
+                    if let Type::Named(expected_name, _) = &expected {
+                        checker.variant_types.get(body_name)
+                            .map_or(false, |(parent, _)| parent == expected_name)
+                    } else { false }
+                } else { false };
+
+                if body_ty != Type::Var(0) && expected != body_ty
+                    && !is_variant_of_expected
+                    && !matches!(body_ty, Type::TypeParam(_))
+                    && !matches!(expected, Type::TypeParam(_))
+                {
                     checker.errors.push(format!(
                         "type error in fn {}: declared return type {} but body has type {}",
                         fd.name, expected, body_ty
@@ -425,6 +565,11 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
         if let ast::TopLevel::FnDef(fd) = item {
             check_exhaustiveness_in_expr(&mut checker, &fd.body);
         }
+    }
+
+    // Print warnings to stderr (non-fatal)
+    for w in &checker.warnings {
+        eprintln!("{}", w);
     }
 
     checker.errors

@@ -1,17 +1,44 @@
-module Test
-
-pub fn assert_eq(actual: a, expected: a) -> Unit {
-  assert actual == expected
+pub fn assert_eq(actual: Int, expected: Int) -> Int {
+  if actual == expected {
+    println("PASS")
+  } else {
+    println("FAIL: " <> show(actual) <> " != " <> show(expected))
+  }
+  0
 }
 
-pub fn assert_ne(actual: a, expected: a) -> Unit {
-  assert actual != expected
+pub fn assert_neq(actual: Int, expected: Int) -> Int {
+  if actual != expected {
+    println("PASS")
+  } else {
+    println("FAIL: " <> show(actual) <> " should not equal " <> show(expected))
+  }
+  0
 }
 
-pub fn assert_true(v: Bool) -> Unit {
-  assert v == true
+pub fn assert_true(val: Int) -> Int {
+  if val == 1 {
+    println("PASS")
+  } else {
+    println("FAIL: expected true (1), got " <> show(val))
+  }
+  0
 }
 
-pub fn assert_false(v: Bool) -> Unit {
-  assert v == false
+pub fn assert_false(val: Int) -> Int {
+  if val == 0 {
+    println("PASS")
+  } else {
+    println("FAIL: expected false (0), got " <> show(val))
+  }
+  0
+}
+
+fn main() {
+  println("Test module loaded")
+  assert_eq(1, 1)
+  assert_eq(2, 3)
+  assert_neq(1, 2)
+  assert_true(1)
+  assert_false(0)
 }

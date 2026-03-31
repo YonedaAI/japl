@@ -10,4 +10,8 @@ pub fn random_bytes(buf_ptr: Int, buf_len: Int) {
   crypto_random(buf_ptr, buf_len)
 }
 
-pub fn alloc(len: Int) -> Int { bytes_alloc(len) }
+pub fn alloc_bytes(len: Int) -> Int { bytes_alloc(len) }
+
+fn main() {
+  println("Crypto module loaded")
+}

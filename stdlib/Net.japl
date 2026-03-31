@@ -1,9 +1,15 @@
 foreign "japl" fn tcp_listen(port: Int) -> Int
 foreign "japl" fn tcp_accept(listener: Int) -> Int
+foreign "japl" fn tcp_connect(addr_ptr: Int, addr_len: Int, port: Int) -> Int
+foreign "japl" fn tcp_read(conn: Int, buf_ptr: Int, buf_len: Int) -> Int
+foreign "japl" fn tcp_write(conn: Int, data_ptr: Int, data_len: Int) -> Int
 foreign "japl" fn tcp_close(id: Int)
 
 pub fn listen(port: Int) -> Int { tcp_listen(port) }
 pub fn accept(listener: Int) -> Int { tcp_accept(listener) }
+pub fn connect(addr_ptr: Int, addr_len: Int, port: Int) -> Int { tcp_connect(addr_ptr, addr_len, port) }
+pub fn read(conn: Int, buf_ptr: Int, buf_len: Int) -> Int { tcp_read(conn, buf_ptr, buf_len) }
+pub fn write(conn: Int, data_ptr: Int, data_len: Int) -> Int { tcp_write(conn, data_ptr, data_len) }
 pub fn close(id: Int) { tcp_close(id) }
 
 fn main() {
