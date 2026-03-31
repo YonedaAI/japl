@@ -113,8 +113,8 @@ run_test("stdlib/Log", "stdlib/Log.japl", ["[DEBUG] debug message", "[INFO] info
 run_test("stdlib/Config", "stdlib/Config.japl", ["get_or=8080", "get_int=4", "require=required:APP_NAME", "Config module loaded"])
 compile_only_test("stdlib/LLM", "stdlib/LLM.japl")
 run_test("stdlib/Core", "stdlib/Core.japl", ["identity(42)=42", "const_(10,20)=10", "pipe(5,*3)=15", "apply(+1,9)=10", "Core module loaded"])
-run_test("stdlib/Tool", "stdlib/Tool.japl", ["tool_name: search", "tool_desc: Search the web", "call_ok: 1", "call_result: search({\"query\": \"hello\"})", "err_ok: 0"])
-run_test("stdlib/Budget", "stdlib/Budget.japl", ["remaining: 100", "max: 100", "after_spend: 70", "exhausted: 0", "check_50: 1", "exhausted_after: 1"])
+run_test("stdlib/Tool", "stdlib/Tool.japl", ["tool_name: search", "tool_desc: Search the web", "call_ok: 1", "call_result: search({\"query\": \"hello\"})", "err_ok: 0", "exec_ok: 1", "exec_result: search(test_args) => ok", "tool_error_ok: 0", "tool_error_val: search: not found"])
+run_test("stdlib/Budget", "stdlib/Budget.japl", ["remaining: 100", "max: 100", "after_spend: 70", "exhausted: 0", "check_50: 1", "exhausted_after: 1", "try_spend_ok: 70", "try_spend_fail: 70", "status_full: ok", "status_low: low", "status_exhausted: exhausted"])
 run_test("stdlib/Replay", "stdlib/Replay.japl", ["empty_size: 0", "empty_latest: -1", "size: 3", "latest: 3"])
 run_test("stdlib/Provenance", "stdlib/Provenance.japl", ["human: human", "model: model:claude", "tool: tool:search", "composed: human+model:claude", "hash: abc123", "timestamp: 1000"])
 

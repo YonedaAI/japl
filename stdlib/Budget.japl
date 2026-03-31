@@ -31,6 +31,26 @@ pub fn budget_check(b: Budget, needed: Int) -> Int {
   else { 0 }
 }
 
+pub fn budget_try_spend(b: Budget, tokens: Int) -> Budget {
+  match b {
+    Budget(remaining, max_val) =>
+      if remaining >= tokens {
+        Budget(remaining - tokens, max_val)
+      } else {
+        b
+      }
+  }
+}
+
+pub fn budget_status(b: Budget) -> String {
+  match b {
+    Budget(remaining, max_val) =>
+      if remaining <= 0 { "exhausted" }
+      else { if remaining < max_val / 4 { "low" }
+      else { "ok" } }
+  }
+}
+
 fn main() {
   let b = budget_new(100)
   let r = budget_remaining(b)
@@ -47,4 +67,19 @@ fn main() {
   let b = budget_spend(b, 80)
   let ex2 = budget_exhausted(b)
   println("exhausted_after: " <> show(ex2))
+  let b2 = budget_new(100)
+  let b3 = budget_try_spend(b2, 30)
+  let r3 = budget_remaining(b3)
+  println("try_spend_ok: " <> show(r3))
+  let b4 = budget_try_spend(b3, 200)
+  let r4 = budget_remaining(b4)
+  println("try_spend_fail: " <> show(r4))
+  let s1 = budget_status(b2)
+  println("status_full: " <> s1)
+  let b5 = budget_spend(b2, 90)
+  let s2 = budget_status(b5)
+  println("status_low: " <> s2)
+  let b6 = budget_spend(b2, 100)
+  let s3 = budget_status(b6)
+  println("status_exhausted: " <> s3)
 }
