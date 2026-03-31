@@ -301,7 +301,7 @@ impl Scheduler {
                     "[scheduler] shutdown complete. Final process count: {}",
                     process::active_process_count()
                 );
-                std::process::exit(0);
+                return Ok(());
             }
 
             match cmd_rx.recv() {
