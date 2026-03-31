@@ -1475,10 +1475,10 @@ impl WatEmitter {
     }
 
     fn emit_component_process_wrappers(&mut self) {
-        // $spawn wrapper: JAPL calls spawn(closure_ptr: i64) -> i64
+        // $spawn wrapper: JAPL calls spawn(closure_ptr: i64, closure_size: i64) -> i64
         // Canonical ABI expects spawn(data_ptr: i32, data_len: i32) -> i64
-        self.push("(func $spawn (param $closure_ptr i64) (result i64)");
-        self.line("(call $cm_spawn (i32.wrap_i64 (local.get $closure_ptr)) (i32.const 256))");
+        self.push("(func $spawn (param $closure_ptr i64) (param $closure_size i64) (result i64)");
+        self.line("(call $cm_spawn (i32.wrap_i64 (local.get $closure_ptr)) (i32.wrap_i64 (local.get $closure_size)))");
         self.pop(")");
 
         // $send wrapper: JAPL calls send(pid: i64, msg_ptr: i64)
@@ -1858,7 +1858,16 @@ impl WatEmitter {
                 }
             }
             IrExpr::Spawn(closure) => {
+                // Compute closure size: if the inner expression is a ClosureNew,
+                // we know the exact size (8 + 8 * num_captures). Otherwise, use
+                // a safe upper bound of 2048 bytes.
+                let closure_size: i64 = if let IrExpr::ClosureNew(_, captures) = closure.as_ref() {
+                    (8 + 8 * captures.len()) as i64
+                } else {
+                    2048
+                };
                 self.emit_expr(closure, true);
+                self.line(&format!("i64.const {}", closure_size));
                 self.line("call $spawn");
                 if !need_value {
                     self.line("drop");
