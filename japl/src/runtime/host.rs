@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 use std::sync::mpsc;
 use wasmtime::*;
 
-use super::process::{self, ProcessMessage, ProcessState, Resource, SchedulerCommand};
+use super::process::{self, ProcessMessage, ProcessState, Resource, SchedulerCommand, active_process_count};
 
 /// Register JAPL host functions on the linker.
 pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Result<()> {
@@ -64,6 +64,7 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         let _ = caller.data().scheduler_tx.send(SchedulerCommand::Send {
             target_pid,
             message_bytes: msg_bytes,
+            reply: None,
         });
     })?;
 
@@ -121,6 +122,32 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // japl.self_pid() -> pid
     linker.func_wrap("japl", "self_pid", |caller: Caller<'_, ProcessState>| -> i64 {
         caller.data().pid as i64
+    })?;
+
+    // japl.process_count() -> i64
+    // Returns the number of currently active processes.
+    linker.func_wrap("japl", "process_count", |_caller: Caller<'_, ProcessState>| -> i64 {
+        active_process_count() as i64
+    })?;
+
+    // japl.mailbox_size(pid: i64) -> i64
+    // Returns the current mailbox depth for the given process.
+    // If pid == -1, returns the calling process's own mailbox size.
+    linker.func_wrap("japl", "mailbox_size", |caller: Caller<'_, ProcessState>, pid: i64| -> i64 {
+        let target_pid = if pid < 0 {
+            caller.data().pid
+        } else {
+            pid as u64
+        };
+        let (reply_tx, reply_rx) = mpsc::channel();
+        let _ = caller.data().scheduler_tx.send(SchedulerCommand::MailboxSize {
+            target_pid,
+            reply: reply_tx,
+        });
+        match reply_rx.recv() {
+            Ok(size) => size as i64,
+            Err(_) => -1,
+        }
     })?;
 
     // japl.llm(ptr, len) -> (result_ptr, result_len)
