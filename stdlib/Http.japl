@@ -1,20 +1,42 @@
-type Method = | GET | POST | PUT | DELETE
+type Method = | GET | POST | PUT | DELETE | PATCH | HEAD | OPTIONS
 
-fn method_tag(m: Method) -> Int {
-  match m { GET => 0, POST => 1, PUT => 2, DELETE => 3 }
+type StatusCode = | Ok200 | Created201 | BadRequest400 | NotFound404 | ServerError500
+
+pub fn method_tag(m: Method) -> Int {
+  match m { GET => 0, POST => 1, PUT => 2, DELETE => 3, PATCH => 4, HEAD => 5, OPTIONS => 6 }
 }
 
-fn method_name(m: Method) -> String {
-  match m { GET => "GET", POST => "POST", PUT => "PUT", DELETE => "DELETE" }
+pub fn method_name(m: Method) -> String {
+  match m { GET => "GET", POST => "POST", PUT => "PUT", DELETE => "DELETE", PATCH => "PATCH", HEAD => "HEAD", OPTIONS => "OPTIONS" }
 }
 
-fn status_text(code: Int) -> String {
+pub fn method_to_string(m: Method) -> String {
+  method_name(m)
+}
+
+pub fn status_code(s: StatusCode) -> Int {
+  match s { Ok200 => 200, Created201 => 201, BadRequest400 => 400, NotFound404 => 404, ServerError500 => 500 }
+}
+
+pub fn status_text(code: Int) -> String {
   if code == 200 { "200 OK" }
   else { if code == 201 { "201 Created" }
   else { if code == 404 { "404 Not Found" }
   else { if code == 400 { "400 Bad Request" }
   else { if code == 500 { "500 Internal Server Error" }
   else { show(code) } } } } }
+}
+
+pub fn response_line(code: Int) -> String {
+  "HTTP/1.1 " <> status_text(code)
+}
+
+pub fn content_type_json() -> String {
+  "Content-Type: application/json"
+}
+
+pub fn content_type_text() -> String {
+  "Content-Type: text/plain"
 }
 
 fn main() {

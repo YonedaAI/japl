@@ -12,6 +12,19 @@ pub fn read(conn: Int, buf_ptr: Int, buf_len: Int) -> Int { tcp_read(conn, buf_p
 pub fn write(conn: Int, data_ptr: Int, data_len: Int) -> Int { tcp_write(conn, data_ptr, data_len) }
 pub fn close(id: Int) { tcp_close(id) }
 
+pub fn bind(addr: Int, port: Int) -> Int {
+  tcp_listen(port)
+}
+
+pub fn send(stream: Int, data: String) -> Int {
+  tcp_write(stream, 0, 0)
+}
+
+pub fn disconnect(stream: Int) -> Int {
+  tcp_close(stream)
+  0
+}
+
 fn main() {
   println("Net module loaded")
 }
