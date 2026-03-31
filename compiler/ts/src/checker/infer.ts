@@ -95,8 +95,10 @@ export class TypeChecker {
         break;
       case "import":
       case "supervisor":
-      case "foreign":
         break; // handled elsewhere or stubs
+      case "foreign":
+        this.inferForeignDecl(decl);
+        break;
     }
   }
 
@@ -223,6 +225,21 @@ export class TypeChecker {
       typeParams: decl.typeParams,
       variants: [],
     });
+  }
+
+  private inferForeignDecl(
+    decl: Extract<AST.Decl, { kind: "foreign" }>,
+  ): void {
+    const paramTypes: Type[] = decl.params.map(p => this.lowerTypeExpr(p.type!));
+    const retType = decl.returnType ? this.lowerTypeExpr(decl.returnType) : UNIT;
+    const ioEffect: EffectRow = { effects: new Set<Effect>(["io" as Effect]), open: false };
+    const fnType: Type = {
+      kind: "fn",
+      params: paramTypes,
+      ret: retType,
+      effects: ioEffect,
+    };
+    this.env.bind(decl.name, monotype(fnType));
   }
 
   // ─── Expression Inference ───
@@ -781,6 +798,16 @@ export class TypeChecker {
         }
         return [leftType, effects];
       }
+      case "<>": {
+        // String concatenation: String <> String -> String
+        try {
+          this.unifier.unify(leftType, STRING, expr.left.span);
+          this.unifier.unify(rightType, STRING, expr.right.span);
+        } catch (e) {
+          if (e instanceof TypeError) this.errors.push(e);
+        }
+        return [STRING, effects];
+      }
       default:
         this.errors.push(new TypeError(`Unknown operator '${expr.op}'`, expr.span));
         return [freshVar(), effects];
@@ -905,6 +932,12 @@ export class TypeChecker {
       return [UNIT, PURE];
     }
 
+    // Push a scope for the block so that let bindings persist across
+    // sequential expressions. In JAPL, blocks use imperative-style lets
+    // where each `let` binding is visible to all subsequent expressions
+    // in the same block, not just the nested body.
+    this.env.pushScope();
+
     let effects: EffectRow = PURE;
     let lastType: Type = UNIT;
 
@@ -912,9 +945,31 @@ export class TypeChecker {
       const [t, eff] = this.inferExpr(e);
       lastType = t;
       effects = this.mergeEffects(effects, eff);
+
+      // After inferring a let-chain, re-bind all its let names in the block
+      // scope so they're visible to subsequent block expressions.
+      this.sinkLetBindings(e);
     }
 
+    this.env.popScope();
     return [lastType, effects];
+  }
+
+  /**
+   * Walk a let-chain and re-bind each let variable in the current scope
+   * using its resolved type. This ensures let bindings from one block
+   * expression are visible to subsequent block expressions.
+   */
+  private sinkLetBindings(expr: AST.Expr): void {
+    let cur: AST.Expr = expr;
+    while (cur.kind === "let") {
+      const valType = this.exprTypes.get(cur.value);
+      if (valType) {
+        const resolved = this.unifier.deepResolve(valType);
+        this.env.bind(cur.name, this.generalize(resolved));
+      }
+      cur = cur.body;
+    }
   }
 
   private inferSpawn(expr: Extract<AST.Expr, { kind: "spawn" }>): [Type, EffectRow] {

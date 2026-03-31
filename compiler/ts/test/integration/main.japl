@@ -1,8 +1,0 @@
-import FileIO.{read, exists}
-
-fn main() {
-  let found = exists("test/integration/data.txt")
-  println(show(found))
-  let content = read("test/integration/data.txt")
-  println(content)
-}

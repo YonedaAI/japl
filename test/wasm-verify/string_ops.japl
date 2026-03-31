@@ -1,0 +1,26 @@
+foreign "japl" fn char_at(s: String, idx: Int) -> String
+foreign "japl" fn substring(s: String, start: Int, end: Int) -> String
+foreign "japl" fn str_length(s: String) -> Int
+foreign "japl" fn from_char_code(code: Int) -> String
+foreign "japl" fn string_eq(a: String, b: String) -> Int
+
+fn main() {
+  let s = "Hello World"
+  let h = char_at(s, 0)
+  println(show(h))
+
+  let sub = substring(s, 0, 5)
+  println(sub)
+
+  let len = str_length(s)
+  println(show(len))
+
+  let bang = from_char_code(33)
+  println(bang)
+
+  let eq = string_eq("abc", "abc")
+  println(show(eq))
+
+  let neq = string_eq("abc", "xyz")
+  println(show(neq))
+}

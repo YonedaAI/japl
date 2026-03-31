@@ -478,6 +478,115 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         std::io::stdout().flush().ok();
     })?;
 
+    // =========================================================================
+    // String Manipulation Functions
+    // =========================================================================
+
+    // japl.char_at(str_ptr: i32, index: i32) -> i32 (char code, or -1 if out of bounds)
+    linker.func_wrap("japl", "char_at", |mut caller: Caller<'_, ProcessState>, str_ptr: i32, index: i32| -> i32 {
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let data = memory.data(&caller);
+        let ptr = str_ptr as usize;
+        let len = u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as usize;
+        let idx = index as usize;
+        if idx >= len { return -1; }
+        data[ptr + 4 + idx] as i32
+    })?;
+
+    // japl.substring(str_ptr: i32, start: i32, end: i32) -> i32 (new string ptr)
+    linker.func_wrap("japl", "substring", |mut caller: Caller<'_, ProcessState>, str_ptr: i32, start: i32, end: i32| -> i32 {
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let heap_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+
+        let data = memory.data(&caller);
+        let ptr = str_ptr as usize;
+        let orig_len = u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as usize;
+
+        let s = start.max(0) as usize;
+        let e = (end as usize).min(orig_len);
+        let new_len = if e > s { e - s } else { 0 };
+
+        // Allocate new string
+        let heap_ptr = heap_global.get(&mut caller).i32().unwrap() as usize;
+        let result_ptr = heap_ptr;
+
+        let mem = memory.data_mut(&mut caller);
+        // Write length
+        mem[result_ptr..result_ptr+4].copy_from_slice(&(new_len as u32).to_le_bytes());
+        // Copy bytes
+        if new_len > 0 {
+            let src_start = ptr + 4 + s;
+            for i in 0..new_len {
+                mem[result_ptr + 4 + i] = mem[src_start + i];
+            }
+        }
+
+        let new_heap = (result_ptr + 4 + new_len) as i32;
+        heap_global.set(&mut caller, new_heap.into()).unwrap();
+
+        result_ptr as i32
+    })?;
+
+    // japl.string_index_of(haystack_ptr: i32, needle_ptr: i32) -> i32 (index, or -1)
+    linker.func_wrap("japl", "string_index_of", |mut caller: Caller<'_, ProcessState>, hay_ptr: i32, needle_ptr: i32| -> i32 {
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let data = memory.data(&caller);
+
+        let h_ptr = hay_ptr as usize;
+        let h_len = u32::from_le_bytes(data[h_ptr..h_ptr+4].try_into().unwrap()) as usize;
+        let haystack = &data[h_ptr+4..h_ptr+4+h_len];
+
+        let n_ptr = needle_ptr as usize;
+        let n_len = u32::from_le_bytes(data[n_ptr..n_ptr+4].try_into().unwrap()) as usize;
+        let needle = &data[n_ptr+4..n_ptr+4+n_len];
+
+        if n_len == 0 { return 0; }
+        if n_len > h_len { return -1; }
+
+        for i in 0..=(h_len - n_len) {
+            if &haystack[i..i+n_len] == needle {
+                return i as i32;
+            }
+        }
+        -1
+    })?;
+
+    // japl.from_char_code(code: i32) -> i32 (new 1-char string ptr)
+    linker.func_wrap("japl", "from_char_code", |mut caller: Caller<'_, ProcessState>, code: i32| -> i32 {
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let heap_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+        let heap_ptr = heap_global.get(&mut caller).i32().unwrap() as usize;
+
+        let mem = memory.data_mut(&mut caller);
+        mem[heap_ptr..heap_ptr+4].copy_from_slice(&1u32.to_le_bytes());
+        mem[heap_ptr + 4] = code as u8;
+
+        let new_heap = (heap_ptr + 5) as i32;
+        heap_global.set(&mut caller, new_heap.into()).unwrap();
+
+        heap_ptr as i32
+    })?;
+
+    // japl.str_length(str_ptr: i32) -> i32
+    linker.func_wrap("japl", "str_length", |mut caller: Caller<'_, ProcessState>, str_ptr: i32| -> i32 {
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let data = memory.data(&caller);
+        let ptr = str_ptr as usize;
+        u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as i32
+    })?;
+
+    // japl.string_eq(a_ptr: i32, b_ptr: i32) -> i32 (0 or 1)
+    linker.func_wrap("japl", "string_eq", |mut caller: Caller<'_, ProcessState>, a_ptr: i32, b_ptr: i32| -> i32 {
+        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let data = memory.data(&caller);
+        let a = a_ptr as usize;
+        let b = b_ptr as usize;
+        let a_len = u32::from_le_bytes(data[a..a+4].try_into().unwrap()) as usize;
+        let b_len = u32::from_le_bytes(data[b..b+4].try_into().unwrap()) as usize;
+        if a_len != b_len { return 0; }
+        if data[a+4..a+4+a_len] == data[b+4..b+4+b_len] { 1 } else { 0 }
+    })?;
+
     Ok(())
 }
 

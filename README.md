@@ -90,6 +90,7 @@ japl run --runtime apps/kvstore/kvstore.japl
 - String interpolation
 - Checked integer arithmetic (no silent overflow)
 - Byte type (`u8`)
+- Code formatter (`japl fmt`)
 - Process spawn/send/receive (real OS threads via WASM)
 - Supervision trees (`OneForOne`, `AllForOne`, `RestForOne`)
 - TCP distribution between runtime instances
@@ -104,7 +105,6 @@ japl run --runtime apps/kvstore/kvstore.japl
 - AI-native abstractions (LLM as effect, tool contracts, budget types, replay)
 - Package manager
 - LSP / editor support
-- Formatter
 - REPL
 
 ---
@@ -185,8 +185,8 @@ fn main() {
 compiler/ts/        Compiler (lexer, parser, checker, IR, WAT codegen)
 japl-runtime/       Runtime (Rust + wasmtime, processes, distribution)
 stdlib/             Standard library (.japl files)
-test/               Test programs (12 verified on WASM)
-apps/               Applications (distributed KV store, time tracker)
+test/               Test programs (22 verified on WASM)
+apps/               Applications (distributed KV store, AI agent, HTTP demo)
 spec/               Language specification
 plans/              Development plans and reviews
 papers/             Research papers (7 JAPL papers)

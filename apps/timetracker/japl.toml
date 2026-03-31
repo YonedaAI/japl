@@ -1,6 +1,0 @@
-[package]
-name = "timetracker"
-version = "0.1.0"
-entry = "src/main.japl"
-
-[dependencies]

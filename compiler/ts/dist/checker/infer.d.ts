@@ -23,6 +23,7 @@ export declare class TypeChecker {
     private inferFnDecl;
     private inferTypeDecl;
     private inferRecordTypeDecl;
+    private inferForeignDecl;
     inferExpr(expr: AST.Expr): [Type, EffectRow];
     private inferExprInner;
     private inferVar;
@@ -42,6 +43,12 @@ export declare class TypeChecker {
     private inferRecordUpdate;
     private inferList;
     private inferBlock;
+    /**
+     * Walk a let-chain and re-bind each let variable in the current scope
+     * using its resolved type. This ensures let bindings from one block
+     * expression are visible to subsequent block expressions.
+     */
+    private sinkLetBindings;
     private inferSpawn;
     private inferSend;
     private inferReceive;

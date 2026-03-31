@@ -1,12 +1,18 @@
 # Build artifacts
 build/
-.japl-build/
 *.wasm
 *.wat
+!japl-runtime/tests/*.wasm
 
 # Dependencies
 node_modules/
-dist/
+compiler/ts/dist/
+
+# Rust
+japl-runtime/target/
+
+# Binary
+bin/japl-compiler
 
 # OS
 .DS_Store
@@ -15,7 +21,5 @@ dist/
 .vscode/
 .idea/
 
-# Vercel
-.vercel/
-japl-runtime/target/
-bin/japl-compiler
+# Temp
+.japl-build/

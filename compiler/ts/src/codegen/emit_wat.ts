@@ -70,6 +70,12 @@ export class WatEmitter {
     'file_write':     { params: ['i32', 'i32', 'i32', 'i32'], result: 'i32' },
     'file_exists':    { params: ['i32', 'i32'], result: 'i32' },
     'print_bytes':    { params: ['i32', 'i32'], result: '' },
+    'char_at':        { params: ['i32', 'i32'], result: 'i32' },
+    'substring':      { params: ['i32', 'i32', 'i32'], result: 'i32' },
+    'string_index_of':{ params: ['i32', 'i32'], result: 'i32' },
+    'from_char_code': { params: ['i32'], result: 'i32' },
+    'str_length':     { params: ['i32'], result: 'i32' },
+    'string_eq':      { params: ['i32', 'i32'], result: 'i32' },
   };
 
   emit(module: IR.IrModule): string {
@@ -199,7 +205,7 @@ export class WatEmitter {
     }
 
     // Memory
-    this.line('(memory (export "memory") 1)');
+    this.line('(memory (export "memory") 16)');
     this.line('');
 
     // Build function table for call_indirect (higher-order functions)
@@ -965,7 +971,14 @@ export class WatEmitter {
         if (expr.op === '!') return 'i32';
         return this.inferExprType(expr.operand);
       }
-      case 'if': return this.inferExprType(expr.then);
+      case 'if': {
+        const thenType = this.inferExprType(expr.then);
+        const elseType = this.inferExprType(expr.else);
+        if (thenType === 'void' && elseType !== 'void') return elseType;
+        if (thenType !== 'void' && elseType === 'void') return thenType;
+        if (thenType === 'i64' || elseType === 'i64') return 'i64';
+        return thenType;
+      }
       case 'let': return this.inferExprType(expr.body);
       case 'app': return this.inferAppType(expr);
       case 'block': {
@@ -974,8 +987,15 @@ export class WatEmitter {
       }
       case 'construct': return 'i64'; // pointer as i64
       case 'match': {
-        if (expr.arms.length > 0) return this.inferExprType(expr.arms[0].body);
-        return 'i64';
+        if (expr.arms.length === 0) return 'i64';
+        // Use the widest type across all arms (i64 > i32 > void)
+        let matchType = this.inferExprType(expr.arms[0].body);
+        for (let i = 1; i < expr.arms.length; i++) {
+          const armType = this.inferExprType(expr.arms[i].body);
+          if (armType === 'i64' && matchType !== 'i64') matchType = 'i64';
+          else if (armType === 'i32' && matchType === 'void') matchType = 'i32';
+        }
+        return matchType;
       }
       case 'record': return 'i64'; // pointer as i64
       case 'field_access': return 'i64';
@@ -1208,7 +1228,28 @@ export class WatEmitter {
 
   private emitIf(expr: IR.IrExpr & { kind: 'if' }, isVoid: boolean): string[] {
     const lines: string[] = [];
-    const resultType = isVoid ? 'void' : this.inferExprType(expr.then);
+    // Determine result type from both branches — if then-branch diverges
+    // (e.g., tail_continue/br), use the else-branch type instead.
+    let resultType: string;
+    if (isVoid) {
+      resultType = 'void';
+    } else {
+      const thenType = this.inferExprType(expr.then);
+      const elseType = this.inferExprType(expr.else);
+      if (thenType === 'void' && elseType === 'void') {
+        // Both branches diverge (e.g., tail_continue) but we're in non-void context.
+        // Use i64 as the result type since divergent branches are valid for any type.
+        resultType = 'i64';
+      } else if (thenType === 'void' && elseType !== 'void') {
+        resultType = elseType;
+      } else if (thenType !== 'void' && elseType === 'void') {
+        resultType = thenType;
+      } else if (thenType === 'i64' || elseType === 'i64') {
+        resultType = 'i64';
+      } else {
+        resultType = thenType;
+      }
+    }
 
     // Emit condition
     lines.push(...this.emitCondition(expr.cond));
@@ -1223,11 +1264,25 @@ export class WatEmitter {
     for (const l of thenLines) {
       lines.push('    ' + l);
     }
+    // Widen i32 then-branch to i64 if needed
+    if (!isVoid && resultType === 'i64') {
+      const thenType = this.inferExprType(expr.then);
+      if (thenType === 'i32') {
+        lines.push('    i64.extend_i32_u');
+      }
+    }
     lines.push('  )');
     lines.push('  (else');
     const elseLines = this.emitExpr(expr.else, isVoid);
     for (const l of elseLines) {
       lines.push('    ' + l);
+    }
+    // Widen i32 else-branch to i64 if needed
+    if (!isVoid && resultType === 'i64') {
+      const elseType = this.inferExprType(expr.else);
+      if (elseType === 'i32') {
+        lines.push('    i64.extend_i32_u');
+      }
     }
     lines.push('  )');
     lines.push(')');
@@ -1518,11 +1573,30 @@ export class WatEmitter {
     lines.push('i32.wrap_i64');
     lines.push(`local.set $${matchLocal}`);
 
-    // Determine result type from first arm body
-    let resultType = expr.arms.length > 0 ? this.inferExprType(expr.arms[0].body) : 'i64';
-    // If the match is in void context or the arms are void, treat as void
-    if (isVoid || resultType === 'void') {
+    // Determine result type from match arms — use the widest type across all arms.
+    // If any arm returns i64 (e.g., string_concat), use i64 so all arms are consistent.
+    let resultType = 'void';
+    if (expr.arms.length > 0) {
+      resultType = this.inferExprType(expr.arms[0].body);
+      for (let i = 1; i < expr.arms.length; i++) {
+        const armType = this.inferExprType(expr.arms[i].body);
+        if (armType === 'i64' && resultType === 'i32') {
+          resultType = 'i64';
+        } else if (armType === 'i32' && resultType === 'void') {
+          resultType = 'i32';
+        } else if (armType === 'i64' && resultType === 'void') {
+          resultType = 'i64';
+        }
+      }
+    }
+    // If the match is in void context, treat as void.
+    // If all arms are void but we're NOT in void context, all arms diverge
+    // (e.g., tail_continue). Use i64 as the result type since divergent
+    // branches are valid for any type in WASM.
+    if (isVoid) {
       resultType = 'void';
+    } else if (resultType === 'void') {
+      resultType = 'i64';
     }
 
     // Generate nested if/else chain
@@ -1542,9 +1616,21 @@ export class WatEmitter {
     const arm = arms[index];
     const pat = arm.pattern;
 
+    // Helper: widen i32 body result to i64 if the match result type is i64
+    const maybeWiden = (bodyExpr: IR.IrExpr, lines: string[]): void => {
+      if (!isVoid && resultType === 'i64') {
+        const bodyType = this.inferExprType(bodyExpr);
+        if (bodyType === 'i32') {
+          lines.push('i64.extend_i32_u');
+        }
+      }
+    };
+
     // If this is a wildcard or variable pattern (catch-all), just emit the body
     if (pat.kind === 'pwildcard') {
-      return this.emitExpr(arm.body, isVoid);
+      const lines = this.emitExpr(arm.body, isVoid);
+      maybeWiden(arm.body, lines);
+      return lines;
     }
     if (pat.kind === 'pvar') {
       const lines: string[] = [];
@@ -1553,6 +1639,7 @@ export class WatEmitter {
       lines.push('i64.extend_i32_u');
       lines.push(`local.set $${pat.name}`);
       lines.push(...this.emitExpr(arm.body, isVoid));
+      maybeWiden(arm.body, lines);
       return lines;
     }
     if (pat.kind === 'pliteral') {
@@ -1571,6 +1658,9 @@ export class WatEmitter {
       lines.push('  (then');
       const bodyLines = this.emitExpr(arm.body, isVoid);
       for (const l of bodyLines) lines.push('    ' + l);
+      if (!isVoid && resultType === 'i64' && this.inferExprType(arm.body) === 'i32') {
+        lines.push('    i64.extend_i32_u');
+      }
       lines.push('  )');
       lines.push('  (else');
       const restLines = this.emitMatchArms(arms, matchLocal, resultType, index + 1);
@@ -1593,6 +1683,10 @@ export class WatEmitter {
       lines.push(`i32.const ${info.tagId}`);
       lines.push('i32.eq');
 
+      // Determine if this arm's body diverges (tail_continue inside)
+      const armBodyType = this.inferExprType(arm.body);
+      const armDiverges = armBodyType === 'void' && !isVoid;
+
       if (isVoid) {
         lines.push('(if');
       } else {
@@ -1604,12 +1698,14 @@ export class WatEmitter {
       const bindLines = this.emitPatternBindings(pat, matchLocal);
       for (const l of bindLines) lines.push('    ' + l);
 
+      // If the arm body diverges but we need a result type, emit the body
+      // but mark it as needing the outer result type so inner if/match
+      // statements also use the correct type annotation.
       const bodyLines = this.emitExpr(arm.body, isVoid);
       for (const l of bodyLines) lines.push('    ' + l);
       // Widen i32 body to match i64 result type if needed
       if (!isVoid && resultType === 'i64') {
-        const bodyType = this.inferExprType(arm.body);
-        if (bodyType === 'i32') {
+        if (armBodyType === 'i32') {
           lines.push('    i64.extend_i32_u');
         }
       }

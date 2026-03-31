@@ -150,20 +150,26 @@ export class TypeEnv {
 
     // IO builtins — println, print have IO effect
     const ioEffect = { effects: new Set<Effect>(["io" as Effect]), open: false };
-    const anyVar = freshVar();
-    this.bind("println", monotype({
-      kind: "fn",
-      params: [anyVar],
-      ret: UNIT,
-      effects: ioEffect,
-    }));
-    const anyVar2 = freshVar();
-    this.bind("print", monotype({
-      kind: "fn",
-      params: [anyVar2],
-      ret: UNIT,
-      effects: ioEffect,
-    }));
+    const printlnVar = freshVar();
+    this.bind("println", {
+      vars: [printlnVar.kind === "var" ? printlnVar.id : 0],
+      type: {
+        kind: "fn",
+        params: [printlnVar],
+        ret: UNIT,
+        effects: ioEffect,
+      },
+    });
+    const printVar = freshVar();
+    this.bind("print", {
+      vars: [printVar.kind === "var" ? printVar.id : 0],
+      type: {
+        kind: "fn",
+        params: [printVar],
+        ret: UNIT,
+        effects: ioEffect,
+      },
+    });
 
     // LLM builtin — llm(prompt: String) -> String with LLM effect
     const llmEffect = { effects: new Set<Effect>(["llm" as Effect]), open: false };
@@ -176,12 +182,15 @@ export class TypeEnv {
 
     // Pure builtins — show, int_to_string, string_length
     const showVar = freshVar();
-    this.bind("show", monotype({
-      kind: "fn",
-      params: [showVar],
-      ret: STRING,
-      effects: PURE,
-    }));
+    this.bind("show", {
+      vars: [showVar.kind === "var" ? showVar.id : 0],
+      type: {
+        kind: "fn",
+        params: [showVar],
+        ret: STRING,
+        effects: PURE,
+      },
+    });
     this.bind("int_to_string", monotype({
       kind: "fn",
       params: [INT],
