@@ -1,3 +1,5 @@
+foreign "japl" fn str_starts_with(s: String, prefix: String) -> Int
+
 pub fn ask(prompt: String) -> String {
   let result = llm(prompt)
   result
@@ -19,6 +21,22 @@ pub fn summarize(text: String) -> String {
   let full = "Summarize the following text concisely:\n" <> text
   let result = llm(full)
   result
+}
+
+pub fn is_valid_json_response(response: String) -> Int {
+  if str_starts_with(response, "{") == 1 {
+    1
+  } else {
+    if str_starts_with(response, "[") == 1 {
+      1
+    } else {
+      0
+    }
+  }
+}
+
+pub fn ask_structured(prompt: String, schema: String) -> String {
+  llm_structured(prompt, schema)
 }
 
 fn main() {

@@ -365,7 +365,14 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         let type_tag = read_japl_string(&mut caller, type_ptr);
         let full_prompt = format!("{}\nRespond as JSON matching this schema: {}", prompt, type_tag);
         let response = call_llm_api(&full_prompt);
-        write_japl_string(&mut caller, &response)
+        let trimmed = response.trim();
+        let validated = if trimmed.starts_with('{') || trimmed.starts_with('[') {
+            response
+        } else {
+            eprintln!("[japl::llm_structured_str] validation failed: response is not valid JSON structure");
+            format!(r#"{{"error":"invalid_structured_response","raw":"{}"}}"#, response.replace('\\', "\\\\").replace('"', "\\\""))
+        };
+        write_japl_string(&mut caller, &validated)
     })?;
 
     // japl.llm_structured(prompt_ptr, prompt_len, type_ptr, type_len) -> (result_ptr, result_len)
@@ -397,6 +404,14 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         // Append JSON schema instruction to the prompt
         let full_prompt = format!("{}\nRespond as JSON matching this schema: {}", prompt, type_tag);
         let response = call_llm_api(&full_prompt);
+        let trimmed = response.trim();
+        let validated = if trimmed.starts_with('{') || trimmed.starts_with('[') {
+            response
+        } else {
+            eprintln!("[japl::llm_structured] validation failed: response is not valid JSON structure");
+            format!(r#"{{"error":"invalid_structured_response","raw":"{}"}}"#, response.replace('\\', "\\\\").replace('"', "\\\""))
+        };
+        let response = validated;
 
         // Write response into WASM memory via heap_ptr
         let mem = match get_memory(&mut caller, "japl::llm_structured") {
