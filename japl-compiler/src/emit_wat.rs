@@ -101,12 +101,8 @@ impl WatEmitter {
         // Memory - start with 10 pages (640KB), growable to 65536 pages (4GB)
         self.line("(memory (export \"memory\") 10 65536)");
 
-        // Globals
-        if self.module.uses_processes {
-            self.line(&format!("(global $heap_ptr (export \"heap_ptr\") (mut i32) (i32.const {}))", self.module.heap_start));
-        } else {
-            self.line(&format!("(global $heap_ptr (mut i32) (i32.const {}))", self.module.heap_start));
-        }
+        // Globals — always export heap_ptr so foreign string functions can allocate
+        self.line(&format!("(global $heap_ptr (export \"heap_ptr\") (mut i32) (i32.const {}))", self.module.heap_start));
 
         // Data segments for strings
         let data_lines: Vec<String> = self.module.string_data.iter().map(|sd| {

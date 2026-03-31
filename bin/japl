@@ -3,9 +3,11 @@ set -e
 JAPL_HOME="$(cd "$(dirname "$0")/.." && pwd)"
 COMPILER="$JAPL_HOME/japl-compiler/target/release/japl-compiler"
 RUNTIME="$JAPL_HOME/japl-runtime/target/release/japl-runtime"
+SERVE="$JAPL_HOME/japl-serve/target/release/japl-serve"
 
 [ -f "$COMPILER" ] || COMPILER="$JAPL_HOME/japl-compiler/target/debug/japl-compiler"
 [ -f "$RUNTIME" ] || RUNTIME="$JAPL_HOME/japl-runtime/target/debug/japl-runtime"
+[ -f "$SERVE" ] || SERVE="$JAPL_HOME/japl-serve/target/debug/japl-serve"
 
 case "$1" in
   build)
@@ -100,6 +102,29 @@ case "$1" in
       echo "Create one to define deployment topology, or use: wash dev"
     fi
     ;;
+  serve)
+    shift
+    JAPL_FILE=""
+    PORT="8080"
+    for arg in "$@"; do
+      case "$arg" in
+        --port=*) PORT="${arg#--port=}" ;;
+        --port) shift; PORT="$1" ;;
+        *.japl) JAPL_FILE="$arg" ;;
+      esac
+    done
+    [ -z "$JAPL_FILE" ] && echo "Usage: japl serve <file.japl> [--port 8080]" && exit 1
+    TMPDIR=$(mktemp -d)
+    trap "rm -rf $TMPDIR" EXIT
+    BASENAME=$(basename "$JAPL_FILE" .japl)
+    "$COMPILER" build "$JAPL_FILE" --out "$TMPDIR"
+    if [ -f "$SERVE" ]; then
+      "$SERVE" "$TMPDIR/$BASENAME.wasm" --port "$PORT"
+    else
+      echo "japl-serve not built. Run: cargo build --release --manifest-path japl-serve/Cargo.toml"
+      exit 1
+    fi
+    ;;
   version) echo "japl 1.0.0" ;;
-  *) echo "JAPL — japl build|run|check|fmt|new|deploy|version <file.japl>" ;;
+  *) echo "JAPL — japl build|run|serve|check|fmt|new|deploy|version <file.japl>" ;;
 esac

@@ -1,0 +1,181 @@
+// JAPL HTTP Key-Value Store
+// Serves a KV store over HTTP via handle_request.
+// When compiled, the compiler emits a __handle_http WASM export.
+//
+// Routes:
+//   GET /health        -> "ok"
+//   GET /              -> "JAPL KV Store"
+//   GET /get/KEY       -> value or "NOT_FOUND"
+//   GET /put/KEY/VALUE -> "OK"
+//   GET /del/KEY       -> "DELETED" or "NOT_FOUND"
+//   GET /size          -> count of entries
+//   GET /keys          -> all keys
+
+foreign "japl" fn char_at(s: String, idx: Int) -> Int
+foreign "japl" fn substring(s: String, start: Int, end: Int) -> String
+foreign "japl" fn str_length(s: String) -> Int
+foreign "japl" fn string_eq(a: String, b: String) -> Int
+
+// ── KV Store data structure ────────────────────────────────────────
+
+type Entry = | KV(String, String, Entry) | Empty
+
+fn store_put(store: Entry, key: String, val: String) -> Entry {
+  KV(key, val, store)
+}
+
+fn store_get(store: Entry, key: String) -> String {
+  match store {
+    Empty => "NOT_FOUND",
+    KV(k, v, rest) => {
+      if string_eq(k, key) == 1 { v }
+      else { store_get(rest, key) }
+    }
+  }
+}
+
+fn store_del(store: Entry, key: String) -> Entry {
+  match store {
+    Empty => Empty,
+    KV(k, v, rest) => {
+      if string_eq(k, key) == 1 { rest }
+      else { KV(k, v, store_del(rest, key)) }
+    }
+  }
+}
+
+fn store_contains(store: Entry, key: String) -> Int {
+  match store {
+    Empty => 0,
+    KV(k, v, rest) => {
+      if string_eq(k, key) == 1 { 1 }
+      else { store_contains(rest, key) }
+    }
+  }
+}
+
+fn store_size(store: Entry) -> Int {
+  match store {
+    Empty => 0,
+    KV(k, v, rest) => 1 + store_size(rest)
+  }
+}
+
+fn store_keys(store: Entry) -> String {
+  match store {
+    Empty => "",
+    KV(k, v, rest) => {
+      let rest_keys = store_keys(rest)
+      if string_eq(rest_keys, "") == 1 { k }
+      else { k <> "," <> rest_keys }
+    }
+  }
+}
+
+// ── String helpers ─────────────────────────────────────────────────
+
+fn starts_with(s: String, prefix: String) -> Int {
+  let slen = str_length(s)
+  let plen = str_length(prefix)
+  if plen > slen { 0 }
+  else {
+    let sub = substring(s, 0, plen)
+    string_eq(sub, prefix)
+  }
+}
+
+fn extract_after(s: String, prefix_len: Int) -> String {
+  let slen = str_length(s)
+  substring(s, prefix_len, slen)
+}
+
+// Find the index of '/' (ASCII 47) starting from pos
+fn find_slash_from(s: String, pos: Int) -> Int {
+  let slen = str_length(s)
+  if pos >= slen { 0 - 1 }
+  else {
+    let c = char_at(s, pos)
+    if c == 47 { pos }
+    else { find_slash_from(s, pos + 1) }
+  }
+}
+
+// ── Request handler ────────────────────────────────────────────────
+
+fn handle_kv_request(path: String, store: Entry) -> String {
+  if string_eq(path, "/health") == 1 { "ok" }
+  else {
+    if string_eq(path, "/") == 1 { "JAPL KV Store" }
+    else {
+      if string_eq(path, "/size") == 1 { show(store_size(store)) }
+      else {
+        if string_eq(path, "/keys") == 1 { store_keys(store) }
+        else {
+          if starts_with(path, "/get/") == 1 {
+            let key = extract_after(path, 5)
+            store_get(store, key)
+          }
+          else {
+            if starts_with(path, "/del/") == 1 {
+              let key = extract_after(path, 5)
+              if store_contains(store, key) == 1 { "DELETED" }
+              else { "NOT_FOUND" }
+            }
+            else {
+              if starts_with(path, "/put/") == 1 {
+                let rest = extract_after(path, 5)
+                let slash = find_slash_from(rest, 0)
+                if slash == (0 - 1) { "ERROR: missing value" }
+                else { "OK" }
+              }
+              else { "UNKNOWN_ROUTE" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The handle_request function triggers __handle_http WASM export
+fn handle_request(method: String, path: String, body: String) -> String {
+  handle_kv_request(path, Empty)
+}
+
+// ── Main: test harness ─────────────────────────────────────────────
+
+fn main() {
+  let _ = println("=== JAPL KV Store Test ===")
+  let _ = println("")
+
+  let _ = println("GET /health -> " <> handle_request("GET", "/health", ""))
+  let _ = println("GET / -> " <> handle_request("GET", "/", ""))
+  let _ = println("GET /put/name/JAPL -> " <> handle_request("GET", "/put/name/JAPL", ""))
+  let _ = println("GET /get/name -> " <> handle_request("GET", "/get/name", ""))
+  let _ = println("GET /size -> " <> handle_request("GET", "/size", ""))
+  let _ = println("GET /keys -> " <> handle_request("GET", "/keys", ""))
+  let _ = println("GET /del/name -> " <> handle_request("GET", "/del/name", ""))
+  let _ = println("GET /unknown -> " <> handle_request("GET", "/unknown", ""))
+
+  // Test with actual state: build a store and query it directly
+  let _ = println("")
+  let _ = println("=== Stateful KV Test (direct) ===")
+  let s0 = Empty
+  let s1 = store_put(s0, "name", "JAPL")
+  let s2 = store_put(s1, "version", "1.0")
+  let s3 = store_put(s2, "lang", "functional")
+
+  let _ = println("size -> " <> show(store_size(s3)))
+  let _ = println("get name -> " <> store_get(s3, "name"))
+  let _ = println("get version -> " <> store_get(s3, "version"))
+  let _ = println("get lang -> " <> store_get(s3, "lang"))
+  let _ = println("get missing -> " <> store_get(s3, "missing"))
+  let _ = println("keys -> " <> store_keys(s3))
+
+  let s4 = store_del(s3, "version")
+  let _ = println("del version, size -> " <> show(store_size(s4)))
+  let _ = println("get version -> " <> store_get(s4, "version"))
+
+  let _ = println("")
+  println("=== All tests passed ===")
+}

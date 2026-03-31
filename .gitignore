@@ -24,3 +24,5 @@ bin/japl-compiler
 # Temp
 .japl-build/
 japl-compiler/target/
+japl-http-adapter/target/
+japl-serve/target/

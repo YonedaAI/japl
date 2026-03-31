@@ -102,6 +102,35 @@ run_test("msgqueue", "apps/msgqueue/queue.japl", ["enqueued", "dequeued", "acked
 run_test("scheduler", "apps/scheduler/scheduler.japl", ["Assigning task", "Finished task", "completed (12/12)"], use_runtime=True, retries=3)
 run_test("genome_pipeline", "apps/genome/pipeline.japl", ["ProteinCoding", "Regulatory", "Structural", "NonCoding", "GC Content", "Pipeline Complete"], use_runtime=True, retries=3)
 
+print("\n--- HTTP Serving ---")
+JAPL_SERVE = os.path.join(JAPL_HOME, "japl-serve/target/release/japl-serve")
+if os.path.exists(JAPL_SERVE):
+    kv_wasm = "/tmp/kv_server.wasm"
+    r = subprocess.run([COMPILER, "build", os.path.join(JAPL_HOME, "apps/http-kv/kv_server.japl"), "--out", "/tmp"],
+                       capture_output=True, text=True)
+    if r.returncode == 0 and os.path.exists(kv_wasm):
+        import signal
+        srv = subprocess.Popen([JAPL_SERVE, kv_wasm, "--port", "18923"],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(2)
+        try:
+            for path, expected in [("/health", "ok"), ("/", "JAPL KV Store"), ("/put/x/1", "OK")]:
+                r = subprocess.run(["curl", "-s", f"http://127.0.0.1:18923{path}"],
+                                   capture_output=True, text=True, timeout=5)
+                if expected in r.stdout:
+                    print(f"  PASS http_serve GET {path}")
+                    PASS += 1
+                else:
+                    print(f"  FAIL http_serve GET {path}: expected '{expected}' in '{r.stdout}'")
+                    FAIL += 1
+        finally:
+            srv.terminate()
+            srv.wait()
+    else:
+        print("  SKIP http_serve (compile failed)")
+else:
+    print("  SKIP http_serve (japl-serve not built)")
+
 print("\n--- Type Checker ---")
 r = subprocess.run([COMPILER, "check",
                      os.path.join(JAPL_HOME, "japl-compiler/tests/type_error.japl")],
