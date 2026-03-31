@@ -1,5 +1,8 @@
 type Encoded = | IntVal(Int) | StrVal(String) | PairVal(Encoded, Encoded) | ListVal(Encoded, Encoded) | NilVal
 
+type DecodeResult = | DecodeOk(Int) | DecodeNone
+type DecodeStrResult = | DecodeStrOk(String) | DecodeStrNone
+
 pub fn encode_int(n: Int) -> Encoded {
   IntVal(n)
 }
@@ -12,23 +15,39 @@ pub fn encode_pair(a: Encoded, b: Encoded) -> Encoded {
   PairVal(a, b)
 }
 
-pub fn decode_int(e: Encoded) -> Int {
+pub fn decode_int(e: Encoded) -> DecodeResult {
   match e {
-    IntVal(n) => n,
-    StrVal(_) => 0,
-    PairVal(_, _) => 0,
-    ListVal(_, _) => 0,
-    NilVal => 0
+    IntVal(n) => DecodeOk(n),
+    StrVal(_) => DecodeNone,
+    PairVal(_, _) => DecodeNone,
+    ListVal(_, _) => DecodeNone,
+    NilVal => DecodeNone
   }
 }
 
-pub fn decode_str(e: Encoded) -> String {
+pub fn decode_str(e: Encoded) -> DecodeStrResult {
   match e {
-    IntVal(_) => "",
-    StrVal(s) => s,
-    PairVal(_, _) => "",
-    ListVal(_, _) => "",
-    NilVal => ""
+    IntVal(_) => DecodeStrNone,
+    StrVal(s) => DecodeStrOk(s),
+    PairVal(_, _) => DecodeStrNone,
+    ListVal(_, _) => DecodeStrNone,
+    NilVal => DecodeStrNone
+  }
+}
+
+// Convenience: decode_int with a fallback (for backwards compat)
+pub fn decode_int_or(e: Encoded, default_val: Int) -> Int {
+  match decode_int(e) {
+    DecodeOk(n) => n,
+    DecodeNone => default_val
+  }
+}
+
+// Convenience: decode_str with a fallback
+pub fn decode_str_or(e: Encoded, default_val: String) -> String {
+  match decode_str(e) {
+    DecodeStrOk(s) => s,
+    DecodeStrNone => default_val
   }
 }
 
@@ -46,11 +65,11 @@ fn main() {
   let a = encode_int(42)
   let b = encode_str("hello")
   let c = encode_pair(a, b)
-  println("encode_int(42)=" <> show(decode_int(a)))
-  println("encode_str=hello: " <> decode_str(b))
+  println("encode_int(42)=" <> show(decode_int_or(a, 0)))
+  println("encode_str=hello: " <> decode_str_or(b, ""))
   println("tag(IntVal)=" <> show(tag(a)))
   println("tag(StrVal)=" <> show(tag(b)))
   println("tag(PairVal)=" <> show(tag(c)))
-  println("roundtrip int: " <> show(decode_int(encode_int(99))))
-  println("roundtrip str: " <> decode_str(encode_str("world")))
+  println("roundtrip int: " <> show(decode_int_or(encode_int(99), 0)))
+  println("roundtrip str: " <> decode_str_or(encode_str("world"), ""))
 }

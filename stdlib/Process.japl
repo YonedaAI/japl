@@ -12,14 +12,14 @@ pub fn self_id() -> Int {
   self_pid()
 }
 
-pub fn send_msg(pid: Int, msg: Int) -> Int {
+// Use the builtin send(pid, msg) directly for typed messages.
+// This wrapper exists for Int-only payloads (e.g. raw signals).
+pub fn send_int(pid: Int, msg: Int) -> Unit {
   send(pid, msg)
-  1
 }
 
-pub fn sleep(ms: Int) -> Int {
+pub fn sleep(ms: Int) -> Unit {
   time_sleep(ms)
-  0
 }
 
 // Echo worker for demo

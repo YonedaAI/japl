@@ -1,5 +1,9 @@
+// Config module: environment-based configuration helpers.
+// NOTE: String-level env access requires ptr/len FFI bridging (see Env.japl).
+// These are stubs returning defaults until the string FFI is available.
+
 pub fn get(key: String) -> String {
-  "unknown"
+  ""
 }
 
 pub fn get_or(key: String, default_val: String) -> String {

@@ -92,7 +92,7 @@ run_test("stdlib/Json", "stdlib/Json.japl", ["Int:  42", "Bool: true", "Null: nu
 run_test("stdlib/Http", "stdlib/Http.japl", ["Method: GET", "Method: POST", "Status: 200 OK", "Status: 404 Not Found"])
 run_test("stdlib/Process", "stdlib/Process.japl", ["Process module loaded", "done"], use_runtime=True, retries=3)
 run_test("stdlib/Supervisor", "stdlib/Supervisor.japl", ["Supervisor module loaded", "done"], use_runtime=True, retries=3)
-run_test("stdlib/Registry", "stdlib/Registry.japl", ["Registry module loaded", "Registry size: 3", "Lookup 1: 100", "done"])
+run_test("stdlib/Registry", "stdlib/Registry.japl", ["Registry module loaded", "Registry size: 3", "Lookup 1: 100", "After overwrite, Lookup 2: 999", "After overwrite, size: 3", "done"])
 compile_only_test("stdlib/Net", "stdlib/Net.japl")
 run_test("stdlib/Map", "stdlib/Map.japl", ["Map size: 3", "Get 1: 100", "Get 2: 200", "Contains 2: 1", "Contains 5: 0"])
 run_test("stdlib/Set", "stdlib/Set.japl", ["Set size: 3", "Contains 1: 1", "Contains 2: 1", "Contains 5: 0", "Union size: 4"])

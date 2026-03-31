@@ -1,5 +1,6 @@
 // Registry: a simple name->pid registry using linked list
 // Names are mapped to integer keys via a simple hash
+// Duplicate registrations overwrite the previous binding.
 
 type RegEntry = | Entry(Int, Int, RegEntry) | RegEmpty
 
@@ -8,9 +9,24 @@ pub fn reg_new() -> RegEntry {
   RegEmpty
 }
 
-// Register a name (as Int key) to a pid
+// Remove a name from the registry
+pub fn reg_remove(r: RegEntry, name: Int) -> RegEntry {
+  match r {
+    RegEmpty => RegEmpty,
+    Entry(k, v, rest) =>
+      if k == name { rest }
+      else {
+        let tail = reg_remove(rest, name)
+        Entry(k, v, tail)
+      }
+  }
+}
+
+// Register a name (as Int key) to a pid.
+// If name already exists, removes the old entry first (overwrite semantics).
 pub fn reg_put(r: RegEntry, name: Int, pid: Int) -> RegEntry {
-  Entry(name, pid, r)
+  let cleaned = reg_remove(r, name)
+  Entry(name, pid, cleaned)
 }
 
 // Lookup a name, returns pid or -1 if not found
@@ -53,5 +69,9 @@ fn main() {
   println("Lookup 99: " <> show(reg_get(r, 99)))
   println("Contains 2: " <> show(reg_contains(r, 2)))
   println("Contains 5: " <> show(reg_contains(r, 5)))
+  // Test overwrite: re-register name 2 with new pid
+  let r = reg_put(r, 2, 999)
+  println("After overwrite, Lookup 2: " <> show(reg_get(r, 2)))
+  println("After overwrite, size: " <> show(reg_size(r)))
   println("done")
 }
