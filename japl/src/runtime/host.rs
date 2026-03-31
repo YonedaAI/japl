@@ -268,6 +268,21 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         active_process_count() as i64
     })?;
 
+    // japl.is_process_alive(pid: i64) -> i64
+    // Returns 1 if the process with the given PID is still alive, 0 otherwise.
+    linker.func_wrap("japl", "is_process_alive", |caller: Caller<'_, ProcessState>, pid: i64| -> i64 {
+        let target_pid = pid as u64;
+        let (reply_tx, reply_rx) = mpsc::channel();
+        let _ = caller.data().scheduler_tx.send(SchedulerCommand::IsAlive {
+            target_pid,
+            reply: reply_tx,
+        });
+        match reply_rx.recv() {
+            Ok(alive) => if alive { 1 } else { 0 },
+            Err(_) => 0,
+        }
+    })?;
+
     // japl.mailbox_size(pid: i64) -> i64
     // Returns the current mailbox depth for the given process.
     // If pid == -1, returns the calling process's own mailbox size.

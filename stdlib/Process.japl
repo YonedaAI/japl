@@ -1,5 +1,7 @@
 foreign "japl" fn time_sleep(ms: Int)
 foreign "japl" fn mailbox_size(pid: Int) -> Int
+foreign "japl" fn process_count() -> Int
+foreign "japl" fn is_process_alive(pid: Int) -> Int
 
 type ProcMsg = | Ping(Int)
 
@@ -48,6 +50,16 @@ pub fn pending_messages(pid: Int) -> Int {
   mailbox_size(pid)
 }
 
+// Returns the number of currently alive processes.
+pub fn alive_count() -> Int {
+  process_count()
+}
+
+// Returns 1 if the process with the given pid is alive, 0 otherwise.
+pub fn is_alive(pid: Int) -> Int {
+  is_process_alive(pid)
+}
+
 // Echo worker for demo
 
 fn echo_worker() {
@@ -69,5 +81,9 @@ fn main() {
   time_sleep(50)
   let size = pending_messages(self_pid())
   println("own mailbox: " <> show(size))
+  let count = alive_count()
+  println("alive: " <> show(count))
+  let w_alive = is_alive(w)
+  println("worker alive: " <> show(w_alive))
   println("done")
 }
