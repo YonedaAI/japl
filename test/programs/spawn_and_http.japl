@@ -1,0 +1,13 @@
+fn handle_request(method: String, path: String, body: String) -> String {
+  "HTTP 200 OK: " <> method <> " " <> path
+}
+
+fn worker() {
+  println("worker started")
+}
+
+fn main() {
+  let pid = spawn(fn() { worker() })
+  println("spawned: " <> show(pid))
+  println(handle_request("GET", "/hello", ""))
+}
