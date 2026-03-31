@@ -1,0 +1,10 @@
+package japl:app@0.1.0;
+
+interface handler {
+    /// Handle an HTTP request. Returns response body.
+    handle-http: func(method: string, path: string, body: string) -> string;
+}
+
+world http-app {
+    export handler;
+}

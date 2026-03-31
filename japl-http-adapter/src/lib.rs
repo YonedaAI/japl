@@ -63,11 +63,8 @@ impl exports::wasi::http::incoming_handler::Guest for JaplHttpAdapter {
             Err(_) => String::new(),
         };
 
-        // Build response text
-        let response_body = format!(
-            "JAPL HTTP Adapter\n\nMethod: {}\nPath: {}\nBody length: {}\n",
-            method, path, body.len()
-        );
+        // Call the JAPL app handler
+        let response_body = japl::app::handler::handle_http(method, &path, &body);
 
         // Build HTTP response
         let headers = Fields::new();

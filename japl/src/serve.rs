@@ -1,6 +1,18 @@
 use std::io::Write;
 use wasmtime::*;
 
+/// Get memory from a Caller, trying "memory" first then "cm32p2_memory" (canonical ABI name).
+fn get_caller_memory<T>(caller: &mut Caller<'_, T>) -> Option<Memory> {
+    caller.get_export("memory").and_then(|e| e.into_memory())
+        .or_else(|| caller.get_export("cm32p2_memory").and_then(|e| e.into_memory()))
+}
+
+/// Get memory from an Instance, trying "memory" first then "cm32p2_memory".
+fn get_instance_memory(store: &mut Store<()>, instance: &Instance) -> Option<Memory> {
+    instance.get_memory(&mut *store, "memory")
+        .or_else(|| instance.get_memory(&mut *store, "cm32p2_memory"))
+}
+
 /// Run the JAPL HTTP server for a compiled .wasm module.
 pub fn serve(wasm_path: &str, port: u16) -> Result<(), anyhow::Error> {
     let engine = Engine::default();
@@ -61,7 +73,7 @@ pub fn serve(wasm_path: &str, port: u16) -> Result<(), anyhow::Error> {
 
 /// Read a string from WASM memory given a raw (ptr, len) pair.
 fn read_string_from_wasm(store: &mut Store<()>, instance: &Instance, ptr: i32, len: i32) -> wasmtime::Result<String> {
-    let memory = instance.get_memory(&mut *store, "memory")
+    let memory = get_instance_memory(store, instance)
         .ok_or_else(|| Error::msg("No memory export"))?;
     let data = memory.data(&store);
     let start = ptr as usize;
@@ -82,7 +94,7 @@ fn handle_wasm_request(
     let handle_http = instance
         .get_typed_func::<(i32, i32, i32, i32, i32, i32), (i32, i32)>(&mut *store, "__handle_http")?;
 
-    let memory = instance.get_memory(&mut *store, "memory")
+    let memory = get_instance_memory(store, instance)
         .ok_or_else(|| Error::msg("No memory export"))?;
     let heap_global = instance.get_global(&mut *store, "heap_ptr")
         .ok_or_else(|| Error::msg("No heap_ptr export"))?;
@@ -126,7 +138,7 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
     // wasi_snapshot_preview1.fd_write -- minimal implementation for println
     linker.func_wrap("wasi_snapshot_preview1", "fd_write",
         |mut caller: Caller<'_, ()>, fd: i32, iovs_ptr: i32, iovs_len: i32, nwritten_ptr: i32| -> i32 {
-            let memory = match caller.get_export("memory").and_then(|e| e.into_memory()) {
+            let memory = match get_caller_memory(&mut caller) {
                 Some(m) => m,
                 None => return -1,
             };
@@ -163,7 +175,7 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
 
     // japl.println(ptr, len)
     linker.func_wrap("japl", "println", |mut caller: Caller<'_, ()>, ptr: i32, len: i32| {
-        let mem = caller.get_export("memory").and_then(|e| e.into_memory());
+        let mem = get_caller_memory(&mut caller);
         if let Some(mem) = mem {
             let data = mem.data(&caller);
             let start = ptr as usize;
@@ -179,7 +191,7 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
 
     // String manipulation functions (fully implemented)
     linker.func_wrap("japl", "char_at", |mut caller: Caller<'_, ()>, str_ptr: i32, index: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = get_caller_memory(&mut caller).unwrap();
         let data = memory.data(&caller);
         let ptr = str_ptr as usize;
         let len = u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as usize;
@@ -189,7 +201,7 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
     })?;
 
     linker.func_wrap("japl", "substring", |mut caller: Caller<'_, ()>, str_ptr: i32, start: i32, end: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = get_caller_memory(&mut caller).unwrap();
         let heap_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
         let data = memory.data(&caller);
         let ptr = str_ptr as usize;
@@ -213,7 +225,7 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
     })?;
 
     linker.func_wrap("japl", "string_index_of", |mut caller: Caller<'_, ()>, hay_ptr: i32, needle_ptr: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = get_caller_memory(&mut caller).unwrap();
         let data = memory.data(&caller);
         let h = hay_ptr as usize;
         let h_len = u32::from_le_bytes(data[h..h+4].try_into().unwrap()) as usize;
@@ -232,7 +244,7 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
     })?;
 
     linker.func_wrap("japl", "from_char_code", |mut caller: Caller<'_, ()>, code: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = get_caller_memory(&mut caller).unwrap();
         let heap_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
         let heap_ptr = heap_global.get(&mut caller).i32().unwrap() as usize;
         let mem = memory.data_mut(&mut caller);
@@ -244,14 +256,14 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
     })?;
 
     linker.func_wrap("japl", "str_length", |mut caller: Caller<'_, ()>, str_ptr: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = get_caller_memory(&mut caller).unwrap();
         let data = memory.data(&caller);
         let ptr = str_ptr as usize;
         u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as i32
     })?;
 
     linker.func_wrap("japl", "string_eq", |mut caller: Caller<'_, ()>, a_ptr: i32, b_ptr: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = get_caller_memory(&mut caller).unwrap();
         let data = memory.data(&caller);
         let a = a_ptr as usize;
         let b = b_ptr as usize;
@@ -262,7 +274,7 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
     })?;
 
     linker.func_wrap("japl", "print_bytes", |mut caller: Caller<'_, ()>, ptr: i32, len: i32| {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = get_caller_memory(&mut caller).unwrap();
         let data = &memory.data(&caller)[ptr as usize..(ptr + len) as usize];
         std::io::stdout().write_all(data).ok();
         std::io::stdout().flush().ok();

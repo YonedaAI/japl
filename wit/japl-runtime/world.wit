@@ -1,0 +1,28 @@
+package japl:runtime@0.1.0;
+
+interface processes {
+    /// Spawn a new process. Returns the process ID.
+    spawn: func(closure-data: list<u8>) -> u64;
+
+    /// Send a message to a process.
+    send: func(pid: u64, message: list<u8>);
+
+    /// Receive a message (blocks until one arrives).
+    receive: func() -> list<u8>;
+
+    /// Get the current process ID.
+    self-pid: func() -> u64;
+}
+
+interface logging {
+    /// Print a line to stdout.
+    println: func(message: string);
+}
+
+world japl-component {
+    import processes;
+    import logging;
+    import wasi:http/incoming-handler@0.2.3;
+
+    export wasi:http/incoming-handler@0.2.3;
+}

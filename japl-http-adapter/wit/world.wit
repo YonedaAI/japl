@@ -2,4 +2,5 @@ package japl:http-adapter;
 
 world adapter {
     include wasi:http/proxy@0.2.3;
+    import japl:app/handler@0.1.0;
 }

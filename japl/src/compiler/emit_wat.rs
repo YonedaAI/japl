@@ -1,6 +1,11 @@
 use std::collections::HashMap;
 use super::ir::*;
 
+/// String functions that are implemented as local WAT builtins (not host imports)
+const STRING_BUILTINS: &[&str] = &[
+    "char_at", "substring", "str_length", "string_eq", "from_char_code", "string_index_of",
+];
+
 pub struct WatEmitter {
     output: String,
     indent: usize,
@@ -13,6 +18,8 @@ pub struct WatEmitter {
     foreign_sigs: HashMap<String, IrForeignImport>,
     // Track which user functions return a value
     fn_has_return: HashMap<String, bool>,
+    // Which string builtins are actually used (referenced as foreign imports)
+    used_string_builtins: Vec<String>,
 }
 
 impl WatEmitter {
@@ -26,13 +33,24 @@ impl WatEmitter {
         }
 
         let mut foreign_sigs = HashMap::new();
+        let mut used_string_builtins = Vec::new();
         for fi in &module.foreign_imports {
-            foreign_sigs.insert(fi.name.clone(), fi.clone());
+            if STRING_BUILTINS.contains(&fi.name.as_str()) {
+                // Track that this builtin is used, but don't add to foreign_sigs
+                // so call sites won't do i32 conversion (our builtins use i64)
+                used_string_builtins.push(fi.name.clone());
+            } else {
+                foreign_sigs.insert(fi.name.clone(), fi.clone());
+            }
         }
 
         let mut fn_has_return = HashMap::new();
         for f in &module.functions {
             fn_has_return.insert(f.name.clone(), f.has_return);
+        }
+        // String builtins all return a value
+        for name in &used_string_builtins {
+            fn_has_return.insert(name.clone(), true);
         }
 
         WatEmitter {
@@ -43,6 +61,7 @@ impl WatEmitter {
             scratch_slot: 0,
             foreign_sigs,
             fn_has_return,
+            used_string_builtins,
         }
     }
 
@@ -78,8 +97,10 @@ impl WatEmitter {
         // WASI fd_write import (imports must come first)
         self.line("(import \"wasi_snapshot_preview1\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))");
 
-        // Foreign imports
-        for fi in self.module.foreign_imports.clone() {
+        // Foreign imports (skip string builtins — they're emitted as local functions)
+        for fi in self.module.foreign_imports.clone().into_iter()
+            .filter(|fi| !STRING_BUILTINS.contains(&fi.name.as_str()))
+        {
             let params: String = fi.param_types.iter().map(|t| {
                 match t {
                     WasmType::I32 => " (param i32)",
@@ -98,7 +119,13 @@ impl WatEmitter {
             ));
         }
 
+        // Check if this module has an HTTP handler (needed for memory export decision)
+        let has_http_handler = self.module.functions.iter().any(|f| {
+            f.name == "handle_request" && f.params.len() == 3 && f.has_return
+        });
+
         // Memory - start with 10 pages (640KB), growable to 65536 pages (4GB)
+        // Export as "memory" for standalone wasmtime / japl serve / japl run
         self.line("(memory (export \"memory\") 10 65536)");
 
         // Globals — always export heap_ptr so foreign string functions can allocate
@@ -148,6 +175,9 @@ impl WatEmitter {
         // Builtin: $alloc (bump allocator)
         self.emit_alloc();
 
+        // Builtin: string functions (char_at, substring, etc.)
+        self.emit_string_builtins();
+
         // Builtin: $println
         self.emit_println();
 
@@ -196,11 +226,9 @@ impl WatEmitter {
 
         // __handle_http export for wasmCloud HTTP handler
         // Emitted when the user defines: fn handle_request(method, path, body) -> String
-        let has_http_handler = functions.iter().any(|f| {
-            f.name == "handle_request" && f.params.len() == 3 && f.has_return
-        });
         if has_http_handler {
             self.emit_http_handler();
+            self.emit_canonical_abi_handler();
         }
 
         // Constants as globals
@@ -254,6 +282,126 @@ impl WatEmitter {
         self.line("local.get $new_heap");
         self.line("global.set $heap_ptr");
         self.line("local.get $ptr");
+        self.pop(")");
+    }
+
+    fn emit_string_builtins(&mut self) {
+        let builtins = self.used_string_builtins.clone();
+        for name in &builtins {
+            match name.as_str() {
+                "char_at" => self.emit_builtin_char_at(),
+                "str_length" => self.emit_builtin_str_length(),
+                "string_eq" => self.emit_builtin_string_eq(),
+                "substring" => self.emit_builtin_substring(),
+                "from_char_code" => self.emit_builtin_from_char_code(),
+                "string_index_of" => self.emit_builtin_string_index_of(),
+                _ => {}
+            }
+        }
+    }
+
+    fn emit_builtin_char_at(&mut self) {
+        self.push("(func $char_at (param $str i64) (param $idx i64) (result i64)");
+        self.line("(i64.extend_i32_u");
+        self.line("  (i32.load8_u");
+        self.line("    (i32.add");
+        self.line("      (i32.add");
+        self.line("        (i32.wrap_i64 (local.get $str))");
+        self.line("        (i32.const 4))");
+        self.line("      (i32.wrap_i64 (local.get $idx)))))");
+        self.pop(")");
+    }
+
+    fn emit_builtin_str_length(&mut self) {
+        self.push("(func $str_length (param $str i64) (result i64)");
+        self.line("(i64.extend_i32_u");
+        self.line("  (i32.load (i32.wrap_i64 (local.get $str))))");
+        self.pop(")");
+    }
+
+    fn emit_builtin_string_eq(&mut self) {
+        self.push("(func $string_eq (param $a i64) (param $b i64) (result i64)");
+        self.line("(local $a_len i32) (local $b_len i32) (local $i i32)");
+        self.line("(local.set $a_len (i32.load (i32.wrap_i64 (local.get $a))))");
+        self.line("(local.set $b_len (i32.load (i32.wrap_i64 (local.get $b))))");
+        self.line("(if (i32.ne (local.get $a_len) (local.get $b_len))");
+        self.line("  (then (return (i64.const 0))))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $cmp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $a_len)))");
+        self.line("    (if (i32.ne");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $a)) (i32.const 4)) (local.get $i)))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $b)) (i32.const 4)) (local.get $i))))");
+        self.line("      (then (return (i64.const 0))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $cmp)))");
+        self.line("(i64.const 1)");
+        self.pop(")");
+    }
+
+    fn emit_builtin_substring(&mut self) {
+        self.push("(func $substring (param $str i64) (param $start i64) (param $len i64) (result i64)");
+        self.line("(local $new_ptr i32) (local $src i32) (local $dst i32) (local $count i32) (local $i i32)");
+        self.line("(local.set $count (i32.wrap_i64 (local.get $len)))");
+        self.line("(local.set $new_ptr (call $alloc (i32.add (i32.const 4) (local.get $count))))");
+        self.line("(i32.store (local.get $new_ptr) (local.get $count))");
+        self.line("(local.set $src (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (i32.wrap_i64 (local.get $start))))");
+        self.line("(local.set $dst (i32.add (local.get $new_ptr) (i32.const 4)))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $copy");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $count)))");
+        self.line("    (i32.store8");
+        self.line("      (i32.add (local.get $dst) (local.get $i))");
+        self.line("      (i32.load8_u (i32.add (local.get $src) (local.get $i))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $copy)))");
+        self.line("(i64.extend_i32_u (local.get $new_ptr))");
+        self.pop(")");
+    }
+
+    fn emit_builtin_from_char_code(&mut self) {
+        self.push("(func $from_char_code (param $code i64) (result i64)");
+        self.line("(local $ptr i32)");
+        self.line("(local.set $ptr (call $alloc (i32.const 5)))");
+        self.line("(i32.store (local.get $ptr) (i32.const 1))");
+        self.line("(i32.store8 (i32.add (local.get $ptr) (i32.const 4)) (i32.wrap_i64 (local.get $code)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+    }
+
+    fn emit_builtin_string_index_of(&mut self) {
+        self.push("(func $string_index_of (param $hay i64) (param $ndl i64) (result i64)");
+        self.line("(local $hay_len i32) (local $ndl_len i32) (local $i i32) (local $j i32) (local $match i32)");
+        self.line("(local.set $hay_len (i32.load (i32.wrap_i64 (local.get $hay))))");
+        self.line("(local.set $ndl_len (i32.load (i32.wrap_i64 (local.get $ndl))))");
+        self.line("(if (i32.gt_u (local.get $ndl_len) (local.get $hay_len))");
+        self.line("  (then (return (i64.const -1))))");
+        self.line("(if (i32.eqz (local.get $ndl_len))");
+        self.line("  (then (return (i64.const 0))))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $not_found");
+        self.line("  (loop $outer");
+        self.line("    (br_if $not_found (i32.gt_u (i32.add (local.get $i) (local.get $ndl_len)) (local.get $hay_len)))");
+        self.line("    (local.set $j (i32.const 0))");
+        self.line("    (local.set $match (i32.const 1))");
+        self.line("    (block $mismatch");
+        self.line("      (loop $inner");
+        self.line("        (br_if $mismatch (i32.ge_u (local.get $j) (local.get $ndl_len)))");
+        self.line("        (if (i32.ne");
+        self.line("          (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $hay)) (i32.const 4)) (i32.add (local.get $i) (local.get $j))))");
+        self.line("          (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $ndl)) (i32.const 4)) (local.get $j))))");
+        self.line("          (then");
+        self.line("            (local.set $match (i32.const 0))");
+        self.line("            (br $mismatch)))");
+        self.line("        (local.set $j (i32.add (local.get $j) (i32.const 1)))");
+        self.line("        (br $inner)))");
+        self.line("    (if (local.get $match)");
+        self.line("      (then (return (i64.extend_i32_s (local.get $i)))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $outer)))");
+        self.line("(i64.const -1)");
         self.pop(")");
     }
 
@@ -711,6 +859,121 @@ impl WatEmitter {
         self.line("local.get $str_ptr");
         self.line("i64.extend_i32_u");
         self.line(&format!("local.set {}", dest_local));
+    }
+
+    fn emit_canonical_abi_handler(&mut self) {
+        // $pack_string: convert raw (ptr, len) to JAPL string format [4-byte LE len][bytes]
+        self.push("(func $pack_string (param $src_ptr i32) (param $src_len i32) (result i32)");
+        self.line("(local $dst i32)");
+        self.line("(local $i i32)");
+        // Allocate JAPL string: [4-byte len][bytes]
+        self.line("i32.const 4");
+        self.line("local.get $src_len");
+        self.line("i32.add");
+        self.line("call $alloc");
+        self.line("local.set $dst");
+        // Write length
+        self.line("local.get $dst");
+        self.line("local.get $src_len");
+        self.line("i32.store");
+        // Copy bytes
+        self.line("i32.const 0");
+        self.line("local.set $i");
+        self.push("block $ps_done");
+        self.push("loop $ps_loop");
+        self.line("local.get $i");
+        self.line("local.get $src_len");
+        self.line("i32.ge_u");
+        self.line("br_if $ps_done");
+        // dst[4+i] = src[src_ptr+i]
+        self.line("local.get $dst");
+        self.line("i32.const 4");
+        self.line("i32.add");
+        self.line("local.get $i");
+        self.line("i32.add");
+        self.line("local.get $src_ptr");
+        self.line("local.get $i");
+        self.line("i32.add");
+        self.line("i32.load8_u");
+        self.line("i32.store8");
+        self.line("local.get $i");
+        self.line("i32.const 1");
+        self.line("i32.add");
+        self.line("local.set $i");
+        self.line("br $ps_loop");
+        self.pop("end");
+        self.pop("end");
+        self.line("local.get $dst");
+        self.pop(")");
+
+        // $handle_http_cabi: canonical ABI bridge
+        self.push("(func $handle_http_cabi (export \"cm32p2|japl:app/handler@0.1|handle-http\") (param $m_ptr i32) (param $m_len i32) (param $p_ptr i32) (param $p_len i32) (param $b_ptr i32) (param $b_len i32) (result i32)");
+        self.line("(local $method i64)");
+        self.line("(local $path i64)");
+        self.line("(local $body i64)");
+        self.line("(local $result i64)");
+        self.line("(local $r_ptr i32)");
+        self.line("(local $r_len i32)");
+        self.line("(local $ret_area i32)");
+        // Convert (ptr, len) pairs to JAPL strings
+        self.line("local.get $m_ptr");
+        self.line("local.get $m_len");
+        self.line("call $pack_string");
+        self.line("i64.extend_i32_u");
+        self.line("local.set $method");
+        self.line("local.get $p_ptr");
+        self.line("local.get $p_len");
+        self.line("call $pack_string");
+        self.line("i64.extend_i32_u");
+        self.line("local.set $path");
+        self.line("local.get $b_ptr");
+        self.line("local.get $b_len");
+        self.line("call $pack_string");
+        self.line("i64.extend_i32_u");
+        self.line("local.set $body");
+        // Call handle_request(method, path, body)
+        self.line("local.get $method");
+        self.line("local.get $path");
+        self.line("local.get $body");
+        self.line("call $handle_request");
+        self.line("local.set $result");
+        // Unpack JAPL string result: ptr points to [4-byte len][bytes]
+        self.line("local.get $result");
+        self.line("i32.wrap_i64");
+        self.line("local.set $r_ptr");
+        self.line("local.get $r_ptr");
+        self.line("i32.load");
+        self.line("local.set $r_len");
+        // Write (data_ptr, len) pair for canonical ABI return
+        self.line("i32.const 8");
+        self.line("call $alloc");
+        self.line("local.set $ret_area");
+        self.line("local.get $ret_area");
+        self.line("local.get $r_ptr");
+        self.line("i32.const 4");
+        self.line("i32.add");
+        self.line("i32.store");
+        self.line("local.get $ret_area");
+        self.line("local.get $r_len");
+        self.line("i32.store offset=4");
+        self.line("local.get $ret_area");
+        self.pop(")");
+
+        // $handle_http_post: post-return cleanup (no-op for bump allocator)
+        self.push("(func $handle_http_post (export \"cm32p2|japl:app/handler@0.1|handle-http_post\") (param $ret_ptr i32)");
+        self.line("nop");
+        self.pop(")");
+
+        // $cabi_realloc: canonical ABI memory allocator
+        self.push("(func $cabi_realloc (export \"cm32p2_realloc\") (param $old_ptr i32) (param $old_size i32) (param $align i32) (param $new_size i32) (result i32)");
+        self.line("local.get $new_size");
+        self.line("call $alloc");
+        self.pop(")");
+
+        // $cabi_init: initialization (no-op, _start handles it)
+        self.push("(func $cabi_init (export \"cm32p2_initialize\")");
+        self.line("nop");
+        self.pop(")");
     }
 
     fn emit_function(&mut self, func: &IrFunction) {
