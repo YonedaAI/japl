@@ -1,3 +1,20 @@
+// Net module: TCP networking primitives.
+//
+// FFI STATUS: Partially functional (raw pointer level only).
+//   - listen(port) and accept(listener) work — they take/return Ints (handles).
+//   - connect() requires a (ptr, len) address — callers must manage linear
+//     memory for the address string manually.
+//   - read() and write() operate on raw (ptr, len) buffers in linear memory.
+//   - send(stream, data: String) is a stub — it passes (0, 0) because JAPL
+//     cannot extract a pointer and length from a String value.
+//
+// WHAT NEEDS TO CHANGE for ergonomic use:
+//   Add String-level host functions:
+//     - tcp_connect_str(addr: String, port: Int) -> Int
+//     - tcp_send_str(conn: Int, data: String) -> Int
+//     - tcp_recv_str(conn: Int, max_len: Int) -> String
+//   These would handle String <-> linear-memory conversion inside the runtime.
+
 foreign "japl" fn tcp_listen(port: Int) -> Int
 foreign "japl" fn tcp_accept(listener: Int) -> Int
 foreign "japl" fn tcp_connect(addr_ptr: Int, addr_len: Int, port: Int) -> Int

@@ -1,3 +1,14 @@
+// Time module: clock and sleep primitives.
+//
+// FFI STATUS: Fully functional.
+//   - time_now() returns milliseconds since epoch (Int). Works because Int
+//     is the native FFI return type.
+//   - time_sleep(ms) blocks the current thread. Works because it takes an
+//     Int parameter and returns nothing.
+//   - elapsed() is pure arithmetic, no FFI needed.
+//
+// No string FFI bridging issues here — all values are Ints.
+
 foreign "japl" fn time_now() -> Int
 foreign "japl" fn time_sleep(ms: Int)
 

@@ -45,6 +45,19 @@ pub fn is_null(v: JsonValue) -> Int {
   }
 }
 
+// Returns a string describing the JSON type of a value.
+// Useful for runtime type inspection of dynamic JSON data.
+pub fn json_type(v: JsonValue) -> String {
+  match v {
+    JsonNull => "null",
+    JsonBool(_) => "bool",
+    JsonInt(_) => "int",
+    JsonStr(_) => "string",
+    JsonArray(_) => "array",
+    JsonObj(_) => "object"
+  }
+}
+
 pub fn to_int(v: JsonValue) -> Int {
   match v {
     JsonInt(n) => n,
@@ -64,6 +77,35 @@ pub fn to_str(v: JsonValue) -> String {
     JsonInt(_) => "",
     JsonArray(_) => "",
     JsonObj(_) => ""
+  }
+}
+
+// Returns the number of elements in a JsonList.
+pub fn list_length(items: JsonList) -> Int {
+  match items {
+    JNil => 0,
+    JCons(_, rest) => 1 + list_length(rest)
+  }
+}
+
+// Returns the number of key-value pairs in a JsonPair chain.
+pub fn pair_count(pairs: JsonPair) -> Int {
+  match pairs {
+    JPairNil => 0,
+    JPair(_, _, rest) => 1 + pair_count(rest)
+  }
+}
+
+// Returns the number of elements in an array, or keys in an object.
+// Returns 0 for non-container types.
+pub fn size(v: JsonValue) -> Int {
+  match v {
+    JsonArray(items) => list_length(items),
+    JsonObj(pairs) => pair_count(pairs),
+    JsonNull => 0,
+    JsonBool(_) => 0,
+    JsonInt(_) => 0,
+    JsonStr(_) => 0
   }
 }
 
@@ -132,6 +174,17 @@ fn encode_pairs(pairs: JsonPair, first: Int) -> String {
   }
 }
 
+// NOTE: A pretty-print encoder is not included because JAPL's match arms
+// do not support `let` bindings, making it difficult to build indented
+// output without deeply nested helper functions. Use encode() for compact
+// JSON output.
+
+// NOTE: A parse function is not included because JAPL currently lacks the
+// string indexing / character iteration primitives needed to implement a
+// JSON tokenizer. Parsing requires: char_at(s, idx), string_length(s),
+// and substring(s, start, end). Once those are available in the String
+// module or as FFI, a recursive-descent parser can be added here.
+
 fn json_int(n: Int) -> String {
   show(n)
 }
@@ -152,4 +205,31 @@ fn main() {
   let obj1 = "{\"port\":" <> show(8080)
   let obj = obj1 <> ",\"debug\":" <> json_bool(1) <> "}"
   println("Object: " <> obj)
+
+  // Test json_type on each variant
+  let t_null = json_type(JsonNull)
+  println("type(null)=" <> t_null)
+  let t_bool = json_type(JsonBool(1))
+  println("type(bool)=" <> t_bool)
+  let t_int = json_type(JsonInt(42))
+  println("type(int)=" <> t_int)
+  let t_str = json_type(JsonStr("hi"))
+  println("type(str)=" <> t_str)
+  let t_arr = json_type(JsonArray(JNil))
+  println("type(array)=" <> t_arr)
+  let t_obj = json_type(JsonObj(JPairNil))
+  println("type(object)=" <> t_obj)
+
+  // Test encode on nested structure: {"name":"japl","version":1,"tags":["lang","wasm"]}
+  let tags = JCons(JsonStr("lang"), JCons(JsonStr("wasm"), JNil))
+  let pairs = JPair("name", JsonStr("japl"), JPair("version", JsonInt(1), JPair("tags", JsonArray(tags), JPairNil)))
+  let nested = JsonObj(pairs)
+  let encoded = encode(nested)
+  println("nested=" <> encoded)
+
+  // Test size
+  let arr_size = size(JsonArray(tags))
+  println("array_size=" <> show(arr_size))
+  let obj_size = size(nested)
+  println("obj_size=" <> show(obj_size))
 }
