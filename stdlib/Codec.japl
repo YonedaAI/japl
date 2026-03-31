@@ -1,0 +1,56 @@
+type Encoded = | IntVal(Int) | StrVal(String) | PairVal(Encoded, Encoded) | ListVal(Encoded, Encoded) | NilVal
+
+pub fn encode_int(n: Int) -> Encoded {
+  IntVal(n)
+}
+
+pub fn encode_str(s: String) -> Encoded {
+  StrVal(s)
+}
+
+pub fn encode_pair(a: Encoded, b: Encoded) -> Encoded {
+  PairVal(a, b)
+}
+
+pub fn decode_int(e: Encoded) -> Int {
+  match e {
+    IntVal(n) => n,
+    StrVal(_) => 0,
+    PairVal(_, _) => 0,
+    ListVal(_, _) => 0,
+    NilVal => 0
+  }
+}
+
+pub fn decode_str(e: Encoded) -> String {
+  match e {
+    IntVal(_) => "",
+    StrVal(s) => s,
+    PairVal(_, _) => "",
+    ListVal(_, _) => "",
+    NilVal => ""
+  }
+}
+
+pub fn tag(e: Encoded) -> Int {
+  match e {
+    IntVal(_) => 0,
+    StrVal(_) => 1,
+    PairVal(_, _) => 2,
+    ListVal(_, _) => 3,
+    NilVal => 4
+  }
+}
+
+fn main() {
+  let a = encode_int(42)
+  let b = encode_str("hello")
+  let c = encode_pair(a, b)
+  println("encode_int(42)=" <> show(decode_int(a)))
+  println("encode_str=hello: " <> decode_str(b))
+  println("tag(IntVal)=" <> show(tag(a)))
+  println("tag(StrVal)=" <> show(tag(b)))
+  println("tag(PairVal)=" <> show(tag(c)))
+  println("roundtrip int: " <> show(decode_int(encode_int(99))))
+  println("roundtrip str: " <> decode_str(encode_str("world")))
+}

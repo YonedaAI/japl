@@ -1,0 +1,39 @@
+type LogLevel = | Debug | Info | Warn | Error
+
+pub fn level_name(level: LogLevel) -> String {
+  match level {
+    Debug => "DEBUG",
+    Info => "INFO",
+    Warn => "WARN",
+    Error => "ERROR"
+  }
+}
+
+pub fn log(level: LogLevel, msg: String) -> Int {
+  println("[" <> level_name(level) <> "] " <> msg)
+  0
+}
+
+pub fn debug(msg: String) -> Int {
+  log(Debug, msg)
+}
+
+pub fn info(msg: String) -> Int {
+  log(Info, msg)
+}
+
+pub fn warn(msg: String) -> Int {
+  log(Warn, msg)
+}
+
+pub fn error(msg: String) -> Int {
+  log(Error, msg)
+}
+
+fn main() {
+  let _ = debug("debug message")
+  let _ = info("info message")
+  let _ = warn("warn message")
+  let _ = error("error message")
+  println("level_name=" <> level_name(Info))
+}

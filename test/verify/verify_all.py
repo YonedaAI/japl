@@ -98,6 +98,10 @@ run_test("stdlib/Time", "stdlib/Time.japl", ["Time module loaded"], use_runtime=
 run_test("stdlib/Env", "stdlib/Env.japl", ["Env module loaded"], use_runtime=True)
 run_test("stdlib/Crypto", "stdlib/Crypto.japl", ["Crypto module loaded"], use_runtime=True)
 compile_only_test("stdlib/File", "stdlib/File.japl")
+run_test("stdlib/Codec", "stdlib/Codec.japl", ["encode_int(42)=42", "encode_str=hello", "tag(IntVal)=0", "tag(StrVal)=1", "tag(PairVal)=2", "roundtrip int: 99", "roundtrip str: world"])
+run_test("stdlib/Retry", "stdlib/Retry.japl", ["max_retries=3", "exp delay 0=100", "exp delay 1=200", "exp delay 2=400", "const delay 0=500", "const delay 1=500", "const delay 2=500"])
+run_test("stdlib/Log", "stdlib/Log.japl", ["[DEBUG] debug message", "[INFO] info message", "[WARN] warn message", "[ERROR] error message", "level_name=INFO"])
+run_test("stdlib/Config", "stdlib/Config.japl", ["get_or=8080", "get_int=4", "require=required:APP_NAME", "Config module loaded"])
 
 print("\n--- Apps ---")
 run_test("kvstore_app", "apps/kvstore/kvstore.japl", ["PUT key=0", "GET key=0", "DEL key=", "NOT FOUND", "SIZE partition"], use_runtime=True, retries=3)

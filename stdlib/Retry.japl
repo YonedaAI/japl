@@ -1,0 +1,40 @@
+type BackoffConfig = | Backoff(Int, Int, Int)
+
+pub fn exponential(retries: Int, base_delay: Int) -> BackoffConfig {
+  Backoff(retries, base_delay, 2)
+}
+
+pub fn constant(retries: Int, delay: Int) -> BackoffConfig {
+  Backoff(retries, delay, 1)
+}
+
+pub fn max_retries(config: BackoffConfig) -> Int {
+  match config {
+    Backoff(m, _, _) => m
+  }
+}
+
+fn pow_int(base: Int, exp: Int) -> Int {
+  if exp <= 0 { 1 }
+  else { base * pow_int(base, exp - 1) }
+}
+
+pub fn delay_ms(config: BackoffConfig, attempt: Int) -> Int {
+  match config {
+    Backoff(_, d, mult) =>
+      if mult == 1 { d }
+      else { d * pow_int(mult, attempt) }
+  }
+}
+
+fn main() {
+  let exp = exponential(3, 100)
+  println("max_retries=" <> show(max_retries(exp)))
+  println("exp delay 0=" <> show(delay_ms(exp, 0)))
+  println("exp delay 1=" <> show(delay_ms(exp, 1)))
+  println("exp delay 2=" <> show(delay_ms(exp, 2)))
+  let con = constant(5, 500)
+  println("const delay 0=" <> show(delay_ms(con, 0)))
+  println("const delay 1=" <> show(delay_ms(con, 1)))
+  println("const delay 2=" <> show(delay_ms(con, 2)))
+}
