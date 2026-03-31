@@ -183,13 +183,18 @@ impl WatEmitter {
                 "(elem (i32.const 0){})",
                 entries
             ));
-            // Type for closure calls: closure_ptr + varying args -> i64
-            // We need types for different arities
-            self.line("(type $closure_0 (func (param i64) (result i64)))");
-            self.line("(type $closure_1 (func (param i64 i64) (result i64)))");
-            self.line("(type $closure_2 (func (param i64 i64 i64) (result i64)))");
-            self.line("(type $closure_3 (func (param i64 i64 i64 i64) (result i64)))");
+        } else {
+            // Even without closures, functions taking fn-typed parameters generate
+            // call_indirect instructions that require a table to exist.
+            self.line("(table 0 funcref)");
         }
+        // Always emit closure type declarations — they are needed by any function
+        // that uses call_indirect, even if no closures are created at this call site.
+        // Type for closure calls: closure_ptr + varying args -> i64
+        self.line("(type $closure_0 (func (param i64) (result i64)))");
+        self.line("(type $closure_1 (func (param i64 i64) (result i64)))");
+        self.line("(type $closure_2 (func (param i64 i64 i64) (result i64)))");
+        self.line("(type $closure_3 (func (param i64 i64 i64 i64) (result i64)))");
 
         // Builtin: $alloc (bump allocator)
         self.emit_alloc();
