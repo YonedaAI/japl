@@ -95,14 +95,16 @@ japl run --runtime apps/kvstore/kvstore.japl
 - Supervision trees (`OneForOne`, `AllForOne`, `RestForOne`)
 - TCP distribution between runtime instances
 
+- AI-native abstractions: LLM as tracked effect, `llm_structured` for typed I/O
+- Tool contracts (`ToolSpec`, `ToolResult`), budget tracking, replay logs, provenance
+- Standard library: `Math`, `String`, `Option`, `Result`, `List`, `Map`, `Set`, `Json`, `Http`, `Net`, `Bytes`, `Codec`, `Retry`, `Log`, `Config`, `File`, `Env`, `Time`, `Crypto`, `Process`, `Supervisor`, `Registry`, `LLM`, `Tool`, `Budget`, `Replay`, `Provenance`
+
 ### Prototype
 
 - Distributed typed message passing (local works, cross-machine in testing)
-- Standard library (`Math`, `String`, `Option`, `Result` compile; others in progress)
 
 ### Planned
 
-- AI-native abstractions (LLM as effect, tool contracts, budget types, replay)
 - Package manager
 - LSP / editor support
 - REPL
@@ -185,8 +187,8 @@ fn main() {
 compiler/self/      Self-hosted compiler (JAPL source + compiled WASM)
 japl-runtime/       Runtime (Rust + wasmtime, processes, distribution)
 stdlib/             Standard library (.japl files)
-test/               Test programs (22 verified on WASM)
-apps/               Applications (distributed KV store, AI agent, HTTP demo)
+test/               Test programs and verification suite
+apps/               Applications (KV store, message queue, scheduler, genome pipeline, multi-agent demo)
 spec/               Language specification
 plans/              Development plans and reviews
 papers/             Research papers (7 JAPL papers)
