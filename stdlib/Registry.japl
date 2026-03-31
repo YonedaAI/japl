@@ -1,0 +1,57 @@
+// Registry: a simple name->pid registry using linked list
+// Names are mapped to integer keys via a simple hash
+
+type RegEntry = | Entry(Int, Int, RegEntry) | RegEmpty
+
+// Create a new empty registry (returns tag for empty)
+pub fn reg_new() -> RegEntry {
+  RegEmpty
+}
+
+// Register a name (as Int key) to a pid
+pub fn reg_put(r: RegEntry, name: Int, pid: Int) -> RegEntry {
+  Entry(name, pid, r)
+}
+
+// Lookup a name, returns pid or -1 if not found
+pub fn reg_get(r: RegEntry, name: Int) -> Int {
+  match r {
+    RegEmpty => 0 - 1,
+    Entry(k, v, rest) =>
+      if k == name { v }
+      else { reg_get(rest, name) }
+  }
+}
+
+// Check if a name is registered
+pub fn reg_contains(r: RegEntry, name: Int) -> Int {
+  match r {
+    RegEmpty => 0,
+    Entry(k, _, rest) =>
+      if k == name { 1 }
+      else { reg_contains(rest, name) }
+  }
+}
+
+// Count registered entries
+pub fn reg_size(r: RegEntry) -> Int {
+  match r {
+    RegEmpty => 0,
+    Entry(_, _, rest) => 1 + reg_size(rest)
+  }
+}
+
+fn main() {
+  println("Registry module loaded")
+  let r = reg_new()
+  let r = reg_put(r, 1, 100)
+  let r = reg_put(r, 2, 200)
+  let r = reg_put(r, 3, 300)
+  println("Registry size: " <> show(reg_size(r)))
+  println("Lookup 1: " <> show(reg_get(r, 1)))
+  println("Lookup 2: " <> show(reg_get(r, 2)))
+  println("Lookup 99: " <> show(reg_get(r, 99)))
+  println("Contains 2: " <> show(reg_contains(r, 2)))
+  println("Contains 5: " <> show(reg_contains(r, 5)))
+  println("done")
+}
