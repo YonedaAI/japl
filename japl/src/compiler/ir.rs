@@ -109,5 +109,6 @@ pub struct IrModule {
     pub string_data: Vec<IrStringData>,
     pub heap_start: u32,
     pub uses_processes: bool,
+    pub uses_llm: bool,
     pub constants: Vec<(String, i64)>,
 }

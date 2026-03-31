@@ -205,6 +205,12 @@ impl WatEmitter {
         // Builtin: $println
         self.emit_println();
 
+        // Builtin: LLM wrappers (only if LLM is used)
+        if self.module.uses_llm {
+            self.emit_llm_wrapper();
+            self.emit_llm_structured_wrapper();
+        }
+
         // Builtin: $show_int
         self.emit_show_int();
 
@@ -479,6 +485,34 @@ impl WatEmitter {
         self.line("i32.const 16");
         self.line("call $fd_write");
         self.line("drop");
+        self.pop(")");
+    }
+
+    fn emit_llm_wrapper(&mut self) {
+        // $llm takes a JAPL string (i64 pointer) and returns a JAPL string (i64 pointer)
+        // It calls the host llm_str(i32) -> i32 function
+        self.push("(func $llm (param $s i64) (result i64)");
+        // Convert i64 string pointer to i32 and call host
+        self.line("local.get $s");
+        self.line("i32.wrap_i64");
+        self.line("call $llm_str");
+        // Extend result back to i64
+        self.line("i64.extend_i32_u");
+        self.pop(")");
+    }
+
+    fn emit_llm_structured_wrapper(&mut self) {
+        // $llm_structured takes two JAPL strings (i64 pointers) and returns a JAPL string (i64 pointer)
+        // It calls the host llm_structured_str(i32, i32) -> i32 function
+        self.push("(func $llm_structured (param $prompt i64) (param $type_tag i64) (result i64)");
+        // Convert i64 string pointers to i32 and call host
+        self.line("local.get $prompt");
+        self.line("i32.wrap_i64");
+        self.line("local.get $type_tag");
+        self.line("i32.wrap_i64");
+        self.line("call $llm_structured_str");
+        // Extend result back to i64
+        self.line("i64.extend_i32_u");
         self.pop(")");
     }
 
@@ -1116,6 +1150,22 @@ impl WatEmitter {
                     self.line("call $println");
                     if need_value {
                         self.line("i64.const 0");
+                    }
+                } else if name == "$llm" {
+                    for arg in args {
+                        self.emit_expr(arg, true);
+                    }
+                    self.line("call $llm");
+                    if !need_value {
+                        self.line("drop");
+                    }
+                } else if name == "$llm_structured" {
+                    for arg in args {
+                        self.emit_expr(arg, true);
+                    }
+                    self.line("call $llm_structured");
+                    if !need_value {
+                        self.line("drop");
                     }
                 } else if let Some(fi) = self.foreign_sigs.get(name).cloned() {
                     // Foreign function call: convert i64 args to actual param types

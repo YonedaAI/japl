@@ -218,6 +218,26 @@ impl Checker {
                             self.record_effect(Effect::Process);
                             Type::Int
                         }
+                        "llm" => {
+                            self.record_effect(Effect::LLM);
+                            if let Some(arg) = args.first() {
+                                let arg_ty = self.infer_expr(arg);
+                                if arg_ty != Type::String && arg_ty != Type::Var(0) {
+                                    self.errors.push(format!("type error: llm expects String, got {}", arg_ty));
+                                }
+                            }
+                            Type::String
+                        }
+                        "llm_structured" => {
+                            self.record_effect(Effect::LLM);
+                            for arg in args {
+                                let arg_ty = self.infer_expr(arg);
+                                if arg_ty != Type::String && arg_ty != Type::Var(0) {
+                                    self.errors.push(format!("type error: llm_structured expects String args, got {}", arg_ty));
+                                }
+                            }
+                            Type::String
+                        }
                         _ => {
                             // Infer arg types first
                             let arg_types: Vec<Type> = args.iter()

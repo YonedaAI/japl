@@ -98,6 +98,7 @@ run_test("stdlib/Time", "stdlib/Time.japl", ["Time module loaded"], use_runtime=
 run_test("stdlib/Env", "stdlib/Env.japl", ["Env module loaded"], use_runtime=True)
 run_test("stdlib/Crypto", "stdlib/Crypto.japl", ["Crypto module loaded"], use_runtime=True)
 compile_only_test("stdlib/File", "stdlib/File.japl")
+compile_only_test("stdlib/LLM", "stdlib/LLM.japl")
 
 print("\n--- Apps ---")
 run_test("kvstore_app", "apps/kvstore/kvstore.japl", ["PUT key=0", "GET key=0", "DEL key=", "NOT FOUND", "SIZE partition"], use_runtime=True, retries=3)
