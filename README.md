@@ -131,7 +131,7 @@ JAPL Compiler (TypeScript)
 +------------------------------------------+
 ```
 
-248 compiler tests passing. 12 applications verified on WASM.
+
 
 ---
 

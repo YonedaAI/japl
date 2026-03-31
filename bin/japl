@@ -1,0 +1,97 @@
+#!/bin/bash
+# bin/japl — unified JAPL CLI
+set -e
+
+JAPL_HOME="$(cd "$(dirname "$0")/.." && pwd)"
+COMPILER="$JAPL_HOME/compiler/ts/dist/index.js"
+RUNTIME="$JAPL_HOME/japl-runtime/target/release/japl-runtime"
+
+# Check if runtime exists (fall back to debug)
+if [ ! -f "$RUNTIME" ]; then
+  RUNTIME="$JAPL_HOME/japl-runtime/target/debug/japl-runtime"
+fi
+
+case "$1" in
+  build|check|fmt|new|version|help|--version|--help|-v|-h)
+    node "$COMPILER" "$@"
+    ;;
+  run)
+    shift
+    # Parse flags to find the .japl file
+    JAPL_FILE=""
+    EXTRA_ARGS=()
+    for arg in "$@"; do
+      if [[ "$arg" == *.japl ]]; then
+        JAPL_FILE="$arg"
+      else
+        EXTRA_ARGS+=("$arg")
+      fi
+    done
+
+    if [ -z "$JAPL_FILE" ]; then
+      echo "Usage: japl run [options] <file.japl>"
+      exit 1
+    fi
+
+    # Build to temp dir
+    TMPDIR=$(mktemp -d)
+    trap "rm -rf $TMPDIR" EXIT
+
+    node "$COMPILER" build "$JAPL_FILE" --out "$TMPDIR"
+    WASM_FILE="$TMPDIR/$(basename "$JAPL_FILE" .japl).wasm"
+
+    if [ ! -f "$WASM_FILE" ]; then
+      echo "Compilation failed"
+      exit 1
+    fi
+
+    # Check if we need the full runtime (processes) or just wasmtime
+    if grep -q "japl" "$WASM_FILE" 2>/dev/null; then
+      # Has japl imports — needs full runtime
+      "$RUNTIME" run "$WASM_FILE" "${EXTRA_ARGS[@]}"
+    else
+      # Simple program — use wasmtime directly
+      wasmtime "$WASM_FILE"
+    fi
+    ;;
+  deploy)
+    echo "japl deploy: coming soon (wasmCloud integration)"
+    ;;
+  add)
+    shift
+    # Package manager: add dependency
+    PKG="$1"
+    if [ -z "$PKG" ]; then
+      echo "Usage: japl add <package>"
+      exit 1
+    fi
+
+    # Create deps/ if needed
+    mkdir -p deps
+
+    # For now: copy from stdlib if it exists
+    STDLIB="$JAPL_HOME/stdlib/${PKG}.japl"
+    if [ -f "$STDLIB" ]; then
+      cp "$STDLIB" "deps/${PKG}.japl"
+      echo "Added ${PKG} from stdlib"
+    else
+      echo "Package ${PKG} not found in stdlib"
+      echo "Available: $(ls $JAPL_HOME/stdlib/*.japl 2>/dev/null | xargs -I{} basename {} .japl | tr '\n' ' ')"
+      exit 1
+    fi
+    ;;
+  *)
+    echo "JAPL — Just Another Programming Language"
+    echo ""
+    echo "Usage:"
+    echo "  japl build <file.japl>     Compile to WASM"
+    echo "  japl run <file.japl>       Compile and execute"
+    echo "  japl check <file.japl>     Type check"
+    echo "  japl fmt <file.japl>       Format"
+    echo "  japl new <name>            New project"
+    echo "  japl add <package>         Add dependency"
+    echo "  japl deploy <file.japl>    Deploy (coming soon)"
+    echo "  japl version               Version"
+    echo "  japl help                  Help"
+    ;;
+esac

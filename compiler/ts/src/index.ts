@@ -10,6 +10,7 @@ import { Lexer } from './lexer/index.js';
 import { Parser } from './parser/index.js';
 import { TypeChecker } from './checker/index.js';
 import { Formatter } from './formatter/index.js';
+import { generateWit } from './codegen/wit.js';
 
 const VERSION = '0.2.0';
 
@@ -36,6 +37,7 @@ Run options:
 
 Build options:
   --emit-wat             Output WAT text (debug)
+  --emit-wit             Output WIT interface definition
   --out <dir>            Output directory (default: build/)
 
 Requirements:
@@ -75,11 +77,27 @@ function cmdBuild(args: string[]): void {
   }
 
   const emitWat = 'emit-wat' in flags;
+  const emitWit = 'emit-wit' in flags;
   const outDir = flags['out'] ?? 'build';
 
   // Ensure output directory exists
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir, { recursive: true });
+  }
+
+  if (emitWit) {
+    // Emit WIT interface definition
+    const source = fs.readFileSync(inputFile, 'utf-8');
+    const lexer = new Lexer(source);
+    const tokens = lexer.tokenize();
+    const parser = new Parser(tokens);
+    const ast = parser.parse();
+    const packageName = path.basename(inputFile, '.japl');
+    const wit = generateWit(ast, packageName);
+    const witPath = path.join(outDir, packageName + '.wit');
+    fs.writeFileSync(witPath, wit);
+    console.log(`Generated ${witPath}`);
+    return;
   }
 
   if (emitWat) {

@@ -18,3 +18,4 @@ dist/
 # Vercel
 .vercel/
 japl-runtime/target/
+bin/japl-compiler
