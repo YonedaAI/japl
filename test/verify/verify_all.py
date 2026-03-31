@@ -117,6 +117,7 @@ print("\n--- Stdlib Import Tests ---")
 run_test("stdlib_option_import", "test/programs/stdlib_option_test.japl", ["is_some=1", "unwrap=99"])
 run_test("multi_import", "test/programs/multi_import_test.japl", ["unwrap=99", "is_ok=1"])
 run_test("result_import", "test/programs/result_import_test.japl", ["is_ok=1", "is_ok_err=0", "unwrap=42", "unwrap_err=0"])
+run_test("list_import", "test/programs/list_import_test.japl", ["length=3", "sum=6"])
 
 print("\n--- Apps ---")
 run_test("kvstore_app", "apps/kvstore/kvstore.japl", ["PUT key=0", "GET key=0", "DEL key=", "NOT FOUND", "SIZE partition"], use_runtime=True, retries=3)

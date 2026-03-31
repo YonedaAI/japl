@@ -106,8 +106,7 @@ fn resolve_imports(
         let module_file = match find_module_file(&module_name, base_dir, search_paths) {
             Some(p) => p,
             None => {
-                eprintln!("Warning: could not resolve import {}", module_name);
-                continue;
+                return Err(format!("error: could not resolve import '{}'", module_name));
             }
         };
 

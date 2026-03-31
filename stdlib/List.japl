@@ -64,7 +64,7 @@ pub fn reverse<T>(l: List) -> List {
   reverse_acc(l, Nil)
 }
 
-fn reverse_acc<T>(l: List, acc: List) -> List {
+pub fn reverse_acc<T>(l: List, acc: List) -> List {
   match l {
     Nil => acc,
     Cons(x, rest) => reverse_acc(rest, Cons(x, acc))
