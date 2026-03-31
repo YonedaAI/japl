@@ -1,0 +1,22 @@
+pub fn get(key: String) -> String {
+  "unknown"
+}
+
+pub fn get_or(key: String, default_val: String) -> String {
+  default_val
+}
+
+pub fn get_int(key: String, default_val: Int) -> Int {
+  default_val
+}
+
+pub fn require(key: String) -> String {
+  "required:" <> key
+}
+
+fn main() {
+  println("get_or=" <> get_or("PORT", "8080"))
+  println("get_int=" <> show(get_int("WORKERS", 4)))
+  println("require=" <> require("APP_NAME"))
+  println("Config module loaded")
+}
