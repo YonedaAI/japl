@@ -33,6 +33,41 @@ pub fn supervise(child_fn: fn() -> Unit) -> Int {
   child
 }
 
+// Create a ChildSpec with the given pid and restart policy tag
+pub fn child_spec(pid: Int, policy: Int) -> ChildSpec {
+  Child(pid, policy)
+}
+
+// Supervision record: tracks child pid, policy, and restart count
+type SuperRecord = | SuperRec(Int, Int, Int)
+
+// Start a child and return a supervision record (pid, policy_tag, restart_count=0)
+pub fn start_link(child_fn: fn() -> Unit, policy: Int) -> SuperRecord {
+  let pid = spawn(child_fn)
+  SuperRec(pid, policy, 0)
+}
+
+// Get the pid from a supervision record
+pub fn sr_pid(sr: SuperRecord) -> Int {
+  match sr {
+    SuperRec(p, _, _) => p
+  }
+}
+
+// Get the restart count from a supervision record
+pub fn restart_count(sr: SuperRecord) -> Int {
+  match sr {
+    SuperRec(_, _, c) => c
+  }
+}
+
+// Increment the restart count in a supervision record
+pub fn inc_restart(sr: SuperRecord) -> SuperRecord {
+  match sr {
+    SuperRec(p, pol, c) => SuperRec(p, pol, c + 1)
+  }
+}
+
 type SuperMsg = | Started(Int)
 
 fn main() {
@@ -43,5 +78,19 @@ fn main() {
     println("child running")
   })
   println("Child started: " <> show(pid))
+  // Test child_spec
+  let spec = child_spec(pid, permanent())
+  println("child_spec ok")
+  // Test start_link and supervision record
+  let sr = start_link(fn() {
+    println("linked child running")
+  }, transient())
+  let sr_p = sr_pid(sr)
+  println("start_link pid>0: " <> show(sr_p))
+  let rc = restart_count(sr)
+  println("restart_count: " <> show(rc))
+  let sr2 = inc_restart(sr)
+  let rc2 = restart_count(sr2)
+  println("after inc_restart: " <> show(rc2))
   println("done")
 }
