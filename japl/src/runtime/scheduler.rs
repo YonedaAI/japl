@@ -264,7 +264,8 @@ impl Scheduler {
         }
         drop(procs);
 
-        // Wait for processes to exit, with timeout
+        // Wait for processes to exit, with timeout.
+        // Drain the command channel so Exited signals are processed.
         let deadline = std::time::Instant::now()
             + std::time::Duration::from_secs(SHUTDOWN_TIMEOUT_SECS);
 
@@ -281,7 +282,23 @@ impl Scheduler {
                 );
                 break;
             }
+            // Drain pending commands (especially Exited) to update process map
+            while let Ok(cmd) = self.cmd_rx.as_ref().map_or(
+                Err(std::sync::mpsc::TryRecvError::Disconnected),
+                |rx| rx.try_recv()
+            ) {
+                self.handle_cmd_during_shutdown(cmd);
+            }
             std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+
+    /// Handle a scheduler command during graceful shutdown.
+    /// Only processes Exited commands; other commands are dropped.
+    fn handle_cmd_during_shutdown(&self, cmd: SchedulerCommand) {
+        if let SchedulerCommand::Exited { pid } = cmd {
+            self.processes.lock().unwrap().remove(&pid);
+            self.mailbox_sizes.lock().unwrap().remove(&pid);
         }
     }
 

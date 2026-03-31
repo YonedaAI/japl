@@ -73,7 +73,8 @@ pub fn str_map_new() -> StrMapEntry {
 }
 
 pub fn str_map_put(m: StrMapEntry, key: String, val: Int) -> StrMapEntry {
-  StrEntry(key, val, m)
+  let cleaned = str_map_remove(m, key)
+  StrEntry(key, val, cleaned)
 }
 
 pub fn str_map_get(m: StrMapEntry, key: String) -> Int {
@@ -106,7 +107,10 @@ pub fn str_map_remove(m: StrMapEntry, key: String) -> StrMapEntry {
     StrMapEmpty => StrMapEmpty,
     StrEntry(k, v, rest) =>
       if string_eq(k, key) == 1 { rest }
-      else { StrEntry(k, v, str_map_remove(rest, key)) }
+      else {
+        let tail = str_map_remove(rest, key)
+        StrEntry(k, v, tail)
+      }
   }
 }
 

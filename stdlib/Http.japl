@@ -47,26 +47,22 @@ pub fn content_type(t: String) -> String {
 
 // Build a simple HTTP request line string.
 // Example: request("GET", "/api/users") => "GET /api/users HTTP/1.1"
-pub fn request(method: String, path: String) -> String {
+// Format helpers for debug/display. NOT wire-protocol builders
+// (JAPL does not support \r escape sequences needed for HTTP/1.1 CRLF).
+
+pub fn format_request(method: String, path: String) -> String {
   method <> " " <> path <> " HTTP/1.1"
 }
 
-// Build a simple HTTP response string with status line and body.
-// Uses newline separator (not CRLF) since JAPL does not support \r escapes.
-// Example: response(200, "hello") => "HTTP/1.1 200 OK\n\nhello"
-pub fn response(status: Int, body: String) -> String {
+pub fn format_response(status: Int, body: String) -> String {
   "HTTP/1.1 " <> status_text(status) <> "\n\n" <> body
 }
 
-// Build a complete HTTP response with a Content-Type header and body.
-// Example: response_with_type(200, "application/json", "{}")
-pub fn response_with_type(status: Int, mime: String, body: String) -> String {
-  "HTTP/1.1 " <> status_text(status) <> "\n" <> content_type(mime) <> "\n\n" <> body
+pub fn format_response_with_type(status: Int, mime: String, body: String) -> String {
+  "HTTP/1.1 " <> status_text(status) <> "\nContent-Type: " <> mime <> "\n\n" <> body
 }
 
-// Build a header line from key and value.
-// Example: header("Authorization", "Bearer tok") => "Authorization: Bearer tok"
-pub fn header(key: String, value: String) -> String {
+pub fn format_header(key: String, value: String) -> String {
   key <> ": " <> value
 }
 
@@ -77,19 +73,13 @@ fn main() {
   println("Status: " <> status_text(200))
   println("Status: " <> status_text(404))
 
-  // Test request builder
-  let req = request("GET", "/api/users")
+  // Test format helpers
+  let req = format_request("GET", "/api/users")
   println("request=" <> req)
-
-  // Test response builder
-  let resp = response(200, "hello")
+  let resp = format_response(200, "hello")
   println("response=" <> resp)
-
-  // Test content_type builder
   let ct = content_type("text/html")
   println("content_type=" <> ct)
-
-  // Test header builder
-  let h = header("X-Custom", "value")
+  let h = format_header("X-Custom", "value")
   println("header=" <> h)
 }
