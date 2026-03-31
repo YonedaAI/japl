@@ -1,0 +1,24 @@
+foreign "japl" fn str_contains(s: String, sub: String) -> Int
+foreign "japl" fn str_starts_with(s: String, prefix: String) -> Int
+foreign "japl" fn str_ends_with(s: String, suffix: String) -> Int
+foreign "japl" fn str_trim(s: String) -> String
+foreign "japl" fn str_to_upper(s: String) -> String
+foreign "japl" fn str_to_lower(s: String) -> String
+foreign "japl" fn str_replace(s: String, old: String, new_str: String) -> String
+foreign "japl" fn str_index_of(s: String, sub: String) -> Int
+foreign "japl" fn str_parse_int(s: String) -> Int
+
+fn main() {
+  println("contains: " <> show(str_contains("hello world", "world")))
+  println("not contains: " <> show(str_contains("hello world", "xyz")))
+  println("starts_with: " <> show(str_starts_with("hello world", "hello")))
+  println("ends_with: " <> show(str_ends_with("hello world", "world")))
+  println("trim: [" <> str_trim("  hello  ") <> "]")
+  println("upper: " <> str_to_upper("hello world"))
+  println("lower: " <> str_to_lower("HELLO WORLD"))
+  println("replace: " <> str_replace("aXbXc", "X", "-"))
+  println("index_of: " <> show(str_index_of("hello world", "world")))
+  println("index_of not found: " <> show(str_index_of("hello", "xyz")))
+  println("parse_int: " <> show(str_parse_int("12345")))
+  println("parse_int neg: " <> show(str_parse_int("-42")))
+}
