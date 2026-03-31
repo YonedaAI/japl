@@ -10,7 +10,7 @@ fn runtime_signature(module: &str, name: &str) -> Option<(Vec<WasmType>, Vec<Was
     }
     use WasmType::*;
     match name {
-        "spawn"          => Some((vec![I64], vec![I64])),
+        "spawn"          => Some((vec![I64, I64], vec![I64])),
         "send"           => Some((vec![I64, I64], vec![])),
         "receive"        => Some((vec![], vec![I64])),
         "self_pid"       => Some((vec![], vec![I64])),
@@ -192,7 +192,7 @@ impl Lowerer {
         // If processes are used, add process-related imports
         if self.uses_processes {
             let process_fns = [
-                ("spawn",    vec![WasmType::I64], vec![WasmType::I64]),
+                ("spawn",    vec![WasmType::I64, WasmType::I64], vec![WasmType::I64]),
                 ("send",     vec![WasmType::I64, WasmType::I64], vec![]),
                 ("receive",  vec![], vec![WasmType::I64]),
                 ("self_pid", vec![], vec![WasmType::I64]),
