@@ -1,0 +1,50 @@
+type ToolSpec = | Tool(String, String, String)
+
+type ToolCall = | Call(String, String)
+type ToolResult = | ToolOk(String) | ToolErr(String)
+
+pub fn tool(name: String, description: String, schema: String) -> ToolSpec {
+  Tool(name, description, schema)
+}
+
+pub fn call_tool(spec: ToolSpec, args: String) -> ToolResult {
+  let n = tool_name(spec)
+  let result = n <> "(" <> args <> ")"
+  ToolOk(result)
+}
+
+pub fn tool_name(spec: ToolSpec) -> String {
+  match spec { Tool(n, _, _) => n }
+}
+
+pub fn tool_description(spec: ToolSpec) -> String {
+  match spec { Tool(_, d, _) => d }
+}
+
+pub fn tool_schema(spec: ToolSpec) -> String {
+  match spec { Tool(_, _, s) => s }
+}
+
+pub fn is_tool_ok(r: ToolResult) -> Int {
+  match r { ToolOk(_) => 1, ToolErr(_) => 0 }
+}
+
+pub fn tool_result_value(r: ToolResult) -> String {
+  match r { ToolOk(v) => v, ToolErr(e) => e }
+}
+
+fn main() {
+  let spec = tool("search", "Search the web", "{\"query\": \"string\"}")
+  let n = tool_name(spec)
+  let d = tool_description(spec)
+  println("tool_name: " <> n)
+  println("tool_desc: " <> d)
+  let result = call_tool(spec, "{\"query\": \"hello\"}")
+  let ok = is_tool_ok(result)
+  println("call_ok: " <> show(ok))
+  let v = tool_result_value(result)
+  println("call_result: " <> v)
+  let err = ToolErr("timeout")
+  let eok = is_tool_ok(err)
+  println("err_ok: " <> show(eok))
+}

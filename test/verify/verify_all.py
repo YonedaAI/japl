@@ -98,6 +98,10 @@ run_test("stdlib/Time", "stdlib/Time.japl", ["Time module loaded"], use_runtime=
 run_test("stdlib/Env", "stdlib/Env.japl", ["Env module loaded"], use_runtime=True)
 run_test("stdlib/Crypto", "stdlib/Crypto.japl", ["Crypto module loaded"], use_runtime=True)
 compile_only_test("stdlib/File", "stdlib/File.japl")
+run_test("stdlib/Tool", "stdlib/Tool.japl", ["tool_name: search", "tool_desc: Search the web", "call_ok: 1", "call_result: search({\"query\": \"hello\"})", "err_ok: 0"])
+run_test("stdlib/Budget", "stdlib/Budget.japl", ["remaining: 100", "max: 100", "after_spend: 70", "exhausted: 0", "check_50: 1", "exhausted_after: 1"])
+run_test("stdlib/Replay", "stdlib/Replay.japl", ["empty_size: 0", "empty_latest: -1", "size: 3", "latest: 3"])
+run_test("stdlib/Provenance", "stdlib/Provenance.japl", ["human: human", "model: model:claude", "tool: tool:search", "composed: human+model:claude", "hash: abc123", "timestamp: 1000"])
 
 print("\n--- Apps ---")
 run_test("kvstore_app", "apps/kvstore/kvstore.japl", ["PUT key=0", "GET key=0", "DEL key=", "NOT FOUND", "SIZE partition"], use_runtime=True, retries=3)
