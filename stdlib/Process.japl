@@ -1,6 +1,26 @@
 foreign "japl" fn time_sleep(ms: Int)
+foreign "japl" fn mailbox_size(pid: Int) -> Int
 
 type ProcMsg = | Ping(Int)
+
+// =========================================================================
+// Process module — JAPL stdlib
+//
+// Mailbox delivery semantics:
+//   - Messages are delivered asynchronously. send() returns immediately;
+//     the message is enqueued in the target process's mailbox by the
+//     scheduler on a separate thread.
+//   - Sending to a dead or unknown process: the message is dropped
+//     silently (a diagnostic is printed to stderr, but no error is
+//     returned to the caller).
+//   - Receiving from an empty mailbox: blocks the calling process until
+//     a message arrives. There is no timeout variant yet.
+//   - Mailbox capacity: each process mailbox holds up to 10,000 pending
+//     messages. When the mailbox is full, new messages are dropped.
+//   - Ordering: messages from a single sender arrive in FIFO order.
+//     No ordering guarantee exists between messages from different
+//     senders.
+// =========================================================================
 
 // Process utilities
 
@@ -22,6 +42,12 @@ pub fn sleep(ms: Int) -> Unit {
   time_sleep(ms)
 }
 
+// Returns the number of pending messages in the mailbox of the given process.
+// Pass -1 to query the calling process's own mailbox.
+pub fn pending_messages(pid: Int) -> Int {
+  mailbox_size(pid)
+}
+
 // Echo worker for demo
 
 fn echo_worker() {
@@ -39,5 +65,9 @@ fn main() {
   send(w, Ping(1))
   send(w, Ping(2))
   send(w, Ping(3))
+  // Give messages time to be enqueued before checking
+  time_sleep(50)
+  let size = pending_messages(self_pid())
+  println("own mailbox: " <> show(size))
   println("done")
 }
