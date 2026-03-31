@@ -10,8 +10,8 @@ pub fn min(a: Int, b: Int) -> Int {
   if a < b { a } else { b }
 }
 
-pub fn clamp(x: Int, low: Int, high: Int) -> Int {
-  max(low, min(x, high))
+pub fn clamp(x: Int, lo: Int, hi: Int) -> Int {
+  max(lo, min(x, hi))
 }
 
 pub fn pow(base: Int, exp: Int) -> Int {
@@ -21,9 +21,14 @@ pub fn pow(base: Int, exp: Int) -> Int {
 
 pub fn gcd(a: Int, b: Int) -> Int {
   if b == 0 { a }
-  else { gcd(b, a % b) }
+  else { if a > b { gcd(a - b, b) } else { gcd(a, b - a) } }
 }
 
-pub fn lcm(a: Int, b: Int) -> Int {
-  a / gcd(a, b) * b
+fn main() {
+  println("Math: abs(-5)=" <> show(abs(0 - 5)))
+  println("Math: max(3,7)=" <> show(max(3, 7)))
+  println("Math: min(3,7)=" <> show(min(3, 7)))
+  println("Math: clamp(10,0,5)=" <> show(clamp(10, 0, 5)))
+  println("Math: pow(2,8)=" <> show(pow(2, 8)))
+  println("Math: gcd(12,8)=" <> show(gcd(12, 8)))
 }

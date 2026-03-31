@@ -1,0 +1,12 @@
+apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  name: japl-hello
+  annotations:
+    version: v0.1.0
+spec:
+  components:
+    - name: hello
+      type: component
+      properties:
+        image: file://./build/hello.wasm

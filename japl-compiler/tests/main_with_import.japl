@@ -1,0 +1,7 @@
+import Math.{add, mul}
+
+fn main() {
+  let result = add(1, 2)
+  println(show(result))
+  println(show(mul(3, 4)))
+}

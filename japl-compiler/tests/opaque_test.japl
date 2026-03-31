@@ -1,0 +1,5 @@
+opaque type UserId = Int
+
+fn main() {
+  println("opaque parsed ok")
+}

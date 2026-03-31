@@ -1,0 +1,7 @@
+fn main() {
+  println("one")
+  println("two")
+  println("three")
+  let x = 42
+  println(show(x))
+}

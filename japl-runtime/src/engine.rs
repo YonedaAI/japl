@@ -13,7 +13,10 @@ pub struct JaplEngine {
 
 impl JaplEngine {
     pub fn new(wasm_path: &str) -> anyhow::Result<Self> {
-        let engine = Engine::default();
+        let mut config = Config::default();
+        config.async_stack_size(512 * 1024 * 1024); // 512MB async stack ceiling
+        config.max_wasm_stack(256 * 1024 * 1024); // 256MB wasm stack for deep recursion
+        let engine = Engine::new(&config)?;
         let module = Module::from_file(&engine, wasm_path)?;
         Ok(Self { engine, module })
     }

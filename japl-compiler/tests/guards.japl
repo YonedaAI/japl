@@ -1,0 +1,15 @@
+type Num = | Num(Int)
+
+fn classify(x: Num) -> Int {
+  match x {
+    Num(n) if n > 0 => 1,
+    Num(n) if n == 0 => 0,
+    Num(n) => 2
+  }
+}
+
+fn main() {
+  println(show(classify(Num(5))))
+  println(show(classify(Num(0))))
+  println(show(classify(Num(1))))
+}

@@ -1,96 +1,98 @@
 #!/bin/bash
 set -e
-
 JAPL_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-COMPILER_WASM="$JAPL_HOME/compiler/self/compiler.wasm"
+COMPILER="$JAPL_HOME/japl-compiler/target/release/japl-compiler"
 RUNTIME="$JAPL_HOME/japl-runtime/target/release/japl-runtime"
 
-if [ ! -f "$RUNTIME" ]; then
-  RUNTIME="$JAPL_HOME/japl-runtime/target/debug/japl-runtime"
-fi
+[ -f "$COMPILER" ] || COMPILER="$JAPL_HOME/japl-compiler/target/debug/japl-compiler"
+[ -f "$RUNTIME" ] || RUNTIME="$JAPL_HOME/japl-runtime/target/debug/japl-runtime"
 
 case "$1" in
   build)
     shift
-    JAPL_FILE="$1"
-    if [ -z "$JAPL_FILE" ]; then
-      echo "Usage: japl build <file.japl>"
-      exit 1
-    fi
+    # Pass all args to the compiler
+    "$COMPILER" build "$@"
 
+    # Determine which .japl file was passed and what --out dir was used
+    JAPL_FILE=""
+    OUT_DIR="build"
+    ARGS=("$@")
+    for ((i=0; i<${#ARGS[@]}; i++)); do
+      case "${ARGS[$i]}" in
+        --out) OUT_DIR="${ARGS[$((i+1))]}" ;;
+        *.japl) JAPL_FILE="${ARGS[$i]}" ;;
+      esac
+    done
+    [ -z "$JAPL_FILE" ] && exit 0
     BASENAME=$(basename "$JAPL_FILE" .japl)
-    OUT_DIR="${2:-build}"
-    mkdir -p "$OUT_DIR"
 
-    TMPDIR=$(mktemp -d)
-    trap "rm -rf $TMPDIR" EXIT
-
-    # Copy source to where compiler expects it
-    cp "$JAPL_FILE" "$TMPDIR/input.japl"
-
-    # Run self-hosted compiler (reads input.japl, outputs WAT to stdout)
-    cd "$TMPDIR"
-    "$RUNTIME" run "$COMPILER_WASM" 2>/dev/null > "$BASENAME.wat"
-
-    # Compile WAT to WASM
-    wat2wasm "$BASENAME.wat" -o "$BASENAME.wasm" 2>/dev/null
-
-    # Move to output
-    cd - > /dev/null
-    mv "$TMPDIR/$BASENAME.wasm" "$OUT_DIR/$BASENAME.wasm"
-    echo "Compiled $JAPL_FILE → $OUT_DIR/$BASENAME.wasm"
+    # After producing core.wasm, wrap as WASM Component if wasm-tools is available
+    ADAPTER="$JAPL_HOME/deploy/adapters/wasi_snapshot_preview1.command.wasm"
+    if command -v wasm-tools >/dev/null 2>&1 && [ -f "$ADAPTER" ] && [ -f "$OUT_DIR/$BASENAME.wasm" ]; then
+      wasm-tools component new "$OUT_DIR/$BASENAME.wasm" \
+        --adapt "wasi_snapshot_preview1=$ADAPTER" \
+        -o "$OUT_DIR/${BASENAME}_component.wasm" 2>/dev/null
+      if [ $? -eq 0 ]; then
+        mv "$OUT_DIR/${BASENAME}_component.wasm" "$OUT_DIR/$BASENAME.wasm"
+        echo "  (WASM Component)" >&2
+      fi
+    fi
     ;;
-
+  check) shift; "$COMPILER" check "$@" ;;
+  fmt)   shift; "$COMPILER" fmt "$@" ;;
   run)
     shift
     JAPL_FILE=""
-    EXTRA_ARGS=()
-    for arg in "$@"; do
-      if [[ "$arg" == *.japl ]]; then
-        JAPL_FILE="$arg"
-      else
-        EXTRA_ARGS+=("$arg")
-      fi
-    done
-
-    if [ -z "$JAPL_FILE" ]; then
-      echo "Usage: japl run <file.japl>"
-      exit 1
-    fi
-
+    for arg in "$@"; do [[ "$arg" == *.japl ]] && JAPL_FILE="$arg"; done
+    [ -z "$JAPL_FILE" ] && echo "Usage: japl run <file.japl>" && exit 1
     TMPDIR=$(mktemp -d)
     trap "rm -rf $TMPDIR" EXIT
+    BASENAME=$(basename "$JAPL_FILE" .japl)
+    "$COMPILER" build "$JAPL_FILE" --out "$TMPDIR" 2>/dev/null
+    if grep -q "japl" "$TMPDIR/$BASENAME.wasm" 2>/dev/null; then
+      "$RUNTIME" run "$TMPDIR/$BASENAME.wasm"
+    else
+      wasmtime "$TMPDIR/$BASENAME.wasm"
+    fi
+    ;;
+  new)
+    shift; NAME="$1"
+    [ -z "$NAME" ] && echo "Usage: japl new <name>" && exit 1
+    mkdir -p "$NAME/src"
+    echo "[package]\nname = \"$NAME\"\nversion = \"0.1.0\"\nentry = \"src/main.japl\"" > "$NAME/japl.toml"
+    echo "fn main() {\n  println(\"Hello from $NAME!\")\n}" > "$NAME/src/main.japl"
+    echo "Created project $NAME"
+    ;;
+  deploy)
+    shift
+    JAPL_FILE="$1"
+    [ -z "$JAPL_FILE" ] && echo "Usage: japl deploy <file.japl>" && exit 1
 
     BASENAME=$(basename "$JAPL_FILE" .japl)
 
-    # Copy source
-    cp "$JAPL_FILE" "$TMPDIR/input.japl"
+    # Build first
+    "$0" build "$JAPL_FILE"
 
-    # Compile
-    cd "$TMPDIR"
-    "$RUNTIME" run "$COMPILER_WASM" 2>/dev/null > "$BASENAME.wat"
-    wat2wasm "$BASENAME.wat" -o "$BASENAME.wasm" 2>/dev/null
-    cd - > /dev/null
+    # Check for wash
+    if ! command -v wash >/dev/null 2>&1; then
+      echo "wash not installed. Install: brew install wasmcloud/wasmcloud/wash"
+      exit 1
+    fi
 
-    # Run (use wasmtime for simple, japl-runtime for processes)
-    if grep -q "japl" "$TMPDIR/$BASENAME.wasm" 2>/dev/null; then
-      "$RUNTIME" run "$TMPDIR/$BASENAME.wasm" "${EXTRA_ARGS[@]}"
+    # Check for wadm manifest next to the source file
+    WADM="$(dirname "$JAPL_FILE")/wadm.yaml"
+    if [ -f "$WADM" ]; then
+      echo "Deploying with wadm manifest: $WADM"
+      wash app deploy "$WADM" 2>/dev/null || {
+        echo "wash app deploy not available in wash $(wash --version 2>/dev/null)."
+        echo "Try: wash dev  (starts dev server for the component)"
+        exit 1
+      }
     else
-      wasmtime "$TMPDIR/$BASENAME.wasm" 2>/dev/null || "$RUNTIME" run "$TMPDIR/$BASENAME.wasm"
+      echo "No wadm.yaml found next to $JAPL_FILE"
+      echo "Create one to define deployment topology, or use: wash dev"
     fi
     ;;
-
-  version) echo "japl 0.3.0 (self-hosted)" ;;
-
-  help|--help|-h)
-    echo "JAPL 0.3.0 — Just Another Programming Language"
-    echo "Compiler: 1557 lines of JAPL, 21KB WASM. No JavaScript."
-    echo ""
-    echo "  japl build <file.japl>    Compile to WASM"
-    echo "  japl run <file.japl>      Compile and execute"
-    echo "  japl version              Version"
-    echo "  japl help                 Help"
-    ;;
-
-  *) echo "Unknown: $1. Try: japl help" && exit 1 ;;
+  version) echo "japl 1.0.0" ;;
+  *) echo "JAPL — japl build|run|check|fmt|new|deploy|version <file.japl>" ;;
 esac

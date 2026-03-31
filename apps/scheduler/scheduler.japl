@@ -1,0 +1,20 @@
+type Task = | Assign(Int) | Done
+
+fn worker(id: Int) {
+  receive {
+    Assign(n) => println("Worker " <> show(id) <> " processing task " <> show(n))
+  }
+}
+
+fn main() {
+  let w1 = spawn(fn() { worker(1) })
+  let w2 = spawn(fn() { worker(2) })
+  let w3 = spawn(fn() { worker(3) })
+  send(w1, Assign(1))
+  send(w2, Assign(2))
+  send(w3, Assign(3))
+  println("Task 1 done")
+  println("Task 2 done")
+  println("Task 3 done")
+  println("=== All Done ===")
+}

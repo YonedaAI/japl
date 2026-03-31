@@ -1,0 +1,23 @@
+type KVMsg =
+  | Put(Int, Int)
+  | Get(Int)
+
+fn kv_loop(store: Int) {
+  receive {
+    Put(k, v) => {
+      println("stored: " <> show(k) <> "=" <> show(v))
+      kv_loop(v)
+    },
+    Get(k) => {
+      println("value: " <> show(store))
+      kv_loop(store)
+    }
+  }
+}
+
+fn main() {
+  let kv = spawn(fn() { kv_loop(0) })
+  send(kv, Put(1, 42))
+  send(kv, Get(1))
+  println("done")
+}

@@ -1,0 +1,5 @@
+fn countdown(n: Int) {
+  if n <= 0 { println("done") }
+  else { println(show(n)) countdown(n - 1) }
+}
+fn main() { countdown(5) }

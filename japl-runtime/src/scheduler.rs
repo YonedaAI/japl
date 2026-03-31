@@ -65,7 +65,9 @@ impl Scheduler {
         let cmd_tx = self.cmd_tx.clone();
         let entry = entry.to_string();
 
-        std::thread::spawn(move || {
+        std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024) // 64MB stack for deep recursion
+            .spawn(move || {
             let wasi = JaplEngine::build_wasi_ctx();
             let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi);
             let mut store = Store::new(&engine_arc.engine, state);
@@ -102,7 +104,7 @@ impl Scheduler {
             }
 
             let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
-        });
+        }).expect("failed to spawn process thread");
 
         Ok(pid)
     }
@@ -116,7 +118,9 @@ impl Scheduler {
         let engine_arc = self.engine.as_ref().unwrap().clone();
         let cmd_tx = self.cmd_tx.clone();
 
-        std::thread::spawn(move || {
+        std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024) // 64MB stack for deep recursion
+            .spawn(move || {
             let wasi = JaplEngine::build_wasi_ctx();
             let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi);
             let mut store = Store::new(&engine_arc.engine, state);
@@ -173,7 +177,7 @@ impl Scheduler {
             }
 
             let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
-        });
+        }).expect("failed to spawn closure process thread");
 
         Ok(pid)
     }

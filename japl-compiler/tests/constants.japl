@@ -1,0 +1,7 @@
+const MAX = 100
+const MIN = 0
+
+fn main() {
+  println(show(MAX))
+  println(show(MIN))
+}

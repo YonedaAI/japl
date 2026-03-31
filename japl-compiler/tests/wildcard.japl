@@ -1,0 +1,13 @@
+type Color = | Red | Green | Blue
+
+fn name(c: Color) -> Int {
+  match c {
+    Red => 1,
+    _ => 0
+  }
+}
+
+fn main() {
+  println(show(name(Red)))
+  println(show(name(Blue)))
+}

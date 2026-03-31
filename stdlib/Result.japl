@@ -1,31 +1,18 @@
-type Result =
-  | Ok(Int)
-  | Err(String)
+type Result = | Ok(Int) | Err(String)
 
-pub fn map_result(r: Result, f: fn(Int) -> Int) -> Result {
-  match r {
-    Ok(x) => Ok(f(x))
-    Err(e) => Err(e)
-  }
+pub fn is_ok(r: Result) -> Int {
+  match r { Ok(_) => 1, Err(_) => 0 }
 }
 
-pub fn unwrap_or_result(r: Result, fallback: Int) -> Int {
-  match r {
-    Ok(x) => x
-    Err(_) => fallback
-  }
+pub fn unwrap_or_result(r: Result, default: Int) -> Int {
+  match r { Ok(x) => x, Err(_) => default }
 }
 
-pub fn is_ok(r: Result) -> Bool {
-  match r {
-    Ok(_) => true
-    Err(_) => false
-  }
-}
-
-pub fn is_err(r: Result) -> Bool {
-  match r {
-    Ok(_) => false
-    Err(_) => true
-  }
+fn main() {
+  let a = Ok(42)
+  let b = Err("oops")
+  println("is_ok(Ok(42))=" <> show(is_ok(a)))
+  println("is_ok(Err)=" <> show(is_ok(b)))
+  println("unwrap_or(Ok(42),0)=" <> show(unwrap_or_result(a, 0)))
+  println("unwrap_or(Err,0)=" <> show(unwrap_or_result(b, 0)))
 }

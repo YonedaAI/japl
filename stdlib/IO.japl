@@ -1,15 +1,17 @@
-foreign "node:fs" fn readFileSync(path: String, encoding: String) -> String
-foreign "node:fs" fn writeFileSync(path: String, content: String) -> String
-foreign "node:fs" fn existsSync(path: String) -> Bool
-
-pub fn read_file(path: String) -> String {
-  readFileSync(path, "utf-8")
+pub fn print_line(msg: String) {
+  println(msg)
 }
 
-pub fn write_file(path: String, content: String) {
-  writeFileSync(path, content)
+pub fn print_int(n: Int) {
+  println(show(n))
 }
 
-pub fn file_exists(path: String) -> Bool {
-  existsSync(path)
+pub fn debug(label: String, val: Int) {
+  println("[debug] " <> label <> "=" <> show(val))
+}
+
+fn main() {
+  print_line("IO module loaded")
+  print_int(42)
+  debug("test", 99)
 }

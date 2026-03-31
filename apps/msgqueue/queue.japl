@@ -1,0 +1,15 @@
+type Msg = | Publish(Int) | Ack(Int)
+
+fn consumer(id: Int) {
+  receive {
+    Ack(val) => println("Got: " <> show(val))
+  }
+}
+
+fn main() {
+  let c1 = spawn(fn() { consumer(1) })
+  let c2 = spawn(fn() { consumer(2) })
+  send(c1, Ack(100))
+  send(c2, Ack(200))
+  println("=== Done ===")
+}

@@ -1,0 +1,12 @@
+fn add(x: Int, y: Int) -> Int { x + y }
+fn sub(x: Int, y: Int) -> Int { x - y }
+fn mul(x: Int, y: Int) -> Int { x * y }
+
+fn abs(x: Int) -> Int { if x < 0 { 0 - x } else { x } }
+
+fn main() {
+  println(show(add(10, 20)))
+  println(show(sub(50, 8)))
+  println(show(mul(6, 7)))
+  println(show(abs(0 - 42)))
+}

@@ -1,10 +1,11 @@
 foreign "japl" fn tcp_listen(port: Int) -> Int
 foreign "japl" fn tcp_accept(listener: Int) -> Int
-foreign "japl" fn tcp_connect(host_ptr: Int, host_len: Int, port: Int) -> Int
-foreign "japl" fn tcp_read(conn: Int, buf: Int, len: Int) -> Int
-foreign "japl" fn tcp_write(conn: Int, buf: Int, len: Int) -> Int
 foreign "japl" fn tcp_close(id: Int)
 
 pub fn listen(port: Int) -> Int { tcp_listen(port) }
 pub fn accept(listener: Int) -> Int { tcp_accept(listener) }
 pub fn close(id: Int) { tcp_close(id) }
+
+fn main() {
+  println("Net module loaded")
+}

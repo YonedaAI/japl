@@ -1,0 +1,11 @@
+fn clamp_byte(n: Int) -> Int {
+  if n > 255 { 255 } else {
+    if n < 0 { 0 } else { n }
+  }
+}
+
+fn main() {
+  println(show(clamp_byte(300)))
+  println(show(clamp_byte(42)))
+  println(show(clamp_byte(0)))
+}

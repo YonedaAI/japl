@@ -1,0 +1,13 @@
+type Msg = | Ping(Int) | Pong(Int)
+
+fn worker() {
+  receive {
+    Ping(n) => println("got: " <> show(n))
+  }
+}
+
+fn main() {
+  let pid = spawn(fn() { worker() })
+  send(pid, Ping(42))
+  println("sent")
+}

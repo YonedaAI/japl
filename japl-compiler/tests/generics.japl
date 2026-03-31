@@ -1,0 +1,17 @@
+type Option<T> =
+  | Some(T)
+  | None
+
+fn unwrap_or(opt: Option, default: Int) -> Int {
+  match opt {
+    Some(v) => v,
+    None => default
+  }
+}
+
+fn main() {
+  let x = Some(42)
+  let y = None
+  println(show(unwrap_or(x, 0)))
+  println(show(unwrap_or(y, 99)))
+}

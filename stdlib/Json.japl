@@ -1,22 +1,3 @@
-// Json.japl — JSON encoding helpers for JAPL
-//
-// STATUS: Partial — Int/Bool/null encoding works.
-// BLOCKED ON:
-//   1. String function parameters (codegen emits i32 instead of i64)
-//      — json_string(s) cannot take a String param yet
-//   2. show() shared buffer — multiple show() calls in one expression
-//      all return the last value. Use incremental concatenation:
-//        let s1 = "[" <> show(1)
-//        let s2 = s1 <> "," <> show(2)   // correct
-//      NOT:
-//        let s = "[" <> show(1) <> "," <> show(2)  // both become 2
-//
-// ENCODING PATTERN:
-//   JSON values are encoded as String. Compose with <> to build objects/arrays.
-//   All json_* functions return String so they compose naturally.
-
-// --- Primitive encoders ---
-
 fn json_int(n: Int) -> String {
   show(n)
 }
@@ -29,56 +10,11 @@ fn json_null() -> String {
   "null"
 }
 
-// --- String encoder (blocked on String params) ---
-// Uncomment once String param codegen is fixed:
-//
-// pub fn json_string(s: String) -> String {
-//   "\"" <> s <> "\""
-// }
-
-// --- Object builders (blocked on String params) ---
-// These take pre-encoded JSON values as String args.
-// Uncomment once String param codegen is fixed:
-//
-// pub fn json_kv(key: String, val: String) -> String {
-//   "\"" <> key <> "\":" <> val
-// }
-//
-// pub fn json_object_1(k1: String, v1: String) -> String {
-//   "{" <> json_kv(k1, v1) <> "}"
-// }
-//
-// pub fn json_object_2(k1: String, v1: String, k2: String, v2: String) -> String {
-//   "{" <> json_kv(k1, v1) <> "," <> json_kv(k2, v2) <> "}"
-// }
-//
-// pub fn json_object_3(k1: String, v1: String, k2: String, v2: String, k3: String, v3: String) -> String {
-//   "{" <> json_kv(k1, v1) <> "," <> json_kv(k2, v2) <> "," <> json_kv(k3, v3) <> "}"
-// }
-
-// --- Array builders (blocked on String params) ---
-//
-// pub fn json_array_1(a: String) -> String {
-//   "[" <> a <> "]"
-// }
-//
-// pub fn json_array_2(a: String, b: String) -> String {
-//   "[" <> a <> "," <> b <> "]"
-// }
-//
-// pub fn json_array_3(a: String, b: String, c: String) -> String {
-//   "[" <> a <> "," <> b <> "," <> c <> "]"
-// }
-
 fn main() {
-  println("Json.japl — JSON module loaded")
-
-  // Demonstrate working encoders
+  println("Json module loaded")
   println("Int:  " <> json_int(42))
   println("Bool: " <> json_bool(1))
   println("Null: " <> json_null())
-
-  // Build a JSON object incrementally (workaround for show buffer)
   let obj1 = "{\"port\":" <> show(8080)
   let obj = obj1 <> ",\"debug\":" <> json_bool(1) <> "}"
   println("Object: " <> obj)

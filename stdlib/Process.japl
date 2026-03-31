@@ -1,3 +1,19 @@
-pub fn sleep_ms(ms: Int) {
-  println("sleeping " <> show(ms) <> "ms")
+type ProcMsg = | Ping(Int)
+
+fn echo_worker() {
+  receive {
+    Ping(n) => {
+      println("echo: " <> show(n))
+      echo_worker()
+    }
+  }
+}
+
+fn main() {
+  println("Process module loaded")
+  let w = spawn(fn() { echo_worker() })
+  send(w, Ping(1))
+  send(w, Ping(2))
+  send(w, Ping(3))
+  println("done")
 }

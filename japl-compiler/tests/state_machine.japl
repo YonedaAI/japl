@@ -1,0 +1,21 @@
+type Color = | Red | Green | Blue
+
+fn name(c: Color) -> String {
+  match c { Red => "red", Green => "green", Blue => "blue" }
+}
+
+type Expr = | Num(Int) | Add(Expr, Expr) | Neg(Expr)
+
+fn eval(e: Expr) -> Int {
+  match e {
+    Num(n) => n,
+    Add(a, b) => eval(a) + eval(b),
+    Neg(x) => 0 - eval(x)
+  }
+}
+
+fn main() {
+  println(name(Red))
+  println(name(Blue))
+  println(show(eval(Add(Num(3), Neg(Num(5))))))
+}

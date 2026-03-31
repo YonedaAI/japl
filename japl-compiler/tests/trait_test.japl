@@ -1,0 +1,7 @@
+trait Show(a) {
+  fn show_val(x: a) -> String
+}
+
+fn main() {
+  println("trait parsed ok")
+}

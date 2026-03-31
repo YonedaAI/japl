@@ -1,13 +1,5 @@
-pub fn length(s: String) -> Int {
-  string_length(s)
-}
-
 pub fn concat(a: String, b: String) -> String {
   a <> b
-}
-
-pub fn is_empty(s: String) -> Bool {
-  string_length(s) == 0
 }
 
 pub fn repeat(s: String, n: Int) -> String {
@@ -17,4 +9,10 @@ pub fn repeat(s: String, n: Int) -> String {
 
 pub fn join(sep: String, a: String, b: String) -> String {
   a <> sep <> b
+}
+
+fn main() {
+  println("concat: " <> concat("hello", " world"))
+  println("repeat: " <> repeat("ab", 3))
+  println("join: " <> join(", ", "foo", "bar"))
 }

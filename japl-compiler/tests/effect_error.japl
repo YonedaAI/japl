@@ -1,0 +1,8 @@
+fn pure_fn(x: Int) -> Int {
+  println("oops")
+  x
+}
+
+fn main() {
+  println(show(pure_fn(42)))
+}
