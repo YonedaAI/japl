@@ -26,7 +26,7 @@ fn light_name(light: Light) -> String {
   }
 }
 
-fn run_sequence(light: Light, steps: Int) -> Light {
+fn run_sequence(light: Light, steps: Int) -> IO Light {
   if steps <= 0 { light }
   else {
     println("  " <> light_name(light))

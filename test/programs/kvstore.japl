@@ -2,7 +2,7 @@ type KVMsg =
   | Put(Int, Int)
   | Get(Int)
 
-fn kv_loop(store: Int) {
+fn kv_loop(store: Int) -> IO Unit {
   receive {
     Put(k, v) => {
       println("stored: " <> show(k) <> "=" <> show(v))

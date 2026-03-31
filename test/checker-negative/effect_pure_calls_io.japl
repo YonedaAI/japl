@@ -1,0 +1,8 @@
+fn pure_computation(x: Int) -> Int {
+  println("side effect!")
+  x * 2
+}
+
+fn main() {
+  println(show(pure_computation(21)))
+}

@@ -144,14 +144,37 @@ impl Parser {
         self.expect(&Token::LParen)?;
         let params = self.parse_params()?;
         self.expect(&Token::RParen)?;
-        let ret_ty = if *self.peek() == Token::Arrow {
+        let (ret_ty, effect) = if *self.peek() == Token::Arrow {
             self.advance();
-            Some(self.parse_type()?)
+            // Check for effect annotation: -> IO Type, -> Process Type
+            let eff = match self.peek() {
+                Token::Ident(name) if name == "IO" || name == "io"
+                    || name == "Process" || name == "process" => {
+                    let e = name.clone();
+                    // Only treat as effect if followed by a type or {
+                    // Peek ahead: if next-next is a type name or {, it's an effect annotation
+                    let next_pos = self.pos + 1;
+                    if next_pos < self.tokens.len() {
+                        match &self.tokens[next_pos].token {
+                            Token::Ident(_) | Token::LBrace | Token::LParen => {
+                                self.advance(); // consume the effect keyword
+                                Some(e)
+                            }
+                            _ => None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            let ty = Some(self.parse_type()?);
+            (ty, eff)
         } else {
-            None
+            (None, None)
         };
         let body = self.parse_block_expr()?;
-        Ok(FnDef { name, params, ret_ty, body, is_pub, doc_comment, effect: None, type_params })
+        Ok(FnDef { name, params, ret_ty, body, is_pub, doc_comment, effect, type_params })
     }
 
     fn parse_optional_type_params(&mut self) -> error::Result<Vec<String>> {

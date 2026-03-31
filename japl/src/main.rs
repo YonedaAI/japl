@@ -104,8 +104,8 @@ fn main() {
         Commands::Check { file } => {
             match compiler::check(&file) {
                 Ok(()) => {}
-                Err(e) => {
-                    eprintln!("{}", e);
+                Err(_) => {
+                    // Errors already printed by check()
                     std::process::exit(1);
                 }
             }

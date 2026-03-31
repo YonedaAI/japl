@@ -1,0 +1,4 @@
+fn main() {
+  let result = a + b + c
+  println(show(result))
+}

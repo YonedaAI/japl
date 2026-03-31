@@ -2,7 +2,7 @@ type Msg =
   | Inc
   | Get
 
-fn counter(n: Int) {
+fn counter(n: Int) -> IO Unit {
   println("Counter value: " <> show(n))
   receive {
     Inc => counter(n + 1)

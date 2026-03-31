@@ -8,7 +8,7 @@ fn name(l: Light) -> String {
   match l { Red => "RED", Green => "GREEN", Yellow => "YELLOW" }
 }
 
-fn run(l: Light, n: Int) {
+fn run(l: Light, n: Int) -> IO Unit {
   if n <= 0 { println("done") }
   else {
     println(name(l))

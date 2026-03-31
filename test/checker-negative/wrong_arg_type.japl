@@ -1,0 +1,6 @@
+fn add(x: Int, y: Int) -> Int { x + y }
+
+fn main() {
+  let result = add("hello", 42)
+  println(show(result))
+}

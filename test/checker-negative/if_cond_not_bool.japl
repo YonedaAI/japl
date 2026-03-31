@@ -1,0 +1,4 @@
+fn main() {
+  let x = if 42 { "yes" } else { "no" }
+  println(x)
+}

@@ -1,0 +1,4 @@
+fn main() {
+  let x = foo(42)
+  println(show(x))
+}

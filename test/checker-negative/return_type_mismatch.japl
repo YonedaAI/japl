@@ -1,0 +1,7 @@
+fn get_name() -> Int {
+  "Alice"
+}
+
+fn main() {
+  println(show(get_name()))
+}
