@@ -370,7 +370,7 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
             response
         } else {
             eprintln!("[japl::llm_structured_str] validation failed: response is not valid JSON structure");
-            format!(r#"{{"error":"invalid_structured_response","raw":"{}"}}"#, response.replace('\\', "\\\\").replace('"', "\\\""))
+            format!(r#"{{"error":"invalid_structured_response","raw":"{}"}}"#, response.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t"))
         };
         write_japl_string(&mut caller, &validated)
     })?;
@@ -409,7 +409,7 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
             response
         } else {
             eprintln!("[japl::llm_structured] validation failed: response is not valid JSON structure");
-            format!(r#"{{"error":"invalid_structured_response","raw":"{}"}}"#, response.replace('\\', "\\\\").replace('"', "\\\""))
+            format!(r#"{{"error":"invalid_structured_response","raw":"{}"}}"#, response.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r").replace('\t', "\\t"))
         };
         let response = validated;
 
