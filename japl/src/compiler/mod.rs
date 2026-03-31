@@ -422,8 +422,11 @@ pub fn check(path: &str) -> Result<(), String> {
 
     // Resolve imports so imported functions are available for type checking
     let base_dir = input_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let search_paths: Vec<PathBuf> = default_stdlib_path().into_iter().collect();
     let mut visited = HashSet::new();
-    resolve_imports(&mut program, &base_dir, &mut visited);
+    let mut in_progress = Vec::new();
+    let mut module_exports = HashMap::new();
+    let _ = resolve_imports(&mut program, &base_dir, &search_paths, &mut visited, &mut in_progress, &mut module_exports);
 
     let errors = checker::check_program(&program, true);
     if errors.is_empty() {
