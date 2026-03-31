@@ -1,0 +1,6 @@
+import Nonexistent
+
+fn main() {
+  let x = nonexistent_fn(42)
+  println(show(x))
+}

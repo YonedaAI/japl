@@ -1,0 +1,10 @@
+import Result
+
+fn main() {
+  let a = Ok(42)
+  let b = Err("fail")
+  println("is_ok=" <> show(is_ok(a)))
+  println("is_ok_err=" <> show(is_ok(b)))
+  println("unwrap=" <> show(unwrap_or_result(a, 0)))
+  println("unwrap_err=" <> show(unwrap_or_result(b, 0)))
+}

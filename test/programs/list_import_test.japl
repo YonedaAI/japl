@@ -1,0 +1,7 @@
+import List
+
+fn main() {
+  let xs = Cons(1, Cons(2, Cons(3, Nil)))
+  println("length=" <> show(length(xs)))
+  println("sum=" <> show(list_sum(xs)))
+}
