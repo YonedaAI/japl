@@ -1,5 +1,0 @@
-import Math.{internal}
-
-fn main() {
-  println(show(internal()))
-}

@@ -54,9 +54,9 @@ This is a real program. It compiles to WASM and runs on the JAPL runtime with ac
 
 ## Quick Start
 
-**Prerequisites:** Node.js 20+, wat2wasm (`brew install wabt`), wasmtime (`brew install wasmtime`)
+**Prerequisites:** Rust toolchain (`rustup`), wat2wasm (`brew install wabt`), wasmtime (`brew install wasmtime`)
 
-For process support: Rust toolchain (`rustup`), then `cd japl-runtime && cargo build`
+Build the runtime: `cd japl-runtime && cargo build --release`
 
 ```bash
 # Hello world
@@ -115,8 +115,8 @@ japl run --runtime apps/kvstore/kvstore.japl
 .japl source
     |
     v
-JAPL Compiler (TypeScript)
-  Lexer -> Parser -> Type Checker -> IR -> WAT Codegen
+JAPL Compiler (self-hosted, 1557 lines of JAPL)
+  Lexer -> Parser -> WAT Codegen
     |
     v
 .wat (WebAssembly Text)
@@ -182,7 +182,7 @@ fn main() {
 ## Project Structure
 
 ```
-compiler/ts/        Compiler (lexer, parser, checker, IR, WAT codegen)
+compiler/self/      Self-hosted compiler (JAPL source + compiled WASM)
 japl-runtime/       Runtime (Rust + wasmtime, processes, distribution)
 stdlib/             Standard library (.japl files)
 test/               Test programs (22 verified on WASM)

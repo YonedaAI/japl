@@ -1,5 +1,0 @@
-import CircA.{circa}
-
-fn main() {
-  println(show(circa()))
-}

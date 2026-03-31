@@ -1,9 +1,0 @@
-foreign "node:fs" fn readFileSync(path: String, encoding: String) -> String
-foreign "node:path" fn join(parts: String, more: String) -> String
-
-fn main() {
-  let content = readFileSync("test/ffi/hello.txt", "utf-8")
-  println(content)
-  let p = join("src", "main.japl")
-  println(p)
-}

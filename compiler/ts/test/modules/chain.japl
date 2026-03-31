@@ -1,5 +1,0 @@
-import B.{b}
-
-fn main() {
-  println(show(b()))
-}

@@ -1,3 +1,0 @@
-import CircA.{circa}
-
-pub fn circb() -> Int { circa() + 1 }

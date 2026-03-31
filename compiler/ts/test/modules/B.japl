@@ -1,3 +1,0 @@
-import A.{a}
-
-pub fn b() -> Int { a() + 1 }

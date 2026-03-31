@@ -393,6 +393,43 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // File I/O Functions
     // =========================================================================
 
+    // japl.file_read_str(japl_str_ptr: i32) -> i32 (japl_str_ptr with file contents)
+    // Takes a JAPL string (length-prefixed), reads the file, returns a new JAPL string
+    linker.func_wrap("japl", "file_read_str", |mut caller: Caller<'_, ProcessState>, str_ptr: i32| -> i32 {
+        let (path, memory, heap_global) = {
+            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = memory.data(&caller);
+            let ptr = str_ptr as usize;
+            let len = u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as usize;
+            let path_bytes = &data[ptr+4..ptr+4+len];
+            let path = std::str::from_utf8(path_bytes).unwrap_or("").to_string();
+            let heap_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+            (path, memory, heap_global)
+        };
+
+        match std::fs::read_to_string(&path) {
+            Ok(contents) => {
+                let bytes = contents.as_bytes();
+                let heap_ptr = heap_global.get(&mut caller).i32().unwrap() as usize;
+                let result_ptr = heap_ptr;
+
+                let mem = memory.data_mut(&mut caller);
+                // Write length-prefixed JAPL string
+                mem[result_ptr..result_ptr+4].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
+                mem[result_ptr+4..result_ptr+4+bytes.len()].copy_from_slice(bytes);
+
+                let new_heap = (result_ptr + 4 + bytes.len()) as i32;
+                heap_global.set(&mut caller, new_heap.into()).unwrap();
+
+                result_ptr as i32
+            }
+            Err(e) => {
+                eprintln!("file_read_str error: {}: {}", path, e);
+                0 // return null pointer on error
+            }
+        }
+    })?;
+
     // japl.file_read(path_ptr: i32, path_len: i32) -> (i32, i32) (data_ptr, data_len)
     linker.func_wrap("japl", "file_read", |mut caller: Caller<'_, ProcessState>, path_ptr: i32, path_len: i32| -> (i32, i32) {
         let path = {

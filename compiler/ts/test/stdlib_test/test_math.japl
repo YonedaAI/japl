@@ -1,8 +1,0 @@
-import Math.{abs, max, min, clamp}
-
-fn main() {
-  println(show(abs(0 - 5)))
-  println(show(max(3, 7)))
-  println(show(min(3, 7)))
-  println(show(clamp(15, 0, 10)))
-}

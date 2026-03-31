@@ -1,6 +1,0 @@
-import Math.{add, sub}
-
-fn main() {
-  println(show(add(10, 20)))
-  println(show(sub(50, 8)))
-}

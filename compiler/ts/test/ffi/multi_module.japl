@@ -1,9 +1,0 @@
-foreign "node:fs" fn existsSync(path: String) -> Bool
-foreign "node:os" fn hostname() -> String
-
-fn main() {
-  let exists = existsSync("test/ffi/hello.txt")
-  println(show(exists))
-  let host = hostname()
-  println(host)
-}

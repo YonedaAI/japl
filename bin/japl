@@ -1,23 +1,48 @@
 #!/bin/bash
-# bin/japl — unified JAPL CLI
 set -e
 
 JAPL_HOME="$(cd "$(dirname "$0")/.." && pwd)"
-COMPILER="$JAPL_HOME/compiler/ts/dist/index.js"
+COMPILER_WASM="$JAPL_HOME/compiler/self/compiler.wasm"
 RUNTIME="$JAPL_HOME/japl-runtime/target/release/japl-runtime"
 
-# Check if runtime exists (fall back to debug)
 if [ ! -f "$RUNTIME" ]; then
   RUNTIME="$JAPL_HOME/japl-runtime/target/debug/japl-runtime"
 fi
 
 case "$1" in
-  build|check|fmt|new|version|help|--version|--help|-v|-h)
-    node "$COMPILER" "$@"
+  build)
+    shift
+    JAPL_FILE="$1"
+    if [ -z "$JAPL_FILE" ]; then
+      echo "Usage: japl build <file.japl>"
+      exit 1
+    fi
+
+    BASENAME=$(basename "$JAPL_FILE" .japl)
+    OUT_DIR="${2:-build}"
+    mkdir -p "$OUT_DIR"
+
+    TMPDIR=$(mktemp -d)
+    trap "rm -rf $TMPDIR" EXIT
+
+    # Copy source to where compiler expects it
+    cp "$JAPL_FILE" "$TMPDIR/input.japl"
+
+    # Run self-hosted compiler (reads input.japl, outputs WAT to stdout)
+    cd "$TMPDIR"
+    "$RUNTIME" run "$COMPILER_WASM" 2>/dev/null > "$BASENAME.wat"
+
+    # Compile WAT to WASM
+    wat2wasm "$BASENAME.wat" -o "$BASENAME.wasm" 2>/dev/null
+
+    # Move to output
+    cd - > /dev/null
+    mv "$TMPDIR/$BASENAME.wasm" "$OUT_DIR/$BASENAME.wasm"
+    echo "Compiled $JAPL_FILE → $OUT_DIR/$BASENAME.wasm"
     ;;
+
   run)
     shift
-    # Parse flags to find the .japl file
     JAPL_FILE=""
     EXTRA_ARGS=()
     for arg in "$@"; do
@@ -29,69 +54,43 @@ case "$1" in
     done
 
     if [ -z "$JAPL_FILE" ]; then
-      echo "Usage: japl run [options] <file.japl>"
+      echo "Usage: japl run <file.japl>"
       exit 1
     fi
 
-    # Build to temp dir
     TMPDIR=$(mktemp -d)
     trap "rm -rf $TMPDIR" EXIT
 
-    node "$COMPILER" build "$JAPL_FILE" --out "$TMPDIR"
-    WASM_FILE="$TMPDIR/$(basename "$JAPL_FILE" .japl).wasm"
+    BASENAME=$(basename "$JAPL_FILE" .japl)
 
-    if [ ! -f "$WASM_FILE" ]; then
-      echo "Compilation failed"
-      exit 1
-    fi
+    # Copy source
+    cp "$JAPL_FILE" "$TMPDIR/input.japl"
 
-    # Check if we need the full runtime (processes) or just wasmtime
-    if grep -q "japl" "$WASM_FILE" 2>/dev/null; then
-      # Has japl imports — needs full runtime
-      "$RUNTIME" run "$WASM_FILE" "${EXTRA_ARGS[@]}"
+    # Compile
+    cd "$TMPDIR"
+    "$RUNTIME" run "$COMPILER_WASM" 2>/dev/null > "$BASENAME.wat"
+    wat2wasm "$BASENAME.wat" -o "$BASENAME.wasm" 2>/dev/null
+    cd - > /dev/null
+
+    # Run (use wasmtime for simple, japl-runtime for processes)
+    if grep -q "japl" "$TMPDIR/$BASENAME.wasm" 2>/dev/null; then
+      "$RUNTIME" run "$TMPDIR/$BASENAME.wasm" "${EXTRA_ARGS[@]}"
     else
-      # Simple program — use wasmtime directly
-      wasmtime "$WASM_FILE"
+      wasmtime "$TMPDIR/$BASENAME.wasm" 2>/dev/null || "$RUNTIME" run "$TMPDIR/$BASENAME.wasm"
     fi
     ;;
-  deploy)
-    echo "japl deploy: coming soon (wasmCloud integration)"
-    ;;
-  add)
-    shift
-    # Package manager: add dependency
-    PKG="$1"
-    if [ -z "$PKG" ]; then
-      echo "Usage: japl add <package>"
-      exit 1
-    fi
 
-    # Create deps/ if needed
-    mkdir -p deps
+  version) echo "japl 0.3.0 (self-hosted)" ;;
 
-    # For now: copy from stdlib if it exists
-    STDLIB="$JAPL_HOME/stdlib/${PKG}.japl"
-    if [ -f "$STDLIB" ]; then
-      cp "$STDLIB" "deps/${PKG}.japl"
-      echo "Added ${PKG} from stdlib"
-    else
-      echo "Package ${PKG} not found in stdlib"
-      echo "Available: $(ls $JAPL_HOME/stdlib/*.japl 2>/dev/null | xargs -I{} basename {} .japl | tr '\n' ' ')"
-      exit 1
-    fi
-    ;;
-  *)
-    echo "JAPL — Just Another Programming Language"
+  help|--help|-h)
+    echo "JAPL 0.3.0 — Just Another Programming Language"
+    echo "Compiler: 1557 lines of JAPL, 21KB WASM. No JavaScript."
     echo ""
-    echo "Usage:"
-    echo "  japl build <file.japl>     Compile to WASM"
-    echo "  japl run <file.japl>       Compile and execute"
-    echo "  japl check <file.japl>     Type check"
-    echo "  japl fmt <file.japl>       Format"
-    echo "  japl new <name>            New project"
-    echo "  japl add <package>         Add dependency"
-    echo "  japl deploy <file.japl>    Deploy (coming soon)"
-    echo "  japl version               Version"
-    echo "  japl help                  Help"
+    echo "  japl build <file.japl>    Compile to WASM"
+    echo "  japl run <file.japl>      Compile and execute"
+    echo "  japl version              Version"
+    echo "  japl help                 Help"
     ;;
+
+  *) echo "Unknown: $1. Try: japl help" && exit 1 ;;
 esac

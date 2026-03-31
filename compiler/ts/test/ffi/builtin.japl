@@ -1,5 +1,0 @@
-fn main() {
-  println("builtins still work")
-  println(show(42))
-  println(show(3.14))
-}

@@ -1,8 +1,0 @@
-import String.{repeat, is_empty, length}
-
-fn main() {
-  println(repeat("ha", 3))
-  println(show(is_empty("")))
-  println(show(is_empty("hello")))
-  println(show(length("JAPL")))
-}

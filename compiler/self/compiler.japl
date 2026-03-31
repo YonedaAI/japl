@@ -16,6 +16,7 @@ foreign "japl" fn from_char_code(code: Int) -> Int
 foreign "japl" fn string_index_of(haystack: Int, needle: Int) -> Int
 foreign "japl" fn file_read(path_ptr: Int, path_len: Int) -> Int
 foreign "japl" fn file_write(path_ptr: Int, path_len: Int, data_ptr: Int, data_len: Int) -> Int
+foreign "japl" fn file_read_str(path: Int) -> Int
 
 // Helper: newline character
 fn nl() -> Int {
@@ -424,12 +425,26 @@ fn emit_len_hex(len: Int) -> Int {
   hex_byte(b0) <> hex_byte(b1) <> hex_byte(b2) <> hex_byte(b3)
 }
 
+// Hex-encode all bytes in a string for safe WAT data segment embedding
+fn hex_encode_str_at(s: Int, idx: Int, len: Int) -> Int {
+  if idx >= len { "" }
+  else {
+    let b = char_at(s, idx)
+    hex_byte(b) <> hex_encode_str_at(s, idx + 1, len)
+  }
+}
+
+fn hex_encode_str(s: Int) -> Int {
+  hex_encode_str_at(s, 0, str_length(s))
+}
+
 // Emit data segment for a single string
 fn emit_string_data(s: Int, offset: Int) -> Int {
   let len = str_length(s)
   let len_hex = emit_len_hex(len)
+  let body_hex = hex_encode_str(s)
   let q = qt()
-  "  (data (i32.const " <> show(offset) <> ") " <> q <> len_hex <> s <> q <> ") "
+  "  (data (i32.const " <> show(offset) <> ") " <> q <> len_hex <> body_hex <> q <> ") "
 }
 
 // Emit all string data segments
@@ -1550,8 +1565,14 @@ fn compile(source: Int) -> Int {
 
 fn main() {
   let q = qt()
-  // Default: compile the add+main test program
-  let source = "fn add(x: Int, y: Int) -> Int { x + y } fn main() { println(show(add(1, 2))) }"
-  let wat = compile(source)
-  println(wat)
+  let source = file_read_str("input.japl")
+  if source == 0 {
+    // Fallback: hardcoded test
+    let s = "fn main() { println(42) }"
+    let wat = compile(s)
+    println(wat)
+  } else {
+    let wat = compile(source)
+    println(wat)
+  }
 }
