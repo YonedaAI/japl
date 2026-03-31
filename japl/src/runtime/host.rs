@@ -165,6 +165,8 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         let msg_bytes = {
             let state = caller.data_mut();
             if let Some(msg) = state.mailbox.pop_front() {
+                // Decrement mailbox counter when consuming a message
+                state.mailbox_counter.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                 msg
             } else {
                 // Block until a message arrives. Using recv() instead of
@@ -172,7 +174,10 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
                 // test failures when messages arrived between timeout cycles.
                 loop {
                     match state.receiver.recv() {
-                        Ok(ProcessMessage::Deliver(msg)) => break msg,
+                        Ok(ProcessMessage::Deliver(msg)) => {
+                            state.mailbox_counter.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                            break msg;
+                        }
                         Ok(ProcessMessage::Shutdown) => return -1,
                         Err(mpsc::RecvError) => return -1,
                     }

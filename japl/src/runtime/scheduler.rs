@@ -74,14 +74,14 @@ impl Scheduler {
         let cmd_tx = self.cmd_tx.clone();
         let entry = entry.to_string();
         let shutdown_flag = self.shutdown_flag.clone();
-        let _mb_size = mailbox_size;
+        let mb_counter = mailbox_size;
 
         std::thread::Builder::new()
             .name(format!("japl-pid-{}", pid))
             .stack_size(PROCESS_STACK_SIZE)
             .spawn(move || {
             let wasi = JaplEngine::build_wasi_ctx();
-            let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi, shutdown_flag);
+            let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi, shutdown_flag, mb_counter);
             let mut store = Store::new(&engine_arc.engine, state);
 
             let linker = match engine_arc.build_linker() {
@@ -144,13 +144,14 @@ impl Scheduler {
         let engine_arc = self.engine.as_ref().unwrap().clone();
         let cmd_tx = self.cmd_tx.clone();
         let shutdown_flag = self.shutdown_flag.clone();
+        let mb_counter = mailbox_size;
 
         std::thread::Builder::new()
             .name(format!("japl-pid-{}", pid))
             .stack_size(PROCESS_STACK_SIZE)
             .spawn(move || {
             let wasi = JaplEngine::build_wasi_ctx();
-            let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi, shutdown_flag);
+            let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi, shutdown_flag, mb_counter);
             let mut store = Store::new(&engine_arc.engine, state);
 
             let linker = match engine_arc.build_linker() {

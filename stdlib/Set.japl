@@ -41,8 +41,11 @@ pub fn union(a: SetEntry, b: SetEntry) -> SetEntry {
   }
 }
 
-pub fn to_list(s: SetEntry) -> Int {
-  size(s)
+pub fn to_list(s: SetEntry) -> SetEntry {
+  match s {
+    SetEmpty => SetEmpty
+    SetCons(x, rest) => SetCons(x, to_list(rest))
+  }
 }
 
 fn main() {

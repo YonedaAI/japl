@@ -43,6 +43,7 @@ pub struct ProcessState {
     pub next_resource_id: u64,
     pub max_mailbox_size: usize,
     pub shutdown_flag: Arc<AtomicUsize>,
+    pub mailbox_counter: Arc<AtomicUsize>,
 }
 
 #[allow(dead_code)]
@@ -82,6 +83,7 @@ impl ProcessState {
         scheduler_tx: mpsc::Sender<SchedulerCommand>,
         wasi: wasmtime_wasi::p1::WasiP1Ctx,
         shutdown_flag: Arc<AtomicUsize>,
+        mailbox_counter: Arc<AtomicUsize>,
     ) -> Self {
         Self {
             pid,
@@ -93,6 +95,7 @@ impl ProcessState {
             next_resource_id: 0,
             max_mailbox_size: DEFAULT_MAX_MAILBOX_SIZE,
             shutdown_flag,
+            mailbox_counter,
         }
     }
 
