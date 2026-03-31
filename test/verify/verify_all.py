@@ -112,6 +112,11 @@ run_test("stdlib/Budget", "stdlib/Budget.japl", ["remaining: 100", "max: 100", "
 run_test("stdlib/Replay", "stdlib/Replay.japl", ["empty_size: 0", "empty_latest: -1", "size: 3", "latest: 3"])
 run_test("stdlib/Provenance", "stdlib/Provenance.japl", ["human: human", "model: model:claude", "tool: tool:search", "composed: human+model:claude", "hash: abc123", "timestamp: 1000"])
 
+print("\n--- Stdlib Import Tests ---")
+run_test("stdlib_option_import", "test/programs/stdlib_option_test.japl", ["is_some=1", "unwrap=99"])
+run_test("multi_import", "test/programs/multi_import_test.japl", ["unwrap=99", "is_ok=1"])
+run_test("result_import", "test/programs/result_import_test.japl", ["is_ok=1", "is_ok_err=0", "unwrap=42", "unwrap_err=0"])
+
 print("\n--- Apps ---")
 run_test("kvstore_app", "apps/kvstore/kvstore.japl", ["PUT key=0", "GET key=0", "DEL key=", "NOT FOUND", "SIZE partition"], use_runtime=True, retries=3)
 run_test("msgqueue", "apps/msgqueue/queue.japl", ["enqueued", "dequeued", "acked", "Queue Complete"], use_runtime=True, retries=3)

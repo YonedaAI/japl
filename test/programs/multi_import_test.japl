@@ -1,0 +1,11 @@
+import Result
+import Option
+
+fn main() {
+  let a = Some(99)
+  let v = unwrap_or(a, 0)
+  let r = Ok(42)
+  let rok = is_ok(r)
+  println("unwrap=" <> show(v))
+  println("is_ok=" <> show(rok))
+}
