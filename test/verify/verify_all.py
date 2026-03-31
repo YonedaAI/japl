@@ -75,7 +75,12 @@ run_test("guards", "test/programs/guards.japl", [])
 run_test("generics", "test/programs/generics_fn.japl", ["42", "hello"])
 run_test("exhaustive_match", "test/programs/exhaustive.japl", ["red", "blue"])
 run_test("http_handler", "test/programs/http_handler.japl", ["HTTP 200 OK: GET /hello"])
+# Distribution tests:
+#   dist_test         – basic remote spawn simulation (single worker, one message)
+#   dist_cluster_test – multi-worker pipeline pattern (two workers, reply-back routing)
+#   True multi-node tests require `japl run --node-name --peer` flags (Agent J scope)
 run_test("dist_test", "test/programs/dist_test.japl", ["remote got: 42"], use_runtime=True, retries=3)
+run_test("dist_cluster", "test/programs/dist_cluster_test.japl", ["Cluster test starting", "worker1:", "worker2:", "Cluster test done"], use_runtime=True, retries=3)
 
 print("\n--- Processes ---")
 run_test("processes", "test/programs/process.japl", ["got"], use_runtime=True, retries=3)

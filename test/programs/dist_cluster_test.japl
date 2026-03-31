@@ -1,0 +1,71 @@
+// Test: simulate a multi-worker pipeline with message routing
+// This runs locally but exercises the same spawn/send/receive patterns
+// that would run across nodes in a distributed setup.
+// True multi-node tests require: japl run --node-name --peer
+
+import Time
+
+type ClusterMsg =
+  | Work(Int, Pid)
+  | Result(Int)
+  | Done
+
+// Worker that doubles its input and replies
+fn worker_handle(n: Int, reply: Pid) {
+  let result = Result(n * 2)
+  let _ = send(reply, result)
+  worker_loop()
+}
+
+fn worker_loop() {
+  receive {
+    Work(n, reply) => worker_handle(n, reply),
+    Done => println("worker shutdown")
+  }
+}
+
+fn start_worker() {
+  worker_loop()
+}
+
+// Collect two results from workers
+fn collect(count: Int) {
+  receive {
+    Result(r) => on_collect(count, r)
+  }
+}
+
+fn on_collect(count: Int, r: Int) {
+  if count == 0 {
+    let _ = println("worker1: " <> show(r))
+    collect(1)
+  } else {
+    println("worker2: " <> show(r))
+  }
+}
+
+fn main() {
+  let _ = println("Cluster test starting")
+
+  // Spawn workers (in distributed mode these would be on different nodes)
+  let w1 = spawn(fn() { start_worker() })
+  let w2 = spawn(fn() { start_worker() })
+
+  let me = self()
+
+  // Send work to both
+  let task1 = Work(10, me)
+  let _ = send(w1, task1)
+  let task2 = Work(20, me)
+  let _ = send(w2, task2)
+
+  // Collect results
+  let _ = collect(0)
+
+  // Shutdown
+  let _ = send(w1, Done)
+  let _ = send(w2, Done)
+  let _ = time_sleep(10)
+
+  println("Cluster test done")
+}
