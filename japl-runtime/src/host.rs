@@ -1,6 +1,5 @@
 use std::io::{Read, Write};
 use std::sync::mpsc;
-use std::time::Duration;
 use wasmtime::*;
 
 use crate::process::{ProcessMessage, ProcessState, Resource, SchedulerCommand};
@@ -79,12 +78,14 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
             if let Some(msg) = state.mailbox.pop_front() {
                 msg
             } else {
+                // Block until a message arrives. Using recv() instead of
+                // recv_timeout() eliminates timing gaps that caused flaky
+                // test failures when messages arrived between timeout cycles.
                 loop {
-                    match state.receiver.recv_timeout(Duration::from_millis(100)) {
+                    match state.receiver.recv() {
                         Ok(ProcessMessage::Deliver(msg)) => break msg,
                         Ok(ProcessMessage::Shutdown) => return -1,
-                        Err(mpsc::RecvTimeoutError::Timeout) => continue,
-                        Err(mpsc::RecvTimeoutError::Disconnected) => return -1,
+                        Err(mpsc::RecvError) => return -1,
                     }
                 }
             }
@@ -173,6 +174,9 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
             if end <= data.len() {
                 if let Ok(s) = std::str::from_utf8(&data[start..end]) {
                     println!("{}", s);
+                    // Flush stdout immediately so output appears in order
+                    // before any subsequently spawned process writes.
+                    let _ = std::io::stdout().flush();
                 }
             }
         }

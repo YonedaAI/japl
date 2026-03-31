@@ -813,6 +813,8 @@ impl WatEmitter {
                 }
             }
             IrExpr::Loop(label, body) => {
+                let exit_label = format!("{}__exit", label);
+                self.push(&format!("block ${}", exit_label));
                 self.push(&format!("loop ${}", label));
                 for stmt in body {
                     match stmt {
@@ -825,10 +827,16 @@ impl WatEmitter {
                         }
                     }
                 }
-                self.pop("end");
+                self.pop("end"); // loop
+                self.pop("end"); // block
                 if need_value {
-                    self.line("i64.const 0");
+                    self.line("local.get $__tco_result");
                 }
+            }
+            IrExpr::Break(label, val) => {
+                self.emit_expr(val, true);
+                self.line("local.set $__tco_result");
+                self.line(&format!("br ${}", label));
             }
             IrExpr::Continue(label, updates) => {
                 for (name, val) in updates {

@@ -83,11 +83,18 @@ case "$1" in
     WADM="$(dirname "$JAPL_FILE")/wadm.yaml"
     if [ -f "$WADM" ]; then
       echo "Deploying with wadm manifest: $WADM"
-      wash app deploy "$WADM" 2>/dev/null || {
-        echo "wash app deploy not available in wash $(wash --version 2>/dev/null)."
-        echo "Try: wash dev  (starts dev server for the component)"
+      # wash 0.18+ supports 'wash app deploy', but wash 2.x removed it
+      if wash app deploy --help >/dev/null 2>&1; then
+        wash app deploy "$WADM"
+      else
+        WASH_VER=$(wash --version 2>/dev/null || echo "unknown")
+        echo "Error: 'wash app deploy' is not available in $WASH_VER."
+        echo "wash 2.x removed the 'wash app' subcommand."
+        echo "Use instead:"
+        echo "  wash dev    — start a local dev server for the component"
+        echo "  wadm deploy — if you have wadm CLI installed separately"
         exit 1
-      }
+      fi
     else
       echo "No wadm.yaml found next to $JAPL_FILE"
       echo "Create one to define deployment topology, or use: wash dev"

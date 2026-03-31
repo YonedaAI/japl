@@ -12,6 +12,7 @@ pub enum IrExpr {
     Block(Vec<IrStmt>, Option<Box<IrExpr>>),
     Loop(String, Vec<IrStmt>), // label, body (for TCO)
     Continue(String, Vec<(String, IrExpr)>), // label, param updates
+    Break(String, Box<IrExpr>),              // break out of TCO loop with value
     // Tagged union construction: tag, fields
     TaggedNew(u32, Vec<IrExpr>),
     // Tagged union field access: expr, field_index (offset from tag header)

@@ -286,10 +286,15 @@ impl Lowerer {
         };
         self.current_fn_name = None;
 
+        let mut locals: Vec<String> = locals.into_iter().collect();
+        if is_tail_recursive {
+            locals.push("__tco_result".to_string());
+        }
+
         IrFunction {
             name: fd.name.clone(),
             params,
-            locals: locals.into_iter().collect(),
+            locals,
             body,
             has_return,
             is_closure_body: false,
@@ -373,7 +378,9 @@ impl Lowerer {
             let stmts = self.lower_body_with_tco(expr, fn_name, params);
             IrExpr::Block(stmts, None)
         } else {
-            self.lower_expr(expr, false)
+            // Non-recursive branch: break out of TCO loop with the value
+            let val = self.lower_expr(expr, false);
+            IrExpr::Break("$tco_loop__exit".to_string(), Box::new(val))
         }
     }
 

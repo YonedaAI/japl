@@ -13,8 +13,11 @@ else
   git clone https://github.com/YonedaAI/japl.git "$JAPL_HOME/src"
 fi
 
+cd "$JAPL_HOME/src/japl-compiler" && cargo build --release 2>&1 | tail -1
 cd "$JAPL_HOME/src/japl-runtime" && cargo build --release 2>&1 | tail -1
+cp "$JAPL_HOME/src/japl-compiler/target/release/japl-compiler" "$JAPL_HOME/bin/japl-compiler"
+cp "$JAPL_HOME/src/japl-runtime/target/release/japl-runtime" "$JAPL_HOME/bin/japl-runtime"
 cp "$JAPL_HOME/src/bin/japl" "$JAPL_HOME/bin/japl"
-chmod +x "$JAPL_HOME/bin/japl"
+chmod +x "$JAPL_HOME/bin/japl-compiler" "$JAPL_HOME/bin/japl-runtime" "$JAPL_HOME/bin/japl"
 
 echo "JAPL installed! export PATH=\"$JAPL_HOME/bin:\$PATH\""
