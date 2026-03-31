@@ -295,6 +295,8 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
     linker.func_wrap("japl", "receive", || -> i64 { -1 })?;
     linker.func_wrap("japl", "self_pid", || -> i64 { 0 })?;
     linker.func_wrap("japl", "llm", |_: i32, _: i32| -> (i32, i32) { (0, 0) })?;
+    linker.func_wrap("japl", "llm_str", |_: i32| -> i32 { 0 })?;
+    linker.func_wrap("japl", "llm_structured_str", |_: i32, _: i32| -> i32 { 0 })?;
     linker.func_wrap("japl", "tcp_listen", |_: i32| -> i64 { -1 })?;
     linker.func_wrap("japl", "tcp_accept", |_: i64| -> i64 { -1 })?;
     linker.func_wrap("japl", "tcp_connect", |_: i32, _: i32, _: i32| -> i64 { -1 })?;

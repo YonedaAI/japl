@@ -271,6 +271,9 @@ impl Checker {
                         }
                         "llm" => {
                             self.record_effect(Effect::LLM);
+                            if args.len() != 1 {
+                                self.errors.push(format!("type error: llm expects 1 argument, got {}", args.len()));
+                            }
                             if let Some(arg) = args.first() {
                                 let arg_ty = self.infer_expr(arg);
                                 if arg_ty != Type::String && arg_ty != Type::Var(0) {
@@ -281,6 +284,9 @@ impl Checker {
                         }
                         "llm_structured" => {
                             self.record_effect(Effect::LLM);
+                            if args.len() != 2 {
+                                self.errors.push(format!("type error: llm_structured expects 2 arguments, got {}", args.len()));
+                            }
                             for arg in args {
                                 let arg_ty = self.infer_expr(arg);
                                 if arg_ty != Type::String && arg_ty != Type::Var(0) {
