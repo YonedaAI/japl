@@ -57,6 +57,39 @@ pub fn reg_size(r: RegEntry) -> Int {
   }
 }
 
+// Alias for reg_size
+pub fn reg_count(r: RegEntry) -> Int {
+  reg_size(r)
+}
+
+// Update the value for an existing key using a function.
+// If the key is not found, the registry is returned unchanged.
+pub fn reg_update(r: RegEntry, name: Int, f: fn(Int) -> Int) -> RegEntry {
+  match r {
+    RegEmpty => RegEmpty,
+    Entry(k, v, rest) =>
+      if k == name {
+        let new_v = f(v)
+        Entry(k, new_v, rest)
+      }
+      else {
+        let tail = reg_update(rest, name, f)
+        Entry(k, v, tail)
+      }
+  }
+}
+
+// Print all registered keys (since we can't return a List from this module)
+pub fn reg_print_keys(r: RegEntry) -> Unit {
+  match r {
+    RegEmpty => println("(end)"),
+    Entry(k, _, rest) => {
+      println("key: " <> show(k))
+      reg_print_keys(rest)
+    }
+  }
+}
+
 fn main() {
   println("Registry module loaded")
   let r = reg_new()
@@ -73,5 +106,12 @@ fn main() {
   let r = reg_put(r, 2, 999)
   println("After overwrite, Lookup 2: " <> show(reg_get(r, 2)))
   println("After overwrite, size: " <> show(reg_size(r)))
+  // Test reg_count alias
+  println("reg_count: " <> show(reg_count(r)))
+  // Test reg_update
+  let r = reg_update(r, 1, fn(v: Int) -> Int { v + 50 })
+  println("After update 1: " <> show(reg_get(r, 1)))
+  // Test reg_print_keys
+  reg_print_keys(r)
   println("done")
 }

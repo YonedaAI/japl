@@ -51,6 +51,33 @@ pub fn decode_str_or(e: Encoded, default_val: String) -> String {
   }
 }
 
+// Wrap items as a ListVal (cons cell with NilVal tail)
+pub fn encode_list(items: Encoded) -> Encoded {
+  ListVal(items, NilVal)
+}
+
+// Check if value is IntVal (returns 1 or 0)
+pub fn is_int(e: Encoded) -> Int {
+  match e {
+    IntVal(_) => 1,
+    StrVal(_) => 0,
+    PairVal(_, _) => 0,
+    ListVal(_, _) => 0,
+    NilVal => 0
+  }
+}
+
+// Check if value is StrVal (returns 1 or 0)
+pub fn is_str(e: Encoded) -> Int {
+  match e {
+    IntVal(_) => 0,
+    StrVal(_) => 1,
+    PairVal(_, _) => 0,
+    ListVal(_, _) => 0,
+    NilVal => 0
+  }
+}
+
 pub fn tag(e: Encoded) -> Int {
   match e {
     IntVal(_) => 0,
@@ -72,4 +99,12 @@ fn main() {
   println("tag(PairVal)=" <> show(tag(c)))
   println("roundtrip int: " <> show(decode_int_or(encode_int(99), 0)))
   println("roundtrip str: " <> decode_str_or(encode_str("world"), ""))
+  // Test encode_list
+  let li = encode_list(encode_int(7))
+  println("tag(ListVal)=" <> show(tag(li)))
+  // Test is_int / is_str
+  println("is_int(IntVal)=" <> show(is_int(a)))
+  println("is_int(StrVal)=" <> show(is_int(b)))
+  println("is_str(StrVal)=" <> show(is_str(b)))
+  println("is_str(IntVal)=" <> show(is_str(a)))
 }
