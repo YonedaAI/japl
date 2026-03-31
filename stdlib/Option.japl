@@ -1,11 +1,29 @@
-type Option = | Some(Int) | None
+type Option<T> =
+  | Some(T)
+  | None
 
-pub fn is_some(o: Option) -> Int {
+pub fn is_some<T>(o: Option) -> Int {
   match o { Some(_) => 1, None => 0 }
 }
 
-pub fn unwrap_or(o: Option, default: Int) -> Int {
+pub fn is_none<T>(o: Option) -> Int {
+  match o { Some(_) => 0, None => 1 }
+}
+
+pub fn unwrap_or<T>(o: Option, default: T) -> T {
   match o { Some(x) => x, None => default }
+}
+
+pub fn map<T, U>(o: Option, f: fn(T) -> U) -> Option {
+  match o { Some(x) => Some(f(x)), None => None }
+}
+
+pub fn flat_map<T, U>(o: Option, f: fn(T) -> Option) -> Option {
+  match o { Some(x) => f(x), None => None }
+}
+
+pub fn or_else<T>(o: Option, f: fn() -> Option) -> Option {
+  match o { Some(x) => Some(x), None => f() }
 }
 
 fn main() {

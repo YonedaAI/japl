@@ -1,32 +1,102 @@
-type IntList = | Cons(Int, IntList) | Nil
+type List<T> =
+  | Cons(T, List)
+  | Nil
 
-pub fn list_length(l: IntList) -> Int {
+pub fn length<T>(l: List) -> Int {
   match l {
     Nil => 0,
-    Cons(_, rest) => 1 + list_length(rest)
+    Cons(_, rest) => 1 + length(rest)
   }
 }
 
-pub fn list_sum(l: IntList) -> Int {
+pub fn head<T>(l: List, default: T) -> T {
   match l {
-    Nil => 0,
-    Cons(x, rest) => x + list_sum(rest)
+    Nil => default,
+    Cons(x, _) => x
   }
 }
 
-pub fn list_contains(l: IntList, val: Int) -> Int {
+pub fn tail<T>(l: List) -> List {
+  match l {
+    Nil => Nil,
+    Cons(_, rest) => rest
+  }
+}
+
+pub fn map<T, U>(l: List, f: fn(T) -> U) -> List {
+  match l {
+    Nil => Nil,
+    Cons(x, rest) => Cons(f(x), map(rest, f))
+  }
+}
+
+pub fn filter<T>(l: List, f: fn(T) -> Int) -> List {
+  match l {
+    Nil => Nil,
+    Cons(x, rest) =>
+      if f(x) == 1 { Cons(x, filter(rest, f)) }
+      else { filter(rest, f) }
+  }
+}
+
+pub fn fold<T, U>(l: List, init: U, f: fn(U, T) -> U) -> U {
+  match l {
+    Nil => init,
+    Cons(x, rest) => fold(rest, f(init, x), f)
+  }
+}
+
+pub fn flat_map<T, U>(l: List, f: fn(T) -> List) -> List {
+  match l {
+    Nil => Nil,
+    Cons(x, rest) => append(f(x), flat_map(rest, f))
+  }
+}
+
+pub fn append<T>(a: List, b: List) -> List {
+  match a {
+    Nil => b,
+    Cons(x, rest) => Cons(x, append(rest, b))
+  }
+}
+
+pub fn reverse<T>(l: List) -> List {
+  reverse_acc(l, Nil)
+}
+
+fn reverse_acc<T>(l: List, acc: List) -> List {
+  match l {
+    Nil => acc,
+    Cons(x, rest) => reverse_acc(rest, Cons(x, acc))
+  }
+}
+
+pub fn contains<T>(l: List, val: T) -> Int {
   match l {
     Nil => 0,
     Cons(x, rest) =>
       if x == val { 1 }
-      else { list_contains(rest, val) }
+      else { contains(rest, val) }
   }
+}
+
+pub fn find<T>(l: List, f: fn(T) -> Int) -> Int {
+  match l {
+    Nil => 0,
+    Cons(x, rest) =>
+      if f(x) == 1 { 1 }
+      else { find(rest, f) }
+  }
+}
+
+pub fn list_sum(l: List) -> Int {
+  fold(l, 0, fn(acc: Int, x: Int) -> Int { acc + x })
 }
 
 fn main() {
   let l = Cons(1, Cons(2, Cons(3, Nil)))
-  println("List length: " <> show(list_length(l)))
+  println("List length: " <> show(length(l)))
   println("List sum: " <> show(list_sum(l)))
-  println("Contains 2: " <> show(list_contains(l, 2)))
-  println("Contains 5: " <> show(list_contains(l, 5)))
+  println("Contains 2: " <> show(contains(l, 2)))
+  println("Contains 5: " <> show(contains(l, 5)))
 }

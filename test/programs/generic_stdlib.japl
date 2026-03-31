@@ -1,0 +1,53 @@
+type Option<T> =
+  | Some(T)
+  | None
+
+type Result<T, E> =
+  | Ok(T)
+  | Err(E)
+
+type List<T> =
+  | Cons(T, List)
+  | Nil
+
+fn unwrap_or<T>(o: Option, default: T) -> T {
+  match o { Some(x) => x, None => default }
+}
+
+fn is_ok<T, E>(r: Result) -> Int {
+  match r { Ok(_) => 1, Err(_) => 0 }
+}
+
+fn length<T>(l: List) -> Int {
+  match l {
+    Nil => 0,
+    Cons(_, rest) => 1 + length(rest)
+  }
+}
+
+fn fold<T, U>(l: List, init: U, f: fn(U, T) -> U) -> U {
+  match l {
+    Nil => init,
+    Cons(x, rest) => fold(rest, f(init, x), f)
+  }
+}
+
+fn main() {
+  let opt_str = Some("hello")
+  let opt_int = Some(42)
+  let opt_none = None
+  println("unwrap string: " <> unwrap_or(opt_str, "default"))
+  println("unwrap int: " <> show(unwrap_or(opt_int, 0)))
+  println("unwrap none: " <> unwrap_or(opt_none, "fallback"))
+
+  let ok_val = Ok(100)
+  let err_val = Err("bad")
+  println("is_ok(Ok): " <> show(is_ok(ok_val)))
+  println("is_ok(Err): " <> show(is_ok(err_val)))
+
+  let nums = Cons(10, Cons(20, Cons(30, Nil)))
+  println("length: " <> show(length(nums)))
+
+  let sum = fold(nums, 0, fn(acc: Int, x: Int) -> Int { acc + x })
+  println("sum: " <> show(sum))
+}
