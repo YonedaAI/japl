@@ -1,0 +1,8 @@
+import Option
+
+fn main() {
+  let a = Some(42)
+  let b = None
+  println("is_some=" <> show(is_some(a)))
+  println("unwrap=" <> show(unwrap_or(b, 99)))
+}

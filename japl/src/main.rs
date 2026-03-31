@@ -22,6 +22,9 @@ enum Commands {
         /// Target: "local" (default) or "component" (Component Model canonical ABI)
         #[arg(long, default_value = "local")]
         target: String,
+        /// Path to stdlib directory (default: auto-detected relative to binary or cwd)
+        #[arg(long)]
+        stdlib_path: Option<String>,
     },
     /// Compile and run a .japl file
     Run {
@@ -57,8 +60,8 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Build { file, out, target } => {
-            match compiler::compile_with_target(&file, &out, &target) {
+        Commands::Build { file, out, target, stdlib_path } => {
+            match compiler::compile_full(&file, &out, &target, stdlib_path.as_deref()) {
                 Ok(wasm_path) => {
                     println!("{}", wasm_path);
                 }

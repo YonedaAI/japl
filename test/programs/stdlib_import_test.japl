@@ -1,0 +1,7 @@
+import String
+
+fn main() {
+  let result = concat("hello", " world")
+  println(result)
+  println(repeat("ab", 3))
+}

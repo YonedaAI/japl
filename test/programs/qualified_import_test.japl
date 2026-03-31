@@ -1,0 +1,6 @@
+import String
+
+fn main() {
+  let result = String.concat("hello", " qualified")
+  println(result)
+}
