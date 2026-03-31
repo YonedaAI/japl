@@ -1,9 +1,32 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
+use std::sync::Arc;
 
 pub type ProcessId = u64;
+
+/// Default maximum mailbox size per process.
+pub const DEFAULT_MAX_MAILBOX_SIZE: usize = 10_000;
+
+/// Thread stack size for process threads (2 MB).
+pub const PROCESS_STACK_SIZE: usize = 2 * 1024 * 1024;
+
+/// Global counter of active processes.
+static ACTIVE_PROCESS_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+pub fn active_process_count() -> usize {
+    ACTIVE_PROCESS_COUNT.load(Ordering::Relaxed)
+}
+
+pub fn increment_process_count() {
+    ACTIVE_PROCESS_COUNT.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn decrement_process_count() {
+    ACTIVE_PROCESS_COUNT.fetch_sub(1, Ordering::Relaxed);
+}
 
 pub enum Resource {
     TcpListener(TcpListener),
@@ -18,6 +41,8 @@ pub struct ProcessState {
     pub wasi: wasmtime_wasi::p1::WasiP1Ctx,
     pub resources: HashMap<u64, Resource>,
     pub next_resource_id: u64,
+    pub max_mailbox_size: usize,
+    pub shutdown_flag: Arc<AtomicUsize>,
 }
 
 #[allow(dead_code)]
@@ -39,6 +64,11 @@ pub enum SchedulerCommand {
     Send {
         target_pid: ProcessId,
         message_bytes: Vec<u8>,
+        reply: Option<mpsc::Sender<bool>>,
+    },
+    MailboxSize {
+        target_pid: ProcessId,
+        reply: mpsc::Sender<usize>,
     },
     Exited {
         pid: ProcessId,
@@ -51,6 +81,7 @@ impl ProcessState {
         receiver: mpsc::Receiver<ProcessMessage>,
         scheduler_tx: mpsc::Sender<SchedulerCommand>,
         wasi: wasmtime_wasi::p1::WasiP1Ctx,
+        shutdown_flag: Arc<AtomicUsize>,
     ) -> Self {
         Self {
             pid,
@@ -60,6 +91,8 @@ impl ProcessState {
             wasi,
             resources: HashMap::new(),
             next_resource_id: 0,
+            max_mailbox_size: DEFAULT_MAX_MAILBOX_SIZE,
+            shutdown_flag,
         }
     }
 

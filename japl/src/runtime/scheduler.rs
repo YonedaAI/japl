@@ -1,17 +1,29 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use wasmtime::*;
 
 use super::engine::JaplEngine;
-use super::process::{ProcessId, ProcessMessage, ProcessState, SchedulerCommand};
+use super::process::{
+    self, ProcessId, ProcessMessage, ProcessState, SchedulerCommand,
+    PROCESS_STACK_SIZE, DEFAULT_MAX_MAILBOX_SIZE,
+};
+
+/// Graceful shutdown timeout in seconds.
+const SHUTDOWN_TIMEOUT_SECS: u64 = 5;
 
 pub struct Scheduler {
     engine: Option<Arc<JaplEngine>>,
     processes: Arc<Mutex<HashMap<ProcessId, mpsc::Sender<ProcessMessage>>>>,
+    /// Track mailbox sizes at the scheduler level for the MailboxSize query.
+    mailbox_sizes: Arc<Mutex<HashMap<ProcessId, Arc<AtomicUsize>>>>,
     next_pid: Arc<Mutex<ProcessId>>,
     cmd_tx: mpsc::Sender<SchedulerCommand>,
     cmd_rx: Option<mpsc::Receiver<SchedulerCommand>>,
+    max_mailbox_size: usize,
+    /// Shared shutdown flag: 0 = running, 1 = shutting down.
+    shutdown_flag: Arc<AtomicUsize>,
 }
 
 impl Scheduler {
@@ -20,9 +32,12 @@ impl Scheduler {
         Self {
             engine: None,
             processes: Arc::new(Mutex::new(HashMap::new())),
+            mailbox_sizes: Arc::new(Mutex::new(HashMap::new())),
             next_pid: Arc::new(Mutex::new(0)),
             cmd_tx,
             cmd_rx: Some(cmd_rx),
+            max_mailbox_size: DEFAULT_MAX_MAILBOX_SIZE,
+            shutdown_flag: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -42,23 +57,38 @@ impl Scheduler {
     fn spawn_process(&self, entry: &str) -> anyhow::Result<ProcessId> {
         let pid = self.alloc_pid();
         let (msg_tx, msg_rx) = mpsc::channel::<ProcessMessage>();
-        self.processes.lock().unwrap().insert(pid, msg_tx);
+        let mailbox_size = Arc::new(AtomicUsize::new(0));
+
+        {
+            let mut procs = self.processes.lock().unwrap();
+            procs.insert(pid, msg_tx);
+        }
+        {
+            let mut sizes = self.mailbox_sizes.lock().unwrap();
+            sizes.insert(pid, mailbox_size.clone());
+        }
+
+        process::increment_process_count();
 
         let engine_arc = self.engine.as_ref().unwrap().clone();
         let cmd_tx = self.cmd_tx.clone();
         let entry = entry.to_string();
+        let shutdown_flag = self.shutdown_flag.clone();
+        let _mb_size = mailbox_size;
 
         std::thread::Builder::new()
-            .stack_size(64 * 1024 * 1024)
+            .name(format!("japl-pid-{}", pid))
+            .stack_size(PROCESS_STACK_SIZE)
             .spawn(move || {
             let wasi = JaplEngine::build_wasi_ctx();
-            let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi);
+            let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi, shutdown_flag);
             let mut store = Store::new(&engine_arc.engine, state);
 
             let linker = match engine_arc.build_linker() {
                 Ok(l) => l,
                 Err(e) => {
                     eprintln!("[pid {}] linker error: {}", pid, e);
+                    process::decrement_process_count();
                     let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
                     return;
                 }
@@ -68,6 +98,7 @@ impl Scheduler {
                 Ok(i) => i,
                 Err(e) => {
                     eprintln!("[pid {}] instantiation error: {}", pid, e);
+                    process::decrement_process_count();
                     let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
                     return;
                 }
@@ -77,6 +108,7 @@ impl Scheduler {
                 Ok(f) => f,
                 Err(e) => {
                     eprintln!("[pid {}] could not find export '{}': {}", pid, entry, e);
+                    process::decrement_process_count();
                     let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
                     return;
                 }
@@ -86,6 +118,7 @@ impl Scheduler {
                 eprintln!("[pid {}] runtime error: {}", pid, e);
             }
 
+            process::decrement_process_count();
             let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
         }).expect("failed to spawn process thread");
 
@@ -95,22 +128,36 @@ impl Scheduler {
     fn spawn_closure_process(&self, closure_ptr: i64, closure_bytes: Vec<u8>) -> anyhow::Result<ProcessId> {
         let pid = self.alloc_pid();
         let (msg_tx, msg_rx) = mpsc::channel::<ProcessMessage>();
-        self.processes.lock().unwrap().insert(pid, msg_tx);
+        let mailbox_size = Arc::new(AtomicUsize::new(0));
+
+        {
+            let mut procs = self.processes.lock().unwrap();
+            procs.insert(pid, msg_tx);
+        }
+        {
+            let mut sizes = self.mailbox_sizes.lock().unwrap();
+            sizes.insert(pid, mailbox_size.clone());
+        }
+
+        process::increment_process_count();
 
         let engine_arc = self.engine.as_ref().unwrap().clone();
         let cmd_tx = self.cmd_tx.clone();
+        let shutdown_flag = self.shutdown_flag.clone();
 
         std::thread::Builder::new()
-            .stack_size(64 * 1024 * 1024)
+            .name(format!("japl-pid-{}", pid))
+            .stack_size(PROCESS_STACK_SIZE)
             .spawn(move || {
             let wasi = JaplEngine::build_wasi_ctx();
-            let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi);
+            let state = ProcessState::new(pid, msg_rx, cmd_tx.clone(), wasi, shutdown_flag);
             let mut store = Store::new(&engine_arc.engine, state);
 
             let linker = match engine_arc.build_linker() {
                 Ok(l) => l,
                 Err(e) => {
                     eprintln!("[pid {}] linker error: {}", pid, e);
+                    process::decrement_process_count();
                     let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
                     return;
                 }
@@ -120,6 +167,7 @@ impl Scheduler {
                 Ok(i) => i,
                 Err(e) => {
                     eprintln!("[pid {}] instantiation error: {}", pid, e);
+                    process::decrement_process_count();
                     let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
                     return;
                 }
@@ -144,6 +192,7 @@ impl Scheduler {
                 Ok(f) => f,
                 Err(e) => {
                     eprintln!("[pid {}] could not find '__process_entry': {}", pid, e);
+                    process::decrement_process_count();
                     let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
                     return;
                 }
@@ -153,18 +202,85 @@ impl Scheduler {
                 eprintln!("[pid {}] runtime error: {}", pid, e);
             }
 
+            process::decrement_process_count();
             let _ = cmd_tx.send(SchedulerCommand::Exited { pid });
         }).expect("failed to spawn closure process thread");
 
         Ok(pid)
     }
 
-    fn send_to_process(&self, target_pid: ProcessId, message_bytes: Vec<u8>) {
+    fn send_to_process(&self, target_pid: ProcessId, message_bytes: Vec<u8>) -> bool {
         let procs = self.processes.lock().unwrap();
         if let Some(tx) = procs.get(&target_pid) {
+            // Check mailbox size limit
+            if let Some(size) = self.mailbox_sizes.lock().unwrap().get(&target_pid) {
+                let current = size.load(Ordering::Relaxed);
+                if current >= self.max_mailbox_size {
+                    eprintln!(
+                        "mailbox full for pid {} ({}/{}), dropping message",
+                        target_pid, current, self.max_mailbox_size
+                    );
+                    return false;
+                }
+                size.fetch_add(1, Ordering::Relaxed);
+            }
             let _ = tx.send(ProcessMessage::Deliver(message_bytes));
+            true
         } else {
             eprintln!("send to unknown pid {}", target_pid);
+            false
+        }
+    }
+
+    fn get_mailbox_size(&self, target_pid: ProcessId) -> usize {
+        if let Some(size) = self.mailbox_sizes.lock().unwrap().get(&target_pid) {
+            size.load(Ordering::Relaxed)
+        } else {
+            0
+        }
+    }
+
+    /// Send shutdown signal to all remaining processes and wait up to timeout.
+    fn graceful_shutdown(&self) {
+        let procs = self.processes.lock().unwrap();
+        let count = procs.len();
+        if count == 0 {
+            return;
+        }
+        eprintln!(
+            "[scheduler] graceful shutdown: signaling {} remaining process(es)",
+            count
+        );
+
+        // Set the global shutdown flag
+        self.shutdown_flag.store(1, Ordering::SeqCst);
+
+        // Send Shutdown message to all processes
+        for (pid, tx) in procs.iter() {
+            if let Err(_) = tx.send(ProcessMessage::Shutdown) {
+                eprintln!("[scheduler] could not signal pid {}", pid);
+            }
+        }
+        drop(procs);
+
+        // Wait for processes to exit, with timeout
+        let deadline = std::time::Instant::now()
+            + std::time::Duration::from_secs(SHUTDOWN_TIMEOUT_SECS);
+
+        loop {
+            let remaining = self.processes.lock().unwrap().len();
+            if remaining == 0 {
+                eprintln!("[scheduler] all processes exited cleanly");
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                eprintln!(
+                    "[scheduler] shutdown timeout reached, {} process(es) still alive — exiting",
+                    remaining
+                );
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
     }
 
@@ -176,6 +292,14 @@ impl Scheduler {
 
         loop {
             if alive_count == 0 || main_exited {
+                // Graceful shutdown: wait for remaining processes
+                if alive_count > 0 {
+                    self.graceful_shutdown();
+                }
+                eprintln!(
+                    "[scheduler] shutdown complete. Final process count: {}",
+                    process::active_process_count()
+                );
                 std::process::exit(0);
             }
 
@@ -199,11 +323,19 @@ impl Scheduler {
                             Err(e) => eprintln!("spawn closure error: {}", e),
                         }
                     }
-                    SchedulerCommand::Send { target_pid, message_bytes } => {
-                        self.send_to_process(target_pid, message_bytes);
+                    SchedulerCommand::Send { target_pid, message_bytes, reply } => {
+                        let ok = self.send_to_process(target_pid, message_bytes);
+                        if let Some(reply) = reply {
+                            let _ = reply.send(ok);
+                        }
+                    }
+                    SchedulerCommand::MailboxSize { target_pid, reply } => {
+                        let size = self.get_mailbox_size(target_pid);
+                        let _ = reply.send(size);
                     }
                     SchedulerCommand::Exited { pid } => {
                         self.processes.lock().unwrap().remove(&pid);
+                        self.mailbox_sizes.lock().unwrap().remove(&pid);
                         alive_count = alive_count.saturating_sub(1);
                         if pid == main_pid {
                             main_exited = true;
