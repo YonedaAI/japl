@@ -2,7 +2,7 @@
 // Architecture: coordinator spawns classifier and summarizer worker agents,
 // sends tasks to each, collects results, prints completion status.
 
-foreign "japl" fn time_sleep(ms: Int)
+import Time
 
 // Messages from coordinator to workers
 type AgentTask =

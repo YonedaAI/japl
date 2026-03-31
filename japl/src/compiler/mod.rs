@@ -163,6 +163,12 @@ fn resolve_imports(
                 ast::TopLevel::Const(_) => {
                     program.items.push(item.clone());
                 }
+                ast::TopLevel::ForeignFn(_) => {
+                    // Foreign declarations must be carried over so that
+                    // pub wrapper functions in the imported module can
+                    // resolve their FFI calls.
+                    program.items.push(item.clone());
+                }
                 _ => {}
             }
         }

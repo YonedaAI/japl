@@ -2,8 +2,7 @@
 // Architecture: main process acts as scheduler, spawns 4 workers,
 // assigns 12 tasks, tracks completion via message passing.
 
-foreign "japl" fn time_now() -> Int
-foreign "japl" fn time_sleep(ms: Int)
+import Time
 
 // Messages from scheduler to worker
 type WorkMsg =

@@ -8,7 +8,9 @@ foreign "japl" fn str_replace(s: String, old: String, new_str: String) -> String
 foreign "japl" fn str_index_of(s: String, sub: String) -> Int
 foreign "japl" fn str_parse_int(s: String) -> Int
 foreign "japl" fn str_length(s: String) -> Int
-foreign "japl" fn substring(s: String, start: Int, len: Int) -> String
+foreign "japl" fn substring(s: String, start: Int, end: Int) -> String
+foreign "japl" fn char_at(s: String, idx: Int) -> Int
+foreign "japl" fn string_eq(a: String, b: String) -> Int
 foreign "japl" fn string_index_of(s: String, sub: String) -> Int
 
 pub fn concat(a: String, b: String) -> String {
@@ -64,8 +66,16 @@ pub fn length(s: String) -> Int {
   str_length(s)
 }
 
-pub fn slice(s: String, start: Int, len: Int) -> String {
-  substring(s, start, len)
+pub fn slice(s: String, start: Int, end: Int) -> String {
+  substring(s, start, end)
+}
+
+pub fn char_code_at(s: String, idx: Int) -> Int {
+  char_at(s, idx)
+}
+
+pub fn equals(a: String, b: String) -> Int {
+  string_eq(a, b)
 }
 
 fn main() {

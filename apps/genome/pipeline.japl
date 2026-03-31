@@ -1,7 +1,4 @@
-foreign "japl" fn char_at(s: String, idx: Int) -> Int
-foreign "japl" fn substring(s: String, start: Int, end: Int) -> String
-foreign "japl" fn str_length(s: String) -> Int
-foreign "japl" fn string_eq(a: String, b: String) -> Int
+import String
 
 // Gene types - what DNA sequences DO
 type GeneType =
