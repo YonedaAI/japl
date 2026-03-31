@@ -1,7 +1,9 @@
+pub mod distribution;
 pub mod engine;
 pub mod host;
 pub mod process;
 pub mod scheduler;
+pub mod wire;
 
 use scheduler::Scheduler;
 
