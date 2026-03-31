@@ -98,6 +98,8 @@ run_test("stdlib/Time", "stdlib/Time.japl", ["Time module loaded"], use_runtime=
 run_test("stdlib/Env", "stdlib/Env.japl", ["Env module loaded"], use_runtime=True)
 run_test("stdlib/Crypto", "stdlib/Crypto.japl", ["Crypto module loaded"], use_runtime=True)
 compile_only_test("stdlib/File", "stdlib/File.japl")
+run_test("stdlib/Supervisor", "stdlib/Supervisor.japl", ["Supervisor module loaded", "Strategy: one_for_one", "Strategy: all_for_one", "Strategy: rest_for_one", "Policy: permanent", "Policy: transient", "Policy: temporary", "is_running: 1", "child_pid: 42", "is_running(Stopped): 0", "should_restart(Permanent,0): 1", "should_restart(Transient,1): 0", "should_restart(Temporary,0): 0"])
+run_test("stdlib/Registry", "stdlib/Registry.japl", ["Registry module loaded", "size: 3", "get 1: 100", "get 2: 200", "get 3: 300", "get 99: -1", "contains 2: 1", "contains 5: 0", "after remove 2, size: 2", "after remove 2, get 2: -1", "after remove 2, contains 2: 0"])
 
 print("\n--- Apps ---")
 run_test("kvstore_app", "apps/kvstore/kvstore.japl", ["PUT key=0", "GET key=0", "DEL key=", "NOT FOUND", "SIZE partition"], use_runtime=True, retries=3)

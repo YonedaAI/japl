@@ -1,0 +1,70 @@
+// Registry module — a name-to-pid registry using message passing
+// The registry is itself a process that stores mappings as a linked list
+
+type RegEntry = | Entry(Int, Int, RegEntry) | NoEntry
+
+type RegMsg =
+  | Register(Int, Int, Int)
+  | Lookup(Int, Int)
+  | Unregister(Int, Int)
+
+pub fn reg_new() -> RegEntry {
+  NoEntry
+}
+
+pub fn reg_put(r: RegEntry, name: Int, pid: Int) -> RegEntry {
+  Entry(name, pid, r)
+}
+
+pub fn reg_get(r: RegEntry, name: Int) -> Int {
+  match r {
+    NoEntry => 0 - 1,
+    Entry(n, p, rest) =>
+      if n == name { p }
+      else { reg_get(rest, name) }
+  }
+}
+
+pub fn reg_remove(r: RegEntry, name: Int) -> RegEntry {
+  match r {
+    NoEntry => NoEntry,
+    Entry(n, p, rest) =>
+      if n == name { rest }
+      else { Entry(n, p, reg_remove(rest, name)) }
+  }
+}
+
+pub fn reg_size(r: RegEntry) -> Int {
+  match r {
+    NoEntry => 0,
+    Entry(_, _, rest) => 1 + reg_size(rest)
+  }
+}
+
+pub fn reg_contains(r: RegEntry, name: Int) -> Int {
+  match r {
+    NoEntry => 0,
+    Entry(n, _, rest) =>
+      if n == name { 1 }
+      else { reg_contains(rest, name) }
+  }
+}
+
+fn main() {
+  println("Registry module loaded")
+  let r = reg_new()
+  let r = reg_put(r, 1, 100)
+  let r = reg_put(r, 2, 200)
+  let r = reg_put(r, 3, 300)
+  println("size: " <> show(reg_size(r)))
+  println("get 1: " <> show(reg_get(r, 1)))
+  println("get 2: " <> show(reg_get(r, 2)))
+  println("get 3: " <> show(reg_get(r, 3)))
+  println("get 99: " <> show(reg_get(r, 99)))
+  println("contains 2: " <> show(reg_contains(r, 2)))
+  println("contains 5: " <> show(reg_contains(r, 5)))
+  let r = reg_remove(r, 2)
+  println("after remove 2, size: " <> show(reg_size(r)))
+  println("after remove 2, get 2: " <> show(reg_get(r, 2)))
+  println("after remove 2, contains 2: " <> show(reg_contains(r, 2)))
+}

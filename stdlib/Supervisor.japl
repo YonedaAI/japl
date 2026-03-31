@@ -1,0 +1,65 @@
+// Supervisor module — supervision strategy types and utilities
+// Mirrors the runtime's OneForOne/AllForOne/RestForOne strategies
+
+type Strategy = | OneForOne | AllForOne | RestForOne
+
+type RestartPolicy = | Permanent | Transient | Temporary
+
+type ChildState = | Running(Int) | Stopped
+
+pub fn strategy_name(s: Strategy) -> String {
+  match s {
+    OneForOne => "one_for_one",
+    AllForOne => "all_for_one",
+    RestForOne => "rest_for_one"
+  }
+}
+
+pub fn restart_policy_name(p: RestartPolicy) -> String {
+  match p {
+    Permanent => "permanent",
+    Transient => "transient",
+    Temporary => "temporary"
+  }
+}
+
+pub fn is_running(cs: ChildState) -> Int {
+  match cs {
+    Running(_) => 1,
+    Stopped => 0
+  }
+}
+
+pub fn child_pid(cs: ChildState) -> Int {
+  match cs {
+    Running(pid) => pid,
+    Stopped => 0 - 1
+  }
+}
+
+pub fn should_restart(policy: RestartPolicy, exit_normal: Int) -> Int {
+  match policy {
+    Permanent => 1,
+    Transient =>
+      if exit_normal == 1 { 0 }
+      else { 1 },
+    Temporary => 0
+  }
+}
+
+fn main() {
+  println("Supervisor module loaded")
+  println("Strategy: " <> strategy_name(OneForOne))
+  println("Strategy: " <> strategy_name(AllForOne))
+  println("Strategy: " <> strategy_name(RestForOne))
+  println("Policy: " <> restart_policy_name(Permanent))
+  println("Policy: " <> restart_policy_name(Transient))
+  println("Policy: " <> restart_policy_name(Temporary))
+  let cs = Running(42)
+  println("is_running: " <> show(is_running(cs)))
+  println("child_pid: " <> show(child_pid(cs)))
+  println("is_running(Stopped): " <> show(is_running(Stopped)))
+  println("should_restart(Permanent,0): " <> show(should_restart(Permanent, 0)))
+  println("should_restart(Transient,1): " <> show(should_restart(Transient, 1)))
+  println("should_restart(Temporary,0): " <> show(should_restart(Temporary, 0)))
+}
