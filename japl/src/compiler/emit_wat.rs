@@ -176,18 +176,27 @@ impl WatEmitter {
         }
 
         // Function table (for closures and indirect calls)
-        if !self.table_entries.is_empty() {
+        // Also needed when uses_processes is true, since __process_entry uses call_indirect
+        let needs_table = !self.table_entries.is_empty() || self.module.uses_processes;
+        if needs_table {
+            let table_size = std::cmp::max(self.table_entries.len(), 1);
             let entries: String = self.table_entries.iter()
                 .map(|e| format!(" ${}", e))
                 .collect();
             self.line(&format!(
                 "(table {} funcref)",
-                self.table_entries.len()
+                table_size
             ));
-            self.line(&format!(
-                "(elem (i32.const 0){})",
-                entries
-            ));
+            if !self.table_entries.is_empty() {
+                self.line(&format!(
+                    "(elem (i32.const 0){})",
+                    entries
+                ));
+            }
+        } else if self.module.uses_processes {
+            // Programs using process primitives (self/send/receive) need
+            // a table for __process_entry's call_indirect, even without closures
+            self.line("(table 1 funcref)");
         } else {
             // Even without closures, functions taking fn-typed parameters generate
             // call_indirect instructions that require a table to exist.

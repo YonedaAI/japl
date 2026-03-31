@@ -293,8 +293,10 @@ pub fn compile_full(path: &str, out_dir: &str, target: &str, stdlib_path: Option
         }
     }
 
-    // Remove .wat file
-    std::fs::remove_file(&wat_path).ok();
+    // Remove .wat file (keep for debugging when JAPL_KEEP_WAT is set)
+    if std::env::var("JAPL_KEEP_WAT").is_err() {
+        std::fs::remove_file(&wat_path).ok();
+    }
 
     eprintln!("Compiled {} -> {}", input_path.display(), wasm_path.display());
     Ok(wasm_path.display().to_string())
