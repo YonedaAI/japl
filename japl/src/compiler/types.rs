@@ -7,6 +7,7 @@ pub enum Type {
     String,
     Bool,
     Byte,
+    Pid,
     Unit,
     Never,
     Named(std::string::String, Vec<Type>),
@@ -25,6 +26,7 @@ impl std::fmt::Display for Type {
             Type::String => write!(f, "String"),
             Type::Bool => write!(f, "Bool"),
             Type::Byte => write!(f, "Byte"),
+            Type::Pid => write!(f, "Pid"),
             Type::Unit => write!(f, "Unit"),
             Type::Never => write!(f, "Never"),
             Type::Named(name, params) => {
