@@ -93,6 +93,7 @@ run_test("stdlib/Http", "stdlib/Http.japl", ["Method: GET", "Method: POST", "Sta
 run_test("stdlib/Process", "stdlib/Process.japl", ["Process module loaded", "done"], use_runtime=True, retries=3)
 compile_only_test("stdlib/Net", "stdlib/Net.japl")
 run_test("stdlib/Map", "stdlib/Map.japl", ["Map size: 3", "Get 1: 100", "Get 2: 200", "Contains 2: 1", "Contains 5: 0"])
+run_test("stdlib/Set", "stdlib/Set.japl", ["Set size: 3", "Contains 1: 1", "Contains 2: 1", "Contains 5: 0", "Union size: 4"])
 run_test("stdlib/Test", "stdlib/Test.japl", ["PASS", "FAIL"])
 run_test("stdlib/Time", "stdlib/Time.japl", ["Time module loaded"], use_runtime=True)
 run_test("stdlib/Env", "stdlib/Env.japl", ["Env module loaded"], use_runtime=True)

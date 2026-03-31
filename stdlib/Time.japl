@@ -4,6 +4,10 @@ foreign "japl" fn time_sleep(ms: Int)
 pub fn now() -> Int { time_now() }
 pub fn sleep(ms: Int) { time_sleep(ms) }
 
+pub fn elapsed(start: Int, end: Int) -> Int {
+  end - start
+}
+
 fn main() {
   println("Time module loaded")
   let t = now()

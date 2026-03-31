@@ -6,6 +6,12 @@ pub fn sha256(data_ptr: Int, data_len: Int, out_ptr: Int) {
   crypto_sha256(data_ptr, data_len, out_ptr)
 }
 
+pub fn sha256_hex(data_ptr: Int, data_len: Int) -> Int {
+  let out = bytes_alloc(32)
+  crypto_sha256(data_ptr, data_len, out)
+  out
+}
+
 pub fn random_bytes(buf_ptr: Int, buf_len: Int) {
   crypto_random(buf_ptr, buf_len)
 }
