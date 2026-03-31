@@ -242,7 +242,7 @@ impl Scheduler {
     }
 
     /// Send shutdown signal to all remaining processes and wait up to timeout.
-    fn graceful_shutdown(&self) {
+    fn graceful_shutdown(&self, cmd_rx: &mpsc::Receiver<SchedulerCommand>) {
         let procs = self.processes.lock().unwrap();
         let count = procs.len();
         if count == 0 {
@@ -283,10 +283,7 @@ impl Scheduler {
                 break;
             }
             // Drain pending commands (especially Exited) to update process map
-            while let Ok(cmd) = self.cmd_rx.as_ref().map_or(
-                Err(std::sync::mpsc::TryRecvError::Disconnected),
-                |rx| rx.try_recv()
-            ) {
+            while let Ok(cmd) = cmd_rx.try_recv() {
                 self.handle_cmd_during_shutdown(cmd);
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -312,7 +309,7 @@ impl Scheduler {
             if alive_count == 0 || main_exited {
                 // Graceful shutdown: wait for remaining processes
                 if alive_count > 0 {
-                    self.graceful_shutdown();
+                    self.graceful_shutdown(&cmd_rx);
                 }
                 eprintln!(
                     "[scheduler] shutdown complete. Final process count: {}",
