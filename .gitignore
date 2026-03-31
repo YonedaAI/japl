@@ -23,3 +23,4 @@ bin/japl-compiler
 
 # Temp
 .japl-build/
+japl-compiler/target/
