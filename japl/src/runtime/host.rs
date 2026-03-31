@@ -53,6 +53,47 @@ fn bounds_check(data_len: usize, offset: usize, len: usize) -> bool {
     offset.checked_add(len).map_or(false, |end| end <= data_len)
 }
 
+/// Safely extract the WASM linear memory from a caller. Returns None (with
+/// an error log) when the export is missing or not a memory — instead of
+/// panicking the whole runtime via unwrap().
+#[inline]
+fn get_memory(caller: &mut Caller<'_, ProcessState>, label: &str) -> Option<Memory> {
+    match caller.get_export("memory").and_then(|e| e.into_memory()) {
+        Some(m) => Some(m),
+        None => {
+            eprintln!("[{}] could not obtain WASM memory export", label);
+            None
+        }
+    }
+}
+
+/// Safely extract the heap_ptr global from a caller.
+#[inline]
+fn get_heap_global(caller: &mut Caller<'_, ProcessState>, label: &str) -> Option<Global> {
+    match caller.get_export("heap_ptr").and_then(|e| e.into_global()) {
+        Some(g) => Some(g),
+        None => {
+            eprintln!("[{}] could not obtain heap_ptr global export", label);
+            None
+        }
+    }
+}
+
+/// Read the current heap pointer value as a usize.
+#[inline]
+fn read_heap_ptr(caller: &mut Caller<'_, ProcessState>, g: &Global) -> usize {
+    g.get(caller).i32().unwrap_or(0) as usize
+}
+
+/// Read a u32 from a byte slice at the given offset. Returns 0 on failure.
+#[inline]
+fn read_u32_le(data: &[u8], offset: usize) -> u32 {
+    if !bounds_check(data.len(), offset, 4) {
+        return 0;
+    }
+    u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap_or([0; 4]))
+}
+
 /// Register JAPL host functions on the linker.
 pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Result<()> {
     // japl.spawn(closure_ptr, closure_size) -> pid
@@ -128,8 +169,8 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
                     );
                     msg_ptr.to_le_bytes().to_vec()
                 } else {
-                    let _tag = u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap());
-                    let field_count = u32::from_le_bytes(data[ptr+4..ptr+8].try_into().unwrap());
+                    let _tag = read_u32_le(data, ptr);
+                    let field_count = read_u32_le(data, ptr + 4);
                     let total_size = 8 + (field_count as usize) * 8;
                     // Validate the full message fits in memory
                     if !bounds_check(data.len(), ptr, total_size) {
@@ -252,7 +293,9 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     linker.func_wrap("japl", "llm", |mut caller: Caller<'_, ProcessState>, ptr: i32, len: i32| -> (i32, i32) {
         // Read prompt string from WASM memory
         let prompt = {
-            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let mem = match get_memory(&mut caller, "japl::llm") {
+                Some(m) => m, None => return (0, 0),
+            };
             let data = mem.data(&caller);
             let start = ptr as usize;
             let end = start + len as usize;
@@ -267,8 +310,12 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         let response = call_llm_api(&prompt);
 
         // Write response into WASM memory via heap_ptr
-        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-        let heap_ptr_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+        let mem = match get_memory(&mut caller, "japl::llm") {
+            Some(m) => m, None => return (0, 0),
+        };
+        let heap_ptr_global = match get_heap_global(&mut caller, "japl::llm") {
+            Some(g) => g, None => return (0, 0),
+        };
         let heap_ptr = heap_ptr_global.get(&mut caller).i32().unwrap_or(0) as usize;
 
         let response_bytes = response.as_bytes();
@@ -311,18 +358,20 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     linker.func_wrap("japl", "llm_structured", |mut caller: Caller<'_, ProcessState>, prompt_ptr: i32, prompt_len: i32, type_ptr: i32, type_len: i32| -> (i32, i32) {
         // Read prompt string from WASM memory
         let (prompt, type_tag) = {
-            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let mem = match get_memory(&mut caller, "japl::llm_structured") {
+                Some(m) => m, None => return (0, 0),
+            };
             let data = mem.data(&caller);
             let p_start = prompt_ptr as usize;
             let p_end = p_start + prompt_len as usize;
-            let prompt = if p_end <= data.len() {
+            let prompt = if bounds_check(data.len(), p_start, prompt_len as usize) {
                 std::str::from_utf8(&data[p_start..p_end]).unwrap_or("").to_string()
             } else {
                 String::new()
             };
             let t_start = type_ptr as usize;
             let t_end = t_start + type_len as usize;
-            let type_tag = if t_end <= data.len() {
+            let type_tag = if bounds_check(data.len(), t_start, type_len as usize) {
                 std::str::from_utf8(&data[t_start..t_end]).unwrap_or("").to_string()
             } else {
                 String::new()
@@ -335,17 +384,23 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         let response = call_llm_api(&full_prompt);
 
         // Write response into WASM memory via heap_ptr
-        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-        let heap_ptr_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+        let mem = match get_memory(&mut caller, "japl::llm_structured") {
+            Some(m) => m, None => return (0, 0),
+        };
+        let heap_ptr_global = match get_heap_global(&mut caller, "japl::llm_structured") {
+            Some(g) => g, None => return (0, 0),
+        };
         let heap_ptr = heap_ptr_global.get(&mut caller).i32().unwrap_or(0) as usize;
 
         let response_bytes = response.as_bytes();
         let result_ptr = heap_ptr;
 
         let data = mem.data_mut(&mut caller);
-        if result_ptr + response_bytes.len() <= data.len() {
-            data[result_ptr..result_ptr + response_bytes.len()].copy_from_slice(response_bytes);
+        if !bounds_check(data.len(), result_ptr, response_bytes.len()) {
+            eprintln!("[japl::llm_structured] response write of {} bytes at {} exceeds memory bounds", response_bytes.len(), result_ptr);
+            return (0, 0);
         }
+        data[result_ptr..result_ptr + response_bytes.len()].copy_from_slice(response_bytes);
 
         // Advance heap_ptr (aligned)
         let new_heap = ((result_ptr + response_bytes.len() + 7) & !7) as i32;
@@ -420,13 +475,16 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // japl.tcp_connect(host_ptr: i32, host_len: i32, port: i32) -> i64
     linker.func_wrap("japl", "tcp_connect", |mut caller: Caller<'_, ProcessState>, host_ptr: i32, host_len: i32, port: i32| -> i64 {
         let host = {
-            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let memory = match get_memory(&mut caller, "japl::tcp_connect") {
+                Some(m) => m, None => return -1,
+            };
             let data = memory.data(&caller);
             let start = host_ptr as usize;
-            let end = start + host_len as usize;
-            if end > data.len() {
+            if !bounds_check(data.len(), start, host_len as usize) {
+                eprintln!("[japl::tcp_connect] host read at {} len {} exceeds memory bounds", start, host_len);
                 return -1;
             }
+            let end = start + host_len as usize;
             std::str::from_utf8(&data[start..end]).unwrap_or("").to_string()
         };
         match std::net::TcpStream::connect(format!("{}:{}", host, port)) {
@@ -447,7 +505,9 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
                 let mut tmp = vec![0u8; buf_len as usize];
                 let result = match s.read(&mut tmp) {
                     Ok(n) => {
-                        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+                        let memory = match get_memory(&mut caller, "japl::tcp_read") {
+                            Some(m) => m, None => { caller.data_mut().resources.insert(conn_id as u64, Resource::TcpStream(s)); return -1; },
+                        };
                         let mem = memory.data_mut(&mut caller);
                         if !bounds_check(mem.len(), buf_ptr as usize, n) {
                             eprintln!("[japl::tcp_read] write of {} bytes at offset {} exceeds memory bounds", n, buf_ptr);
@@ -474,13 +534,16 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // japl.tcp_write(conn_id: i64, buf_ptr: i32, buf_len: i32) -> i32 (bytes_written, or -1)
     linker.func_wrap("japl", "tcp_write", |mut caller: Caller<'_, ProcessState>, conn_id: i64, buf_ptr: i32, buf_len: i32| -> i32 {
         let bytes = {
-            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let memory = match get_memory(&mut caller, "japl::tcp_write") {
+                Some(m) => m, None => return -1,
+            };
             let data = memory.data(&caller);
             let start = buf_ptr as usize;
-            let end = start + buf_len as usize;
-            if end > data.len() {
+            if !bounds_check(data.len(), start, buf_len as usize) {
+                eprintln!("[japl::tcp_write] read at {} len {} exceeds memory bounds", start, buf_len);
                 return -1;
             }
+            let end = start + buf_len as usize;
             data[start..end].to_vec()
         };
         let stream = caller.data_mut().resources.remove(&(conn_id as u64));
@@ -515,7 +578,7 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as i64
     })?;
 
@@ -531,24 +594,32 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // japl.env_get(key_ptr: i32, key_len: i32) -> (i32, i32) (val_ptr, val_len)
     linker.func_wrap("japl", "env_get", |mut caller: Caller<'_, ProcessState>, key_ptr: i32, key_len: i32| -> (i32, i32) {
         let key = {
-            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let memory = match get_memory(&mut caller, "japl::env_get") {
+                Some(m) => m, None => return (0, 0),
+            };
             let data = memory.data(&caller);
             let start = key_ptr as usize;
-            let end = start + key_len as usize;
-            if end > data.len() {
+            if !bounds_check(data.len(), start, key_len as usize) {
+                eprintln!("[japl::env_get] key read at {} len {} exceeds memory bounds", start, key_len);
                 return (0, 0);
             }
+            let end = start + key_len as usize;
             std::str::from_utf8(&data[start..end]).unwrap_or("").to_string()
         };
 
         match std::env::var(&key) {
             Ok(val) => {
-                let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let heap_ptr = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
-                let ptr = heap_ptr.get(&mut caller).i32().unwrap() as usize;
+                let memory = match get_memory(&mut caller, "japl::env_get") {
+                    Some(m) => m, None => return (0, 0),
+                };
+                let heap_ptr = match get_heap_global(&mut caller, "japl::env_get") {
+                    Some(g) => g, None => return (0, 0),
+                };
+                let ptr = read_heap_ptr(&mut caller, &heap_ptr);
                 let bytes = val.as_bytes();
                 let mem = memory.data_mut(&mut caller);
-                if ptr + bytes.len() > mem.len() {
+                if !bounds_check(mem.len(), ptr, bytes.len()) {
+                    eprintln!("[japl::env_get] result write of {} bytes at {} exceeds memory bounds", bytes.len(), ptr);
                     return (0, 0);
                 }
                 mem[ptr..ptr + bytes.len()].copy_from_slice(bytes);
@@ -572,7 +643,9 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // japl.crypto_sha256(data_ptr: i32, data_len: i32, out_ptr: i32)
     linker.func_wrap("japl", "crypto_sha256", |mut caller: Caller<'_, ProcessState>, data_ptr: i32, data_len: i32, out_ptr: i32| {
         use sha2::{Sha256, Digest};
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = match get_memory(&mut caller, "japl::crypto_sha256") {
+            Some(m) => m, None => return,
+        };
         let data = memory.data(&caller);
         if !bounds_check(data.len(), data_ptr as usize, data_len as usize) {
             eprintln!("[japl::crypto_sha256] input read at {} len {} exceeds memory bounds", data_ptr, data_len);
@@ -591,7 +664,9 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // japl.crypto_random(buf_ptr: i32, buf_len: i32)
     linker.func_wrap("japl", "crypto_random", |mut caller: Caller<'_, ProcessState>, buf_ptr: i32, buf_len: i32| {
         use rand::RngCore;
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = match get_memory(&mut caller, "japl::crypto_random") {
+            Some(m) => m, None => return,
+        };
         let data_len = memory.data(&caller).len();
         if !bounds_check(data_len, buf_ptr as usize, buf_len as usize) {
             eprintln!("[japl::crypto_random] write at {} len {} exceeds memory bounds", buf_ptr, buf_len);
@@ -612,28 +687,32 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // returns a new JAPL string allocated via bump allocator.
     linker.func_wrap("japl", "file_read_str", |mut caller: Caller<'_, ProcessState>, str_ptr: i32| -> i32 {
         let (path, memory, heap_global) = {
-            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let memory = match get_memory(&mut caller, "japl::file_read_str") {
+                Some(m) => m, None => return 0,
+            };
             let data = memory.data(&caller);
             let ptr = str_ptr as usize;
             if !bounds_check(data.len(), ptr, 4) {
                 eprintln!("[japl::file_read_str] string header at {} exceeds memory bounds", ptr);
                 return 0;
             }
-            let len = u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as usize;
+            let len = read_u32_le(data, ptr) as usize;
             if !bounds_check(data.len(), ptr + 4, len) {
                 eprintln!("[japl::file_read_str] string body at {} len {} exceeds memory bounds", ptr + 4, len);
                 return 0;
             }
             let path_bytes = &data[ptr+4..ptr+4+len];
             let path = std::str::from_utf8(path_bytes).unwrap_or("").to_string();
-            let heap_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+            let heap_global = match get_heap_global(&mut caller, "japl::file_read_str") {
+                Some(g) => g, None => return 0,
+            };
             (path, memory, heap_global)
         };
 
         match std::fs::read_to_string(&path) {
             Ok(contents) => {
                 let bytes = contents.as_bytes();
-                let heap_ptr = heap_global.get(&mut caller).i32().unwrap() as usize;
+                let heap_ptr = read_heap_ptr(&mut caller, &heap_global);
                 let result_ptr = heap_ptr;
 
                 let mem = memory.data_mut(&mut caller);
@@ -646,7 +725,7 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
                 mem[result_ptr+4..result_ptr+4+bytes.len()].copy_from_slice(bytes);
 
                 let new_heap = (result_ptr + 4 + bytes.len()) as i32;
-                heap_global.set(&mut caller, new_heap.into()).unwrap();
+                let _ = heap_global.set(&mut caller, new_heap.into());
 
                 result_ptr as i32
             }
@@ -660,23 +739,31 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // japl.file_read(path_ptr: i32, path_len: i32) -> (i32, i32) (data_ptr, data_len)
     linker.func_wrap("japl", "file_read", |mut caller: Caller<'_, ProcessState>, path_ptr: i32, path_len: i32| -> (i32, i32) {
         let path = {
-            let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let memory = match get_memory(&mut caller, "japl::file_read") {
+                Some(m) => m, None => return (0, 0),
+            };
             let data = memory.data(&caller);
             let start = path_ptr as usize;
-            let end = start + path_len as usize;
-            if end > data.len() {
+            if !bounds_check(data.len(), start, path_len as usize) {
+                eprintln!("[japl::file_read] path read at {} len {} exceeds memory bounds", start, path_len);
                 return (0, 0);
             }
+            let end = start + path_len as usize;
             std::str::from_utf8(&data[start..end]).unwrap_or("").to_string()
         };
 
         match std::fs::read(&path) {
             Ok(contents) => {
-                let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let heap_ptr = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
-                let ptr = heap_ptr.get(&mut caller).i32().unwrap() as usize;
+                let memory = match get_memory(&mut caller, "japl::file_read") {
+                    Some(m) => m, None => return (0, 0),
+                };
+                let heap_ptr = match get_heap_global(&mut caller, "japl::file_read") {
+                    Some(g) => g, None => return (0, 0),
+                };
+                let ptr = read_heap_ptr(&mut caller, &heap_ptr);
                 let mem = memory.data_mut(&mut caller);
-                if ptr + contents.len() > mem.len() {
+                if !bounds_check(mem.len(), ptr, contents.len()) {
+                    eprintln!("[japl::file_read] result write of {} bytes at {} exceeds memory bounds", contents.len(), ptr);
                     return (0, 0);
                 }
                 mem[ptr..ptr + contents.len()].copy_from_slice(&contents);
@@ -690,15 +777,18 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
 
     // japl.file_write(path_ptr: i32, path_len: i32, data_ptr: i32, data_len: i32) -> i32
     linker.func_wrap("japl", "file_write", |mut caller: Caller<'_, ProcessState>, path_ptr: i32, path_len: i32, data_ptr: i32, data_len: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = match get_memory(&mut caller, "japl::file_write") {
+            Some(m) => m, None => return -1,
+        };
         let data = memory.data(&caller);
         let path_start = path_ptr as usize;
-        let path_end = path_start + path_len as usize;
         let data_start = data_ptr as usize;
-        let data_end = data_start + data_len as usize;
-        if path_end > data.len() || data_end > data.len() {
+        if !bounds_check(data.len(), path_start, path_len as usize) || !bounds_check(data.len(), data_start, data_len as usize) {
+            eprintln!("[japl::file_write] memory bounds exceeded: path at {} len {}, data at {} len {}", path_start, path_len, data_start, data_len);
             return -1;
         }
+        let path_end = path_start + path_len as usize;
+        let data_end = data_start + data_len as usize;
         let path = std::str::from_utf8(&data[path_start..path_end]).unwrap_or("").to_string();
         let contents = data[data_start..data_end].to_vec();
 
@@ -710,13 +800,16 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
 
     // japl.file_exists(path_ptr: i32, path_len: i32) -> i32 (0 or 1)
     linker.func_wrap("japl", "file_exists", |mut caller: Caller<'_, ProcessState>, path_ptr: i32, path_len: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = match get_memory(&mut caller, "japl::file_exists") {
+            Some(m) => m, None => return 0,
+        };
         let data = memory.data(&caller);
         let start = path_ptr as usize;
-        let end = start + path_len as usize;
-        if end > data.len() {
+        if !bounds_check(data.len(), start, path_len as usize) {
+            eprintln!("[japl::file_exists] path read at {} len {} exceeds memory bounds", start, path_len);
             return 0;
         }
+        let end = start + path_len as usize;
         let path = std::str::from_utf8(&data[start..end]).unwrap_or("");
         if std::path::Path::new(path).exists() { 1 } else { 0 }
     })?;
@@ -728,8 +821,10 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
     // japl.bytes_alloc(len: i32) -> i32 (pointer)
     linker.func_wrap("japl", "bytes_alloc", |mut caller: Caller<'_, ProcessState>, len: i32| -> i32 {
         let memory = caller.get_export("memory").and_then(|e| e.into_memory());
-        let heap_ptr = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
-        let ptr = heap_ptr.get(&mut caller).i32().unwrap();
+        let heap_ptr = match get_heap_global(&mut caller, "japl::bytes_alloc") {
+            Some(g) => g, None => return 0,
+        };
+        let ptr = heap_ptr.get(&mut caller).i32().unwrap_or(0);
         let new_heap = ((ptr + len + 7) & !7) as i32;
         // Validate the allocation fits in linear memory
         if let Some(mem) = memory {
@@ -745,7 +840,9 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
 
     // japl.print_bytes(ptr: i32, len: i32)
     linker.func_wrap("japl", "print_bytes", |mut caller: Caller<'_, ProcessState>, ptr: i32, len: i32| {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = match get_memory(&mut caller, "japl::print_bytes") {
+            Some(m) => m, None => return,
+        };
         let mem_data = memory.data(&caller);
         if !bounds_check(mem_data.len(), ptr as usize, len as usize) {
             eprintln!("[japl::print_bytes] read at {} len {} exceeds memory bounds", ptr, len);
@@ -762,11 +859,13 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
 
     // japl.char_at(str_ptr: i32, index: i32) -> i32 (char code, or -1 if out of bounds)
     linker.func_wrap("japl", "char_at", |mut caller: Caller<'_, ProcessState>, str_ptr: i32, index: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = match get_memory(&mut caller, "japl::char_at") {
+            Some(m) => m, None => return -1,
+        };
         let data = memory.data(&caller);
         let ptr = str_ptr as usize;
         if !bounds_check(data.len(), ptr, 4) { return -1; }
-        let len = u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as usize;
+        let len = read_u32_le(data, ptr) as usize;
         let idx = index as usize;
         if idx >= len { return -1; }
         if !bounds_check(data.len(), ptr + 4, len) { return -1; }
@@ -775,13 +874,17 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
 
     // japl.substring(str_ptr: i32, start: i32, end: i32) -> i32 (new string ptr)
     linker.func_wrap("japl", "substring", |mut caller: Caller<'_, ProcessState>, str_ptr: i32, start: i32, end: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
-        let heap_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+        let memory = match get_memory(&mut caller, "japl::substring") {
+            Some(m) => m, None => return 0,
+        };
+        let heap_global = match get_heap_global(&mut caller, "japl::substring") {
+            Some(g) => g, None => return 0,
+        };
 
         let data = memory.data(&caller);
         let ptr = str_ptr as usize;
         if !bounds_check(data.len(), ptr, 4) { return 0; }
-        let orig_len = u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as usize;
+        let orig_len = read_u32_le(data, ptr) as usize;
         if !bounds_check(data.len(), ptr + 4, orig_len) { return 0; }
 
         let s = start.max(0) as usize;
@@ -789,7 +892,7 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         let new_len = if e > s { e - s } else { 0 };
 
         // Allocate new string
-        let heap_ptr = heap_global.get(&mut caller).i32().unwrap() as usize;
+        let heap_ptr = read_heap_ptr(&mut caller, &heap_global);
         let result_ptr = heap_ptr;
 
         let mem = memory.data_mut(&mut caller);
@@ -805,25 +908,27 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         }
 
         let new_heap = (result_ptr + 4 + new_len) as i32;
-        heap_global.set(&mut caller, new_heap.into()).unwrap();
+        let _ = heap_global.set(&mut caller, new_heap.into());
 
         result_ptr as i32
     })?;
 
     // japl.string_index_of(haystack_ptr: i32, needle_ptr: i32) -> i32 (index, or -1)
     linker.func_wrap("japl", "string_index_of", |mut caller: Caller<'_, ProcessState>, hay_ptr: i32, needle_ptr: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = match get_memory(&mut caller, "japl::string_index_of") {
+            Some(m) => m, None => return -1,
+        };
         let data = memory.data(&caller);
 
         let h_ptr = hay_ptr as usize;
         if !bounds_check(data.len(), h_ptr, 4) { return -1; }
-        let h_len = u32::from_le_bytes(data[h_ptr..h_ptr+4].try_into().unwrap()) as usize;
+        let h_len = read_u32_le(data, h_ptr) as usize;
         if !bounds_check(data.len(), h_ptr + 4, h_len) { return -1; }
         let haystack = &data[h_ptr+4..h_ptr+4+h_len];
 
         let n_ptr = needle_ptr as usize;
         if !bounds_check(data.len(), n_ptr, 4) { return -1; }
-        let n_len = u32::from_le_bytes(data[n_ptr..n_ptr+4].try_into().unwrap()) as usize;
+        let n_len = read_u32_le(data, n_ptr) as usize;
         if !bounds_check(data.len(), n_ptr + 4, n_len) { return -1; }
         let needle = &data[n_ptr+4..n_ptr+4+n_len];
 
@@ -840,9 +945,13 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
 
     // japl.from_char_code(code: i32) -> i32 (new 1-char string ptr)
     linker.func_wrap("japl", "from_char_code", |mut caller: Caller<'_, ProcessState>, code: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
-        let heap_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
-        let heap_ptr = heap_global.get(&mut caller).i32().unwrap() as usize;
+        let memory = match get_memory(&mut caller, "japl::from_char_code") {
+            Some(m) => m, None => return 0,
+        };
+        let heap_global = match get_heap_global(&mut caller, "japl::from_char_code") {
+            Some(g) => g, None => return 0,
+        };
+        let heap_ptr = read_heap_ptr(&mut caller, &heap_global);
 
         let mem = memory.data_mut(&mut caller);
         if !bounds_check(mem.len(), heap_ptr, 5) { return 0; }
@@ -850,29 +959,33 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         mem[heap_ptr + 4] = code as u8;
 
         let new_heap = (heap_ptr + 5) as i32;
-        heap_global.set(&mut caller, new_heap.into()).unwrap();
+        let _ = heap_global.set(&mut caller, new_heap.into());
 
         heap_ptr as i32
     })?;
 
     // japl.str_length(str_ptr: i32) -> i32
     linker.func_wrap("japl", "str_length", |mut caller: Caller<'_, ProcessState>, str_ptr: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = match get_memory(&mut caller, "japl::str_length") {
+            Some(m) => m, None => return 0,
+        };
         let data = memory.data(&caller);
         let ptr = str_ptr as usize;
         if !bounds_check(data.len(), ptr, 4) { return 0; }
-        u32::from_le_bytes(data[ptr..ptr+4].try_into().unwrap()) as i32
+        read_u32_le(data, ptr) as i32
     })?;
 
     // japl.string_eq(a_ptr: i32, b_ptr: i32) -> i32 (0 or 1)
     linker.func_wrap("japl", "string_eq", |mut caller: Caller<'_, ProcessState>, a_ptr: i32, b_ptr: i32| -> i32 {
-        let memory = caller.get_export("memory").unwrap().into_memory().unwrap();
+        let memory = match get_memory(&mut caller, "japl::string_eq") {
+            Some(m) => m, None => return 0,
+        };
         let data = memory.data(&caller);
         let a = a_ptr as usize;
         let b = b_ptr as usize;
         if !bounds_check(data.len(), a, 4) || !bounds_check(data.len(), b, 4) { return 0; }
-        let a_len = u32::from_le_bytes(data[a..a+4].try_into().unwrap()) as usize;
-        let b_len = u32::from_le_bytes(data[b..b+4].try_into().unwrap()) as usize;
+        let a_len = read_u32_le(data, a) as usize;
+        let b_len = read_u32_le(data, b) as usize;
         if a_len != b_len { return 0; }
         if !bounds_check(data.len(), a + 4, a_len) || !bounds_check(data.len(), b + 4, b_len) { return 0; }
         if data[a+4..a+4+a_len] == data[b+4..b+4+b_len] { 1 } else { 0 }
@@ -885,7 +998,9 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
 /// Falls back to a mock response if no key is set.
 /// Read a JAPL string from WASM memory. JAPL strings are stored as [len:i32][data:bytes].
 fn read_japl_string(caller: &mut Caller<'_, ProcessState>, str_ptr: i32) -> String {
-    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+    let mem = match get_memory(caller, "read_japl_string") {
+        Some(m) => m, None => return String::new(),
+    };
     let data = mem.data(&caller);
     let ptr = str_ptr as usize;
     if ptr + 4 > data.len() {
@@ -903,8 +1018,12 @@ fn read_japl_string(caller: &mut Caller<'_, ProcessState>, str_ptr: i32) -> Stri
 /// Write a string into WASM memory in JAPL string format [len:i32][data:bytes].
 /// Returns the pointer to the JAPL string.
 fn write_japl_string(caller: &mut Caller<'_, ProcessState>, s: &str) -> i32 {
-    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-    let heap_ptr_global = caller.get_export("heap_ptr").unwrap().into_global().unwrap();
+    let mem = match get_memory(caller, "write_japl_string") {
+        Some(m) => m, None => return 0,
+    };
+    let heap_ptr_global = match get_heap_global(caller, "write_japl_string") {
+        Some(g) => g, None => return 0,
+    };
     let heap_ptr = heap_ptr_global.get(&mut *caller).i32().unwrap_or(0) as usize;
 
     let bytes = s.as_bytes();
