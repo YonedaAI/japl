@@ -104,6 +104,7 @@ run_test("kvstore_app", "apps/kvstore/kvstore.japl", ["PUT key=0", "GET key=0", 
 run_test("msgqueue", "apps/msgqueue/queue.japl", ["enqueued", "dequeued", "acked", "Queue Complete"], use_runtime=True, retries=3)
 run_test("scheduler", "apps/scheduler/scheduler.japl", ["Assigning task", "Finished task", "completed (12/12)"], use_runtime=True, retries=3)
 run_test("genome_pipeline", "apps/genome/pipeline.japl", ["Regulatory", "Structural", "NonCoding", "GC Content", "Pipeline Complete"], use_runtime=True, retries=3)
+run_test("agents_app", "apps/agents/agents.japl", ["Agent system starting", "Spawned classifier", "Spawned summarizer", "Sending tasks", "Classifier result:", "Summarizer result:", "All tasks complete (2/2)", "Agent system done"], use_runtime=True, retries=3)
 
 print("\n--- HTTP Serving ---")
 # Use unified binary's serve subcommand
