@@ -4,7 +4,15 @@ pub fn map_new() -> MapEntry {
   Empty
 }
 
+pub fn empty() -> MapEntry {
+  Empty
+}
+
 pub fn map_put(m: MapEntry, key: Int, val: Int) -> MapEntry {
+  Cons(key, val, m)
+}
+
+pub fn insert(m: MapEntry, key: Int, val: Int) -> MapEntry {
   Cons(key, val, m)
 }
 
@@ -17,6 +25,10 @@ pub fn map_get(m: MapEntry, key: Int) -> Int {
   }
 }
 
+pub fn get(m: MapEntry, key: Int) -> Int {
+  map_get(m, key)
+}
+
 pub fn map_contains(m: MapEntry, key: Int) -> Int {
   match m {
     Empty => 0,
@@ -26,10 +38,27 @@ pub fn map_contains(m: MapEntry, key: Int) -> Int {
   }
 }
 
+pub fn contains(m: MapEntry, key: Int) -> Int {
+  map_contains(m, key)
+}
+
 pub fn map_size(m: MapEntry) -> Int {
   match m {
     Empty => 0,
     Cons(_, _, rest) => 1 + map_size(rest)
+  }
+}
+
+pub fn size(m: MapEntry) -> Int {
+  map_size(m)
+}
+
+pub fn remove(m: MapEntry, key: Int) -> MapEntry {
+  match m {
+    Empty => Empty,
+    Cons(k, v, rest) =>
+      if k == key { rest }
+      else { Cons(k, v, remove(rest, key)) }
   }
 }
 
@@ -45,4 +74,7 @@ fn main() {
   println("Get 99: " <> show(map_get(m, 99)))
   println("Contains 2: " <> show(map_contains(m, 2)))
   println("Contains 5: " <> show(map_contains(m, 5)))
+  let m2 = remove(m, 2)
+  println("After remove 2, size: " <> show(map_size(m2)))
+  println("After remove 2, contains 2: " <> show(map_contains(m2, 2)))
 }

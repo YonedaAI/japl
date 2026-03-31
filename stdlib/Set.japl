@@ -1,0 +1,67 @@
+type SetEntry = | SetCons(Int, SetEntry) | SetEmpty
+
+pub fn empty() -> SetEntry {
+  SetEmpty
+}
+
+pub fn contains(s: SetEntry, val: Int) -> Int {
+  match s {
+    SetEmpty => 0,
+    SetCons(x, rest) =>
+      if x == val { 1 }
+      else { contains(rest, val) }
+  }
+}
+
+pub fn insert(s: SetEntry, val: Int) -> SetEntry {
+  if contains(s, val) == 1 { s }
+  else { SetCons(val, s) }
+}
+
+pub fn remove(s: SetEntry, val: Int) -> SetEntry {
+  match s {
+    SetEmpty => SetEmpty,
+    SetCons(x, rest) =>
+      if x == val { rest }
+      else { SetCons(x, remove(rest, val)) }
+  }
+}
+
+pub fn size(s: SetEntry) -> Int {
+  match s {
+    SetEmpty => 0,
+    SetCons(_, rest) => 1 + size(rest)
+  }
+}
+
+pub fn union(a: SetEntry, b: SetEntry) -> SetEntry {
+  match b {
+    SetEmpty => a,
+    SetCons(x, rest) => union(insert(a, x), rest)
+  }
+}
+
+pub fn to_list(s: SetEntry) -> Int {
+  size(s)
+}
+
+fn main() {
+  let s = empty()
+  let s = insert(s, 1)
+  let s = insert(s, 2)
+  let s = insert(s, 3)
+  let s = insert(s, 2)
+  println("Set size: " <> show(size(s)))
+  println("Contains 1: " <> show(contains(s, 1)))
+  println("Contains 2: " <> show(contains(s, 2)))
+  println("Contains 5: " <> show(contains(s, 5)))
+  let s2 = remove(s, 2)
+  println("After remove 2, size: " <> show(size(s2)))
+  println("After remove 2, contains 2: " <> show(contains(s2, 2)))
+  let t = empty()
+  let t = insert(t, 3)
+  let t = insert(t, 4)
+  let u = union(s, t)
+  println("Union size: " <> show(size(u)))
+  println("Union contains 4: " <> show(contains(u, 4)))
+}
