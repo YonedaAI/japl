@@ -75,7 +75,12 @@ fn resolve_imports(program: &mut ast::Program, base_dir: &Path, visited: &mut Ha
 }
 
 /// Compile a .japl file to .wasm, returning the path to the .wasm file.
+/// If `target` is "component", emit Component Model canonical ABI imports.
 pub fn compile(path: &str, out_dir: &str) -> Result<String, String> {
+    compile_with_target(path, out_dir, "local")
+}
+
+pub fn compile_with_target(path: &str, out_dir: &str, target: &str) -> Result<String, String> {
     let input_path = PathBuf::from(path);
 
     let mut program = parse_file(&input_path)?;
@@ -107,7 +112,8 @@ pub fn compile(path: &str, out_dir: &str) -> Result<String, String> {
     let ir_module = lowerer.lower_program(&program);
 
     // Emit WAT
-    let emitter = emit_wat::WatEmitter::new(ir_module);
+    let component_target = target == "component";
+    let emitter = emit_wat::WatEmitter::new(ir_module, component_target);
     let wat = emitter.emit();
 
     // Create output directory

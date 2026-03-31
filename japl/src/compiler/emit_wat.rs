@@ -20,10 +20,12 @@ pub struct WatEmitter {
     fn_has_return: HashMap<String, bool>,
     // Which string builtins are actually used (referenced as foreign imports)
     used_string_builtins: Vec<String>,
+    // When true, emit Component Model canonical ABI imports for process functions
+    component_target: bool,
 }
 
 impl WatEmitter {
-    pub fn new(module: IrModule) -> Self {
+    pub fn new(module: IrModule, component_target: bool) -> Self {
         // Collect closure body functions for table
         let mut table_entries = Vec::new();
         for f in &module.functions {
@@ -62,6 +64,7 @@ impl WatEmitter {
             foreign_sigs,
             fn_has_return,
             used_string_builtins,
+            component_target,
         }
     }
 
@@ -97,10 +100,17 @@ impl WatEmitter {
         // WASI fd_write import (imports must come first)
         self.line("(import \"wasi_snapshot_preview1\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))");
 
+        // Process function names (used by component target to emit canonical ABI imports)
+        let process_fn_names: &[&str] = &["spawn", "send", "receive", "self_pid"];
+
         // Foreign imports (skip string builtins — they're emitted as local functions)
         for fi in self.module.foreign_imports.clone().into_iter()
             .filter(|fi| !STRING_BUILTINS.contains(&fi.name.as_str()))
         {
+            // When component_target, process functions get canonical ABI imports instead
+            if self.component_target && process_fn_names.contains(&fi.name.as_str()) {
+                continue;
+            }
             let params: String = fi.param_types.iter().map(|t| {
                 match t {
                     WasmType::I32 => " (param i32)",
@@ -117,6 +127,15 @@ impl WatEmitter {
                 "(import \"{}\" \"{}\" (func ${}{}{}))",
                 fi.module, fi.name, fi.name, params, result
             ));
+        }
+
+        // Component Model canonical ABI imports for process functions
+        if self.component_target && self.module.uses_processes {
+            let cm_mod = "cm32p2|japl:runtime/processes@0.1";
+            self.line(&format!("(import \"{}\" \"spawn\" (func $cm_spawn (param i32 i32) (result i64)))", cm_mod));
+            self.line(&format!("(import \"{}\" \"send\" (func $cm_send (param i64 i32 i32)))", cm_mod));
+            self.line(&format!("(import \"{}\" \"receive\" (func $cm_receive (param i32)))", cm_mod));
+            self.line(&format!("(import \"{}\" \"self-pid\" (func $self_pid (result i64)))", cm_mod));
         }
 
         // Check if this module has an HTTP handler (needed for memory export decision)
@@ -175,6 +194,11 @@ impl WatEmitter {
         // Builtin: $alloc (bump allocator)
         self.emit_alloc();
 
+        // Component Model process wrappers (depend on $alloc)
+        if self.component_target && self.module.uses_processes {
+            self.emit_component_process_wrappers();
+        }
+
         // Builtin: string functions (char_at, substring, etc.)
         self.emit_string_builtins();
 
@@ -229,6 +253,11 @@ impl WatEmitter {
         if has_http_handler {
             self.emit_http_handler();
             self.emit_canonical_abi_handler();
+        }
+
+        // Component target: ensure canonical ABI exports exist even without HTTP handler
+        if self.component_target && !has_http_handler {
+            self.emit_component_abi_exports();
         }
 
         // Constants as globals
@@ -964,6 +993,54 @@ impl WatEmitter {
         self.line("nop");
         self.pop(")");
 
+        // $cabi_realloc: canonical ABI memory allocator
+        self.push("(func $cabi_realloc (export \"cm32p2_realloc\") (param $old_ptr i32) (param $old_size i32) (param $align i32) (param $new_size i32) (result i32)");
+        self.line("local.get $new_size");
+        self.line("call $alloc");
+        self.pop(")");
+
+        // $cabi_init: initialization (no-op, _start handles it)
+        self.push("(func $cabi_init (export \"cm32p2_initialize\")");
+        self.line("nop");
+        self.pop(")");
+    }
+
+    fn emit_component_process_wrappers(&mut self) {
+        // $spawn wrapper: JAPL calls spawn(closure_ptr: i64) -> i64
+        // Canonical ABI expects spawn(data_ptr: i32, data_len: i32) -> i64
+        self.push("(func $spawn (param $closure_ptr i64) (result i64)");
+        self.line("(call $cm_spawn (i32.wrap_i64 (local.get $closure_ptr)) (i32.const 256))");
+        self.pop(")");
+
+        // $send wrapper: JAPL calls send(pid: i64, msg_ptr: i64)
+        // Canonical ABI expects send(pid: i64, ptr: i32, len: i32)
+        self.push("(func $send (param $pid i64) (param $msg_ptr i64)");
+        self.line("(local $ptr i32) (local $size i32)");
+        self.line("(local.set $ptr (i32.wrap_i64 (local.get $msg_ptr)))");
+        // Read field_count at ptr+4, compute size = 8 + 8 * field_count
+        self.line("(local.set $size (i32.add (i32.const 8)");
+        self.line("  (i32.mul (i32.const 8) (i32.load (i32.add (local.get $ptr) (i32.const 4))))))");
+        self.line("(call $cm_send (local.get $pid) (local.get $ptr) (local.get $size))");
+        self.pop(")");
+
+        // $receive wrapper: JAPL calls receive() -> i64
+        // Canonical ABI expects receive(ret_area: i32) which writes (ptr, len) at ret_area
+        self.push("(func $receive (result i64)");
+        self.line("(local $ret_area i32) (local $ptr i32)");
+        // Allocate return area for (ptr: i32, len: i32)
+        self.line("(local.set $ret_area (call $alloc (i32.const 8)))");
+        // Call canonical receive — it writes (ptr, len) at ret_area
+        self.line("(call $cm_receive (local.get $ret_area))");
+        // Read ptr from ret_area
+        self.line("(local.set $ptr (i32.load (local.get $ret_area)))");
+        // Return as i64 pointer
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+
+        // self_pid: imported directly as $self_pid with same signature, no wrapper needed
+    }
+
+    fn emit_component_abi_exports(&mut self) {
         // $cabi_realloc: canonical ABI memory allocator
         self.push("(func $cabi_realloc (export \"cm32p2_realloc\") (param $old_ptr i32) (param $old_size i32) (param $align i32) (param $new_size i32) (result i32)");
         self.line("local.get $new_size");

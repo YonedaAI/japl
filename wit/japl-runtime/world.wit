@@ -18,11 +18,3 @@ interface logging {
     /// Print a line to stdout.
     println: func(message: string);
 }
-
-world japl-component {
-    import processes;
-    import logging;
-    import wasi:http/incoming-handler@0.2.3;
-
-    export wasi:http/incoming-handler@0.2.3;
-}

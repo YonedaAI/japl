@@ -19,6 +19,9 @@ enum Commands {
         file: String,
         #[arg(long, default_value = "build")]
         out: String,
+        /// Target: "local" (default) or "component" (Component Model canonical ABI)
+        #[arg(long, default_value = "local")]
+        target: String,
     },
     /// Compile and run a .japl file
     Run {
@@ -43,6 +46,9 @@ enum Commands {
         file: String,
         #[arg(long, default_value = "8080")]
         port: u16,
+        /// Target: "local" (default) or "component" (Component Model canonical ABI)
+        #[arg(long, default_value = "local")]
+        target: String,
     },
     /// Print version
     Version,
@@ -51,8 +57,8 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Build { file, out } => {
-            match compiler::compile(&file, &out) {
+        Commands::Build { file, out, target } => {
+            match compiler::compile_with_target(&file, &out, &target) {
                 Ok(wasm_path) => {
                     println!("{}", wasm_path);
                 }
@@ -113,8 +119,8 @@ fn main() {
                 }
             }
         }
-        Commands::Deploy { file, port } => {
-            deploy(&file, port);
+        Commands::Deploy { file, port, target } => {
+            deploy(&file, port, &target);
         }
         Commands::Version => {
             println!("japl 1.0.0");
@@ -202,13 +208,13 @@ fn ensure_wasmcloud() -> Result<(), String> {
     }
 }
 
-fn deploy(file: &str, port: u16) {
+fn deploy(file: &str, port: u16, target: &str) {
     eprintln!("[deploy] Compiling {}...", file);
 
     // Step 1: Compile JAPL to core WASM
     let tmp_dir = std::env::temp_dir().join("japl_deploy");
     let tmp_str = tmp_dir.display().to_string();
-    let wasm_path = match compiler::compile(file, &tmp_str) {
+    let wasm_path = match compiler::compile_with_target(file, &tmp_str, target) {
         Ok(path) => path,
         Err(e) => {
             eprintln!("Compilation failed: {}", e);
