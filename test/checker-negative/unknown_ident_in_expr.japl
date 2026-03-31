@@ -1,0 +1,4 @@
+fn main() {
+  let y = x + 1
+  println(show(y))
+}

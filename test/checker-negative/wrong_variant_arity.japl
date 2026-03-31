@@ -1,0 +1,6 @@
+type Msg = | Ping(Int)
+
+fn main() {
+  let m = Ping(1, 2)
+  println("done")
+}

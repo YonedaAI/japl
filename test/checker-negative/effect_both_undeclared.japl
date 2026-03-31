@@ -1,0 +1,9 @@
+fn do_stuff() -> Int {
+  let pid = spawn(fn() { println("worker") })
+  println("spawned")
+  pid
+}
+
+fn main() {
+  println(show(do_stuff()))
+}

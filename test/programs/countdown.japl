@@ -1,4 +1,4 @@
-fn countdown(n: Int) {
+fn countdown(n: Int) -> IO Unit {
   if n <= 0 { println("done") }
   else { println(show(n)) countdown(n - 1) }
 }

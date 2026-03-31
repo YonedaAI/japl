@@ -1,6 +1,6 @@
 type Msg = | Ping(Int) | Pong(Int)
 
-fn worker() {
+fn worker() -> IO Unit {
   receive {
     Ping(n) => println("got: " <> show(n))
   }

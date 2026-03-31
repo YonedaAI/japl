@@ -1,0 +1,4 @@
+fn main() {
+  let x = if True { 42 } else { "hello" }
+  println(show(x))
+}

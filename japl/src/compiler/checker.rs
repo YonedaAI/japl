@@ -22,6 +22,10 @@ struct Checker {
     fn_effects: HashMap<String, Vec<Effect>>, // fn_name -> observed effects
     strict: bool,
     current_fn: Option<String>,
+    /// Names declared as constants (treated as known identifiers)
+    const_names: HashMap<String, Type>,
+    /// Foreign function names
+    foreign_fns: HashMap<String, Type>,
 }
 
 fn ast_type_to_type(t: &ast::Type) -> Type {
@@ -86,8 +90,15 @@ impl Checker {
         env.insert("println".to_string(), Type::Fn(vec![Type::String], Box::new(Type::Unit)));
         env.insert("show".to_string(), Type::Fn(vec![Type::Int], Box::new(Type::String)));
         env.insert("spawn".to_string(), Type::Fn(vec![Type::Fn(vec![], Box::new(Type::Unit))], Box::new(Type::Int)));
-        env.insert("send".to_string(), Type::Fn(vec![Type::Int, Type::Int], Box::new(Type::Unit)));
+        // send accepts any message type (Var(0) = polymorphic)
+        env.insert("send".to_string(), Type::Fn(vec![Type::Int, Type::Var(0)], Box::new(Type::Unit)));
         env.insert("self_pid".to_string(), Type::Fn(vec![], Box::new(Type::Int)));
+        env.insert("receive".to_string(), Type::Fn(vec![], Box::new(Type::Var(0))));
+        // LLM/AI builtins
+        env.insert("llm".to_string(), Type::Fn(vec![Type::String], Box::new(Type::String)));
+        // Network builtins
+        env.insert("http_get".to_string(), Type::Fn(vec![Type::String], Box::new(Type::String)));
+        env.insert("http_post".to_string(), Type::Fn(vec![Type::String, Type::String], Box::new(Type::String)));
 
         Checker {
             errors: Vec::new(),
@@ -99,6 +110,8 @@ impl Checker {
             fn_effects: HashMap::new(),
             strict,
             current_fn: None,
+            const_names: HashMap::new(),
+            foreign_fns: HashMap::new(),
         }
     }
 
@@ -164,6 +177,32 @@ impl Checker {
         }
     }
 
+    /// Bind pattern variables into the environment so arm bodies can reference them.
+    fn bind_pattern_vars(&mut self, pattern: &ast::Pattern) {
+        match pattern {
+            ast::Pattern::Variant(name, bindings) => {
+                // Look up variant field types
+                if let Some((_, field_types)) = self.variant_types.get(name) {
+                    for (i, binding) in bindings.iter().enumerate() {
+                        if binding != "_" {
+                            let ty = field_types.get(i).cloned().unwrap_or(Type::Var(0));
+                            self.env.insert(binding.clone(), ty);
+                        }
+                    }
+                } else {
+                    // Unknown variant; bind as Var(0)
+                    for binding in bindings {
+                        if binding != "_" {
+                            self.env.insert(binding.clone(), Type::Var(0));
+                        }
+                    }
+                }
+            }
+            ast::Pattern::Wildcard | ast::Pattern::IntLit(_)
+            | ast::Pattern::StringLit(_) | ast::Pattern::BoolLit(_) => {}
+        }
+    }
+
     fn infer_expr(&mut self, expr: &ast::Expr) -> Type {
         match expr {
             ast::Expr::IntLit(_) => Type::Int,
@@ -175,9 +214,20 @@ impl Checker {
                 if let Some(ty) = self.env.get(name) {
                     ty.clone()
                 } else if self.variant_types.contains_key(name) {
-                    Type::Named(name.clone(), vec![])
+                    // Zero-argument variant constructor used as value
+                    let (type_name, _) = &self.variant_types[name];
+                    Type::Named(type_name.clone(), vec![])
+                } else if self.fn_sigs.contains_key(name) {
+                    // Function used as value (e.g., passed to higher-order function)
+                    let (params, ret) = &self.fn_sigs[name];
+                    Type::Fn(params.clone(), Box::new(ret.clone()))
+                } else if self.const_names.contains_key(name) {
+                    self.const_names[name].clone()
+                } else if self.foreign_fns.contains_key(name) {
+                    self.foreign_fns[name].clone()
                 } else {
-                    // Unknown variable - could be a variant or generic
+                    // Hard error: unknown identifier
+                    self.errors.push(format!("type error: unknown identifier '{}'", name));
                     Type::Var(0)
                 }
             }
@@ -218,6 +268,20 @@ impl Checker {
                             self.record_effect(Effect::Process);
                             Type::Int
                         }
+                        "llm" => {
+                            self.record_effect(Effect::IO);
+                            for arg in args {
+                                self.infer_expr(arg);
+                            }
+                            Type::String
+                        }
+                        "http_get" | "http_post" => {
+                            self.record_effect(Effect::IO);
+                            for arg in args {
+                                self.infer_expr(arg);
+                            }
+                            Type::String
+                        }
                         _ => {
                             // Infer arg types first
                             let arg_types: Vec<Type> = args.iter()
@@ -249,11 +313,67 @@ impl Checker {
                             }
 
                             // Non-generic path
-                            if let Some((_, ret)) = self.fn_sigs.get(name) {
-                                ret.clone()
+                            if let Some((param_types, ret)) = self.fn_sigs.get(name).cloned() {
+                                // Check argument count
+                                if arg_types.len() != param_types.len() {
+                                    self.errors.push(format!(
+                                        "type error: function '{}' expects {} arguments, got {}",
+                                        name, param_types.len(), arg_types.len()
+                                    ));
+                                } else {
+                                    // Check argument types
+                                    for (i, (expected, actual)) in param_types.iter().zip(arg_types.iter()).enumerate() {
+                                        if *actual != Type::Var(0) && *expected != Type::Var(0)
+                                            && !matches!(expected, Type::TypeParam(_))
+                                            && !matches!(actual, Type::TypeParam(_))
+                                            && *expected != *actual
+                                        {
+                                            // Allow variant of expected union type
+                                            let is_variant = if let Type::Named(ref actual_name, _) = actual {
+                                                if let Type::Named(ref expected_name, _) = expected {
+                                                    self.variant_types.get(actual_name)
+                                                        .map_or(false, |(parent, _)| parent == expected_name)
+                                                } else { false }
+                                            } else { false };
+                                            if !is_variant {
+                                                self.errors.push(format!(
+                                                    "type error: argument {} of '{}' expects {}, got {}",
+                                                    i + 1, name, expected, actual
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
+                                ret
                             } else if self.variant_types.contains_key(name) {
-                                Type::Named(name.clone(), vec![])
+                                let (type_name, ref field_types) = self.variant_types[name].clone();
+                                // Check variant constructor argument count
+                                if arg_types.len() != field_types.len() {
+                                    self.errors.push(format!(
+                                        "type error: variant '{}' expects {} fields, got {}",
+                                        name, field_types.len(), arg_types.len()
+                                    ));
+                                }
+                                Type::Named(type_name, vec![])
+                            } else if self.foreign_fns.contains_key(name) {
+                                // Foreign function call -- return Var(0) since we don't track return types fully
+                                Type::Var(0)
+                            } else if let Some(ty) = self.env.get(name).cloned() {
+                                // Variable with function type being called (e.g., closures, HOF params)
+                                if let Type::Fn(param_types, ret) = ty {
+                                    if arg_types.len() != param_types.len() {
+                                        self.errors.push(format!(
+                                            "type error: function '{}' expects {} arguments, got {}",
+                                            name, param_types.len(), arg_types.len()
+                                        ));
+                                    }
+                                    *ret
+                                } else {
+                                    self.errors.push(format!("type error: '{}' is not a function (has type {})", name, ty));
+                                    Type::Var(0)
+                                }
                             } else {
+                                self.errors.push(format!("type error: unknown function '{}'", name));
                                 Type::Var(0)
                             }
                         }
@@ -305,10 +425,38 @@ impl Checker {
                 }
                 let tt = self.infer_expr(then);
                 if let Some(e) = else_ {
-                    let _et = self.infer_expr(e);
-                    // Could check tt == et, but be lenient for now
+                    let et = self.infer_expr(e);
+                    // Both branches must have compatible types
+                    if tt != Type::Var(0) && et != Type::Var(0)
+                        && !matches!(tt, Type::TypeParam(_))
+                        && !matches!(et, Type::TypeParam(_))
+                    {
+                        // Check if both are variants of the same union type
+                        let tt_parent = if let Type::Named(ref n, _) = tt {
+                            self.variant_types.get(n).map(|(p, _)| p.clone())
+                        } else { None };
+                        let et_parent = if let Type::Named(ref n, _) = et {
+                            self.variant_types.get(n).map(|(p, _)| p.clone())
+                        } else { None };
+                        let compatible = tt == et
+                            || (tt_parent.is_some() && tt_parent == et_parent)
+                            // One branch returns a variant of the other's type
+                            || tt_parent.as_ref().map_or(false, |p| {
+                                if let Type::Named(ref n, _) = et { n == p } else { false }
+                            })
+                            || et_parent.as_ref().map_or(false, |p| {
+                                if let Type::Named(ref n, _) = tt { n == p } else { false }
+                            });
+                        if !compatible {
+                            self.errors.push(format!(
+                                "type error: if branches have incompatible types: {} vs {}",
+                                tt, et
+                            ));
+                        }
+                    }
                     tt
                 } else {
+                    // No else branch: result is Unit (then branch is executed for side effects)
                     tt
                 }
             }
@@ -352,6 +500,10 @@ impl Checker {
                 self.infer_expr(scrutinee);
                 let mut result_ty = Type::Var(0);
                 for arm in arms {
+                    self.bind_pattern_vars(&arm.pattern);
+                    if let Some(ref guard) = arm.guard {
+                        self.infer_expr(guard);
+                    }
                     let ty = self.infer_expr(&arm.body);
                     if result_ty == Type::Var(0) {
                         result_ty = ty;
@@ -363,6 +515,10 @@ impl Checker {
                 self.record_effect(Effect::Process);
                 let mut result_ty = Type::Var(0);
                 for arm in arms {
+                    self.bind_pattern_vars(&arm.pattern);
+                    if let Some(ref guard) = arm.guard {
+                        self.infer_expr(guard);
+                    }
                     let ty = self.infer_expr(&arm.body);
                     if result_ty == Type::Var(0) {
                         result_ty = ty;
@@ -390,8 +546,32 @@ impl Checker {
                 base_ty
             }
             ast::Expr::Pipe(left, right) => {
-                let _lt = self.infer_expr(left);
-                self.infer_expr(right)
+                let lt = self.infer_expr(left);
+                let rt = self.infer_expr(right);
+                // Pipe applies the right side as a function to the left side
+                if let Type::Fn(params, ret) = &rt {
+                    if params.len() == 1 {
+                        let expected = &params[0];
+                        if lt != Type::Var(0) && *expected != Type::Var(0)
+                            && !matches!(expected, Type::TypeParam(_))
+                            && !matches!(lt, Type::TypeParam(_))
+                            && lt != *expected
+                        {
+                            self.errors.push(format!(
+                                "type error: pipe argument has type {}, but function expects {}",
+                                lt, expected
+                            ));
+                        }
+                        *ret.clone()
+                    } else {
+                        rt // Can't apply, return as-is
+                    }
+                } else if rt == Type::Var(0) {
+                    Type::Var(0)
+                } else {
+                    // Right side of pipe should be a function
+                    rt
+                }
             }
             ast::Expr::Tuple(exprs) => {
                 let types: Vec<Type> = exprs.iter().map(|e| self.infer_expr(e)).collect();
@@ -455,13 +635,39 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
         if let ast::TopLevel::TypeDef(td) = item {
             for variant in &td.variants {
                 let field_types: Vec<Type> = variant.fields.iter()
-                    .map(|f| ast_type_to_type(f))
+                    .map(|f| ast_type_to_type_with_params(f, &td.type_params))
                     .collect();
                 checker.variant_types.insert(
                     variant.name.clone(),
                     (td.name.clone(), field_types),
                 );
             }
+        }
+    }
+
+    // Collect constants
+    for item in &program.items {
+        if let ast::TopLevel::Const(cd) = item {
+            // Infer type from constant value
+            let ty = checker.infer_expr(&cd.value);
+            checker.const_names.insert(cd.name.clone(), ty.clone());
+            checker.env.insert(cd.name.clone(), ty);
+        }
+    }
+
+    // Collect foreign function declarations
+    for item in &program.items {
+        if let ast::TopLevel::ForeignFn(ff) = item {
+            let param_types: Vec<Type> = ff.params.iter()
+                .map(|p| ast_type_to_type(&p.ty))
+                .collect();
+            let ret_ty = ff.ret_ty.as_ref()
+                .map(|t| ast_type_to_type(t))
+                .unwrap_or(Type::Unit);
+            let fn_ty = Type::Fn(param_types.clone(), Box::new(ret_ty.clone()));
+            checker.foreign_fns.insert(ff.name.clone(), fn_ty.clone());
+            checker.env.insert(ff.name.clone(), fn_ty);
+            checker.fn_sigs.insert(ff.name.clone(), (param_types, ret_ty));
         }
     }
 
@@ -474,7 +680,7 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
                 .collect();
             let ret_ty = fd.ret_ty.as_ref()
                 .map(|t| ast_type_to_type_with_params(t, tp))
-                .unwrap_or(Type::Unit);
+                .unwrap_or(Type::Var(0)); // Unknown until body is checked
             checker.fn_sigs.insert(fd.name.clone(), (param_types.clone(), ret_ty.clone()));
 
             // Store type params if any
@@ -504,6 +710,13 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
 
             let body_ty = checker.infer_expr(&fd.body);
 
+            // If no declared return type, update fn_sigs with inferred body type
+            if fd.ret_ty.is_none() && body_ty != Type::Var(0) {
+                if let Some(sig) = checker.fn_sigs.get_mut(&fd.name) {
+                    sig.1 = body_ty.clone();
+                }
+            }
+
             // Check return type matches (skip if body type is a TypeParam -- generic bodies are permissive)
             if let Some(ref ret_ty) = fd.ret_ty {
                 let expected = ast_type_to_type_with_params(ret_ty, tp);
@@ -531,28 +744,41 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
         }
     }
 
-    // Check effects in strict mode
+    // Effect checking is now always on by default.
+    // Pass strict=false (--no-strict) to disable effect checking for migration.
     if strict {
         for item in &program.items {
             if let ast::TopLevel::FnDef(fd) = item {
+                // Skip main -- it's the entry point and implicitly effectful
+                if fd.name == "main" {
+                    continue;
+                }
                 if let Some(effects) = checker.fn_effects.get(&fd.name) {
                     let has_io = effects.contains(&Effect::IO);
                     let has_process = effects.contains(&Effect::Process);
+                    let has_any_effect = has_io || has_process;
 
-                    // Check if function is annotated with effect
+                    // Check if function is annotated with any effect
                     let declared_effect = fd.effect.as_deref();
+                    let has_declared = declared_effect.is_some();
 
-                    if has_io && declared_effect != Some("IO") && declared_effect != Some("io") {
-                        checker.errors.push(format!(
-                            "effect error in fn {}: performs IO but not declared with IO effect",
-                            fd.name
-                        ));
-                    }
-                    if has_process && declared_effect != Some("Process") && declared_effect != Some("process") {
-                        checker.errors.push(format!(
-                            "effect error in fn {}: uses processes but not declared with Process effect",
-                            fd.name
-                        ));
+                    if has_any_effect && !has_declared {
+                        if has_io && has_process {
+                            checker.errors.push(format!(
+                                "effect error in fn {}: performs IO and uses processes but not declared with effect annotation",
+                                fd.name
+                            ));
+                        } else if has_io {
+                            checker.errors.push(format!(
+                                "effect error in fn {}: performs IO but not declared with IO effect",
+                                fd.name
+                            ));
+                        } else {
+                            checker.errors.push(format!(
+                                "effect error in fn {}: uses processes but not declared with Process effect",
+                                fd.name
+                            ));
+                        }
                     }
                 }
             }
@@ -572,6 +798,9 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
         eprintln!("{}", w);
     }
 
+    // Deduplicate errors
+    let mut seen = std::collections::HashSet::new();
+    checker.errors.retain(|e| seen.insert(e.clone()));
     checker.errors
 }
 

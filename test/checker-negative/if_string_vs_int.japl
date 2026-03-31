@@ -1,0 +1,7 @@
+fn pick(b: Bool) -> String {
+  if b { "yes" } else { 42 }
+}
+
+fn main() {
+  println(pick(True))
+}

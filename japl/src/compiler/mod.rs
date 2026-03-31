@@ -236,14 +236,14 @@ pub fn compile_full(path: &str, out_dir: &str, target: &str, stdlib_path: Option
     // Rewrite qualified calls: Module.func(...) -> Module_func(...)
     rewrite_qualified_calls(&mut program);
 
-    // Type check (non-fatal unless strict for effect checking)
-    let errors = checker::check_program(&program, false);
+    // Type check with effect enforcement enabled by default
+    let errors = checker::check_program(&program, true);
     if !errors.is_empty() {
         for err in &errors {
             eprintln!("{}", err);
         }
-        // Type errors are fatal
-        if errors.iter().any(|e| e.contains("type error")) {
+        // Type errors and effect errors are fatal
+        if errors.iter().any(|e| e.contains("type error") || e.contains("effect error")) {
             return Err(errors.join("\n"));
         }
     }
@@ -418,17 +418,14 @@ fn rewrite_expr_qualified(expr: &mut ast::Expr, module_names: &HashSet<String>) 
 pub fn check(path: &str) -> Result<(), String> {
     let input_path = PathBuf::from(path);
 
-    let source = std::fs::read_to_string(&input_path)
-        .map_err(|e| format!("Error reading {}: {}", input_path.display(), e))?;
-    let file_str = input_path.display().to_string();
+    let mut program = parse_file(&input_path)?;
 
-    let mut lex = lexer::Lexer::new(&source, &file_str);
-    let tokens = lex.tokenize().map_err(|e| format!("{}", e))?;
+    // Resolve imports so imported functions are available for type checking
+    let base_dir = input_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let mut visited = HashSet::new();
+    resolve_imports(&mut program, &base_dir, &mut visited);
 
-    let mut par = parser::Parser::new(tokens, &file_str);
-    let program = par.parse_program().map_err(|e| format!("{}", e))?;
-
-    let errors = checker::check_program(&program, false);
+    let errors = checker::check_program(&program, true);
     if errors.is_empty() {
         eprintln!("No errors found.");
         Ok(())

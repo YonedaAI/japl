@@ -1,0 +1,8 @@
+fn start_worker() -> Int {
+  spawn(fn() { println("working") })
+}
+
+fn main() {
+  let pid = start_worker()
+  println(show(pid))
+}
