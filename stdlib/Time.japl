@@ -12,4 +12,10 @@ fn main() {
   println("Time module loaded")
   let t = now()
   println("Current time: " <> show(t))
+  // Test elapsed() - pure arithmetic, no runtime needed
+  let e = elapsed(100, 350)
+  println("elapsed(100,350)=" <> show(e))
+  // Verify now() returns a positive value
+  let positive = if t > 0 { 1 } else { 0 }
+  println("now_positive=" <> show(positive))
 }

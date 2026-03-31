@@ -26,5 +26,8 @@ pub fn disconnect(stream: Int) -> Int {
 }
 
 fn main() {
+  // NOTE: All Net functions require TCP socket FFI which needs the JAPL runtime
+  // and a live network stack. Cannot be unit-tested without a running server.
+  // This module is validated via compile-only test.
   println("Net module loaded")
 }

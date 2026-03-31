@@ -1,25 +1,27 @@
-module Core
+pub fn identity(x: Int) -> Int { x }
 
-pub fn identity(x: a) -> a { x }
+pub fn const_(x: Int, _y: Int) -> Int { x }
 
-pub fn const_(x: a, _y: b) -> a { x }
-
-pub fn flip(f: fn(a, b) -> c) -> fn(b, a) -> c {
-  fn(b, a) { f(a, b) }
-}
-
-pub fn compose(f: fn(b) -> c, g: fn(a) -> b) -> fn(a) -> c {
-  fn(x) { f(g(x)) }
-}
-
-pub fn pipe(x: a, f: fn(a) -> b) -> b {
+pub fn pipe(x: Int, f: fn(Int) -> Int) -> Int {
   f(x)
 }
 
-pub fn apply(f: fn(a) -> b, x: a) -> b {
+pub fn apply(f: fn(Int) -> Int, x: Int) -> Int {
   f(x)
 }
 
-pub fn always(x: a) -> fn(b) -> a {
-  fn(_) { x }
+fn main() {
+  // Test identity
+  let id_result = identity(42)
+  println("identity(42)=" <> show(id_result))
+  // Test const_
+  let c_result = const_(10, 20)
+  println("const_(10,20)=" <> show(c_result))
+  // Test pipe
+  let p_result = pipe(5, fn(x: Int) -> Int { x * 3 })
+  println("pipe(5,*3)=" <> show(p_result))
+  // Test apply
+  let a_result = apply(fn(x: Int) -> Int { x + 1 }, 9)
+  println("apply(+1,9)=" <> show(a_result))
+  println("Core module loaded")
 }

@@ -24,5 +24,8 @@ pub fn exists(path: String) -> Int {
 }
 
 fn main() {
+  // NOTE: File functions require filesystem FFI which needs the JAPL runtime.
+  // Cannot be unit-tested without runtime file I/O support.
+  // This module is validated via compile-only test.
   println("File module loaded")
 }
