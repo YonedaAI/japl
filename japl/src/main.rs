@@ -29,6 +29,18 @@ enum Commands {
     /// Compile and run a .japl file
     Run {
         file: String,
+        /// Distribution node name (enables clustering)
+        #[arg(long)]
+        node_name: Option<String>,
+        /// Port to listen for peer connections
+        #[arg(long, default_value = "9000")]
+        listen_port: u16,
+        /// Connect to a peer at host:port
+        #[arg(long)]
+        peer: Option<String>,
+        /// Cluster cookie for authentication
+        #[arg(long)]
+        cookie: Option<String>,
     },
     /// Compile and serve a .japl file over HTTP
     Serve {
@@ -53,6 +65,15 @@ enum Commands {
         #[arg(long, default_value = "local")]
         target: String,
     },
+    /// Show cluster node status
+    Cluster {
+        /// Node name
+        #[arg(long)]
+        node_name: Option<String>,
+        /// Port for the distribution node
+        #[arg(long, default_value = "9000")]
+        port: u16,
+    },
     /// Print version
     Version,
 }
@@ -71,12 +92,30 @@ fn main() {
                 }
             }
         }
-        Commands::Run { file } => {
+        Commands::Run { file, node_name, listen_port, peer, cookie } => {
             // Compile to temp directory, then run
             let tmp_dir = std::env::temp_dir().join("japl_build");
             let tmp_str = tmp_dir.display().to_string();
             match compiler::compile(&file, &tmp_str) {
                 Ok(wasm_path) => {
+                    // If any distribution flag is set, create and start DistributionNode
+                    let _dist_node = if node_name.is_some() || peer.is_some() {
+                        let host = "127.0.0.1";
+                        let node = runtime::distribution::DistributionNode::new(
+                            host, listen_port, node_name.as_deref(), cookie.as_deref(),
+                        );
+                        if let Err(e) = node.listen() {
+                            eprintln!("dist listen error: {}", e);
+                        }
+                        if let Some(peer_addr) = &peer {
+                            if let Err(e) = node.connect_to(peer_addr) {
+                                eprintln!("dist connect error: {}", e);
+                            }
+                        }
+                        Some(node)
+                    } else {
+                        None
+                    };
                     if let Err(e) = runtime::run(&wasm_path) {
                         eprintln!("Runtime error: {}", e);
                         std::process::exit(1);
@@ -121,6 +160,14 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+        }
+        Commands::Cluster { node_name, port } => {
+            let host = "127.0.0.1";
+            let node = runtime::distribution::DistributionNode::new(
+                host, port, node_name.as_deref(), None,
+            );
+            println!("Node ID: {}", node.node_id());
+            println!("Peers: {:?}", node.connected_peers());
         }
         Commands::Deploy { file, port, target } => {
             deploy(&file, port, &target);
