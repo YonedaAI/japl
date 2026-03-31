@@ -32,6 +32,18 @@ pub fn tool_result_value(r: ToolResult) -> String {
   match r { ToolOk(v) => v, ToolErr(e) => e }
 }
 
+pub fn execute_tool(spec: ToolSpec, args: String) -> ToolResult {
+  let name = tool_name(spec)
+  let result = name <> "(" <> args <> ") => ok"
+  ToolOk(result)
+}
+
+pub fn tool_error(spec: ToolSpec, reason: String) -> ToolResult {
+  let name = tool_name(spec)
+  let msg = name <> ": " <> reason
+  ToolErr(msg)
+}
+
 fn main() {
   let spec = tool("search", "Search the web", "{\"query\": \"string\"}")
   let n = tool_name(spec)
@@ -46,4 +58,14 @@ fn main() {
   let err = ToolErr("timeout")
   let eok = is_tool_ok(err)
   println("err_ok: " <> show(eok))
+  let exec = execute_tool(spec, "test_args")
+  let exec_ok = is_tool_ok(exec)
+  println("exec_ok: " <> show(exec_ok))
+  let exec_val = tool_result_value(exec)
+  println("exec_result: " <> exec_val)
+  let terr = tool_error(spec, "not found")
+  let terr_ok = is_tool_ok(terr)
+  println("tool_error_ok: " <> show(terr_ok))
+  let terr_val = tool_result_value(terr)
+  println("tool_error_val: " <> terr_val)
 }
