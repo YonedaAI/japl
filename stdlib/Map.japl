@@ -62,6 +62,54 @@ pub fn remove(m: MapEntry, key: Int) -> MapEntry {
   }
 }
 
+// --- String-keyed Map ---
+
+foreign "japl" fn string_eq(a: String, b: String) -> Int
+
+type StrMapEntry = | StrEntry(String, Int, StrMapEntry) | StrMapEmpty
+
+pub fn str_map_new() -> StrMapEntry {
+  StrMapEmpty
+}
+
+pub fn str_map_put(m: StrMapEntry, key: String, val: Int) -> StrMapEntry {
+  StrEntry(key, val, m)
+}
+
+pub fn str_map_get(m: StrMapEntry, key: String) -> Int {
+  match m {
+    StrMapEmpty => 0 - 1,
+    StrEntry(k, v, rest) =>
+      if string_eq(k, key) == 1 { v }
+      else { str_map_get(rest, key) }
+  }
+}
+
+pub fn str_map_contains(m: StrMapEntry, key: String) -> Int {
+  match m {
+    StrMapEmpty => 0,
+    StrEntry(k, _, rest) =>
+      if string_eq(k, key) == 1 { 1 }
+      else { str_map_contains(rest, key) }
+  }
+}
+
+pub fn str_map_size(m: StrMapEntry) -> Int {
+  match m {
+    StrMapEmpty => 0,
+    StrEntry(_, _, rest) => 1 + str_map_size(rest)
+  }
+}
+
+pub fn str_map_remove(m: StrMapEntry, key: String) -> StrMapEntry {
+  match m {
+    StrMapEmpty => StrMapEmpty,
+    StrEntry(k, v, rest) =>
+      if string_eq(k, key) == 1 { rest }
+      else { StrEntry(k, v, str_map_remove(rest, key)) }
+  }
+}
+
 fn main() {
   let m = map_new()
   let m = map_put(m, 1, 100)
@@ -77,4 +125,19 @@ fn main() {
   let m2 = remove(m, 2)
   println("After remove 2, size: " <> show(map_size(m2)))
   println("After remove 2, contains 2: " <> show(map_contains(m2, 2)))
+
+  // String-keyed map tests
+  let sm = str_map_new()
+  let sm = str_map_put(sm, "alice", 42)
+  let sm = str_map_put(sm, "bob", 99)
+  let sm = str_map_put(sm, "carol", 7)
+  println("StrMap size: " <> show(str_map_size(sm)))
+  println("StrMap get alice: " <> show(str_map_get(sm, "alice")))
+  println("StrMap get bob: " <> show(str_map_get(sm, "bob")))
+  println("StrMap get unknown: " <> show(str_map_get(sm, "unknown")))
+  println("StrMap contains bob: " <> show(str_map_contains(sm, "bob")))
+  println("StrMap contains dave: " <> show(str_map_contains(sm, "dave")))
+  let sm2 = str_map_remove(sm, "bob")
+  println("StrMap after remove bob, size: " <> show(str_map_size(sm2)))
+  println("StrMap after remove bob, contains bob: " <> show(str_map_contains(sm2, "bob")))
 }

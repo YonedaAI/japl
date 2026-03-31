@@ -48,6 +48,46 @@ pub fn to_list(s: SetEntry) -> SetEntry {
   }
 }
 
+// --- String-keyed Set ---
+
+foreign "japl" fn string_eq(a: String, b: String) -> Int
+
+type StrSetEntry = | StrSetNode(String, StrSetEntry) | StrSetEmpty
+
+pub fn str_set_new() -> StrSetEntry {
+  StrSetEmpty
+}
+
+pub fn str_set_contains(s: StrSetEntry, val: String) -> Int {
+  match s {
+    StrSetEmpty => 0,
+    StrSetNode(x, rest) =>
+      if string_eq(x, val) == 1 { 1 }
+      else { str_set_contains(rest, val) }
+  }
+}
+
+pub fn str_set_insert(s: StrSetEntry, val: String) -> StrSetEntry {
+  if str_set_contains(s, val) == 1 { s }
+  else { StrSetNode(val, s) }
+}
+
+pub fn str_set_remove(s: StrSetEntry, val: String) -> StrSetEntry {
+  match s {
+    StrSetEmpty => StrSetEmpty,
+    StrSetNode(x, rest) =>
+      if string_eq(x, val) == 1 { rest }
+      else { StrSetNode(x, str_set_remove(rest, val)) }
+  }
+}
+
+pub fn str_set_size(s: StrSetEntry) -> Int {
+  match s {
+    StrSetEmpty => 0,
+    StrSetNode(_, rest) => 1 + str_set_size(rest)
+  }
+}
+
 fn main() {
   let s = empty()
   let s = insert(s, 1)
@@ -67,4 +107,18 @@ fn main() {
   let u = union(s, t)
   println("Union size: " <> show(size(u)))
   println("Union contains 4: " <> show(contains(u, 4)))
+
+  // String-keyed set tests
+  let ss = str_set_new()
+  let ss = str_set_insert(ss, "apple")
+  let ss = str_set_insert(ss, "banana")
+  let ss = str_set_insert(ss, "cherry")
+  let ss = str_set_insert(ss, "banana")
+  println("StrSet size: " <> show(str_set_size(ss)))
+  println("StrSet contains apple: " <> show(str_set_contains(ss, "apple")))
+  println("StrSet contains banana: " <> show(str_set_contains(ss, "banana")))
+  println("StrSet contains grape: " <> show(str_set_contains(ss, "grape")))
+  let ss2 = str_set_remove(ss, "banana")
+  println("StrSet after remove banana, size: " <> show(str_set_size(ss2)))
+  println("StrSet after remove banana, contains banana: " <> show(str_set_contains(ss2, "banana")))
 }
