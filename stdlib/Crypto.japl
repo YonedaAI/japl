@@ -1,3 +1,17 @@
+// Crypto module: SHA-256 hashing and random byte generation.
+//
+// FFI STATUS: Partially functional (raw pointer level only).
+//   - sha256() and random_bytes() work at the ptr/len level. Callers must
+//     manage linear memory manually via alloc_bytes / Bytes module.
+//   - sha256_hex() allocates a 32-byte buffer and returns the raw pointer.
+//     There is no way to convert the hash bytes into a hex String because
+//     JAPL lacks byte-to-hex-char conversion and string_from_ptr.
+//
+// WHAT NEEDS TO CHANGE for ergonomic use:
+//   Add `crypto_sha256_hex(data: String) -> String` to host.rs that
+//   accepts a JAPL String, computes SHA-256, and returns the hex digest
+//   as a JAPL String directly.
+
 foreign "japl" fn crypto_sha256(data_ptr: Int, data_len: Int, out_ptr: Int)
 foreign "japl" fn crypto_random(buf_ptr: Int, buf_len: Int)
 foreign "japl" fn bytes_alloc(len: Int) -> Int

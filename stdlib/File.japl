@@ -1,3 +1,20 @@
+// File module: filesystem read/write operations.
+//
+// FFI STATUS:
+//   - read() works via file_read_str, a special-case String-returning FFI
+//     function added to the runtime. This is the only String-returning file
+//     FFI currently available.
+//   - write() and exists() are stubs returning 0. They accept String paths
+//     but cannot delegate to the ptr/len FFI variants because JAPL has no
+//     way to extract (ptr, len) from a String value.
+//   - read_file/write_file are raw ptr/len wrappers — usable only if the
+//     caller manages linear memory manually (e.g., via Bytes.alloc).
+//
+// WHAT NEEDS TO CHANGE:
+//   Add `file_write_str(path: String, content: String) -> Int` and
+//   `file_exists_str(path: String) -> Int` host functions to
+//   japl/src/runtime/host.rs, mirroring the file_read_str pattern.
+
 foreign "japl" fn file_read(path_ptr: Int, path_len: Int) -> Int
 foreign "japl" fn file_write(path_ptr: Int, path_len: Int, data_ptr: Int, data_len: Int) -> Int
 foreign "japl" fn file_exists(path_ptr: Int, path_len: Int) -> Int
@@ -15,10 +32,12 @@ pub fn read(path: String) -> String {
   file_read_str(path)
 }
 
+// Stub — requires file_write_str FFI (see header comment).
 pub fn write(path: String, content: String) -> Int {
   0
 }
 
+// Stub — requires file_exists_str FFI (see header comment).
 pub fn exists(path: String) -> Int {
   0
 }
