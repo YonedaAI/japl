@@ -23,4 +23,8 @@ pub fn summarize(text: String) -> String {
 
 fn main() {
   println("LLM module loaded")
+  // NOTE: All LLM functions (ask, classify, summarize) require a live LLM
+  // backend with API credentials. Cannot be tested without network/API access.
+  // The module compiles and loads correctly; functional tests require
+  // integration test infrastructure with mock LLM responses.
 }

@@ -20,4 +20,10 @@ pub fn alloc_bytes(len: Int) -> Int { bytes_alloc(len) }
 
 fn main() {
   println("Crypto module loaded")
+  // Test alloc_bytes - allocates a buffer and returns a pointer (Int)
+  let buf = alloc_bytes(32)
+  let valid = if buf >= 0 { 1 } else { 0 }
+  println("alloc_valid=" <> show(valid))
+  // NOTE: sha256/random_bytes require raw pointer manipulation
+  // which cannot be safely tested in pure JAPL without Bytes module integration.
 }

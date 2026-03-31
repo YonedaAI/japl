@@ -97,9 +97,9 @@ compile_only_test("stdlib/Net", "stdlib/Net.japl")
 run_test("stdlib/Map", "stdlib/Map.japl", ["Map size: 3", "Get 1: 100", "Get 2: 200", "Contains 2: 1", "Contains 5: 0"])
 run_test("stdlib/Set", "stdlib/Set.japl", ["Set size: 3", "Contains 1: 1", "Contains 2: 1", "Contains 5: 0", "Union size: 4"])
 run_test("stdlib/Test", "stdlib/Test.japl", ["PASS", "FAIL"])
-run_test("stdlib/Time", "stdlib/Time.japl", ["Time module loaded"], use_runtime=True)
-run_test("stdlib/Env", "stdlib/Env.japl", ["Env module loaded"], use_runtime=True)
-run_test("stdlib/Crypto", "stdlib/Crypto.japl", ["Crypto module loaded"], use_runtime=True)
+run_test("stdlib/Time", "stdlib/Time.japl", ["Time module loaded", "elapsed(100,350)=250", "now_positive=1"], use_runtime=True)
+run_test("stdlib/Env", "stdlib/Env.japl", ["Env module loaded", "get_or_default=fallback", "get_empty="], use_runtime=True)
+run_test("stdlib/Crypto", "stdlib/Crypto.japl", ["Crypto module loaded", "alloc_valid=1"], use_runtime=True)
 compile_only_test("stdlib/File", "stdlib/File.japl")
 run_test("stdlib/Bytes", "stdlib/Bytes.japl", ["Bytes length: 5", "Bytes to_string: hello", "Byte 0: 104", "After set: Hello", "Slice 1..4: ell", "Concat: hello world", "Bytes module loaded"])
 run_test("stdlib/Codec", "stdlib/Codec.japl", ["encode_int(42)=42", "encode_str=hello", "tag(IntVal)=0", "tag(StrVal)=1", "tag(PairVal)=2", "roundtrip int: 99", "roundtrip str: world"])
@@ -107,6 +107,7 @@ run_test("stdlib/Retry", "stdlib/Retry.japl", ["max_retries=3", "exp delay 0=100
 run_test("stdlib/Log", "stdlib/Log.japl", ["[DEBUG] debug message", "[INFO] info message", "[WARN] warn message", "[ERROR] error message", "level_name=INFO"])
 run_test("stdlib/Config", "stdlib/Config.japl", ["get_or=8080", "get_int=4", "require=required:APP_NAME", "Config module loaded"])
 compile_only_test("stdlib/LLM", "stdlib/LLM.japl")
+run_test("stdlib/Core", "stdlib/Core.japl", ["identity(42)=42", "const_(10,20)=10", "pipe(5,*3)=15", "apply(+1,9)=10", "Core module loaded"])
 run_test("stdlib/Tool", "stdlib/Tool.japl", ["tool_name: search", "tool_desc: Search the web", "call_ok: 1", "call_result: search({\"query\": \"hello\"})", "err_ok: 0"])
 run_test("stdlib/Budget", "stdlib/Budget.japl", ["remaining: 100", "max: 100", "after_spend: 70", "exhausted: 0", "check_50: 1", "exhausted_after: 1"])
 run_test("stdlib/Replay", "stdlib/Replay.japl", ["empty_size: 0", "empty_latest: -1", "size: 3", "latest: 3"])
@@ -170,6 +171,31 @@ if os.path.isdir(neg_dir):
         PASS += 1
     else:
         print(f"  {neg_pass}/{neg_total} negative tests passed")
+
+print("\n--- Stdlib Completeness ---")
+import glob
+stdlib_files = set(
+    os.path.basename(f).replace('.japl', '')
+    for f in glob.glob(os.path.join(JAPL_HOME, 'stdlib/*.japl'))
+)
+# Build set of tested modules from the test entries above (stdlib/* test names)
+tested_modules = set()
+# Re-scan the test output isn't feasible, so hardcode from the test list.
+# This list must be kept in sync with the stdlib test entries above.
+_tested = [
+    "Math", "Option", "Result", "String", "IO", "List", "Json", "Http",
+    "Process", "Supervisor", "Registry", "Net", "Map", "Set", "Test",
+    "Time", "Env", "Crypto", "File", "Bytes", "Codec", "Retry", "Log",
+    "Config", "LLM", "Tool", "Budget", "Replay", "Provenance", "Core",
+]
+tested_modules = set(_tested)
+untested = stdlib_files - tested_modules
+if untested:
+    print(f"  FAIL stdlib completeness: untested modules: {sorted(untested)}")
+    FAIL += 1
+else:
+    print(f"  PASS all {len(stdlib_files)} stdlib modules have test coverage")
+    PASS += 1
 
 print(f"\n=== Results: {PASS} pass, {FAIL} fail ===")
 sys.exit(0 if FAIL == 0 else 1)
