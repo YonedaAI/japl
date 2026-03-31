@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use std::process::Command;
 
 mod compiler;
+mod package;
 mod runtime;
 mod serve;
 
@@ -74,6 +75,13 @@ enum Commands {
         #[arg(long, default_value = "9000")]
         port: u16,
     },
+    /// Initialize a new JAPL project (creates japl.toml)
+    Init {
+        #[arg(default_value = ".")]
+        path: String,
+    },
+    /// Show project dependencies from japl.toml
+    Deps,
     /// Print version
     Version,
 }
@@ -171,6 +179,31 @@ fn main() {
         }
         Commands::Deploy { file, port, target } => {
             deploy(&file, port, &target);
+        }
+        Commands::Init { path } => {
+            let dir = std::path::Path::new(&path).canonicalize().unwrap_or_else(|_| {
+                std::path::PathBuf::from(&path)
+            });
+            match package::init_manifest(&dir) {
+                Ok(manifest_path) => {
+                    println!("Created {}", manifest_path);
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Commands::Deps => {
+            match package::read_manifest("japl.toml") {
+                Ok(manifest) => {
+                    println!("Package: {} v{}", manifest.name, manifest.version);
+                    for (name, version) in &manifest.dependencies {
+                        println!("  {} = {}", name, version);
+                    }
+                }
+                Err(e) => eprintln!("Error: {}", e),
+            }
         }
         Commands::Version => {
             println!("japl 1.0.0");
