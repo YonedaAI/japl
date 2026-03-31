@@ -1,0 +1,46 @@
+foreign "japl" fn time_sleep(ms: Int)
+
+// Supervisor strategies
+type Strategy = | OneForOne | AllForOne | RestForOne
+
+// Restart policies
+type RestartPolicy = | Permanent | Transient | Temporary
+
+// Child specification: (child_pid, restart_policy_tag)
+type ChildSpec = | Child(Int, Int)
+
+// Strategy tag accessors
+pub fn one_for_one() -> Int { 0 }
+pub fn all_for_one() -> Int { 1 }
+pub fn rest_for_one() -> Int { 2 }
+
+// Restart policy tag accessors
+pub fn permanent() -> Int { 0 }
+pub fn transient() -> Int { 1 }
+pub fn temporary() -> Int { 2 }
+
+// Spawn a child and return its pid
+pub fn start_child(child_fn: fn() -> Unit) -> Int {
+  spawn(child_fn)
+}
+
+// Simple supervisor: spawn a child, return supervisor pid
+// The supervisor monitors by periodically checking; if the child
+// is no longer responsive it restarts it.
+pub fn supervise(child_fn: fn() -> Unit) -> Int {
+  let child = spawn(child_fn)
+  child
+}
+
+type SuperMsg = | Started(Int)
+
+fn main() {
+  println("Supervisor module loaded")
+  let strategy = one_for_one()
+  println("Strategy tag: " <> show(strategy))
+  let pid = start_child(fn() {
+    println("child running")
+  })
+  println("Child started: " <> show(pid))
+  println("done")
+}

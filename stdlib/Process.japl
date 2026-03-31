@@ -1,4 +1,28 @@
+foreign "japl" fn time_sleep(ms: Int)
+
 type ProcMsg = | Ping(Int)
+
+// Process utilities
+
+pub fn spawn_fn(f: fn() -> Unit) -> Int {
+  spawn(f)
+}
+
+pub fn self_id() -> Int {
+  self_pid()
+}
+
+pub fn send_msg(pid: Int, msg: Int) -> Int {
+  send(pid, msg)
+  1
+}
+
+pub fn sleep(ms: Int) -> Int {
+  time_sleep(ms)
+  0
+}
+
+// Echo worker for demo
 
 fn echo_worker() {
   receive {
