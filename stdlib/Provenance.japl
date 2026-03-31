@@ -1,0 +1,59 @@
+type Source = | Human | Model(String) | ToolSource(String) | Composed(Source, Source)
+type ProvenanceRecord = | Provenance(String, Source, Int)
+
+pub fn human_source() -> Source {
+  Human
+}
+
+pub fn model_source(model_name: String) -> Source {
+  Model(model_name)
+}
+
+pub fn tool_source(tool_name: String) -> Source {
+  ToolSource(tool_name)
+}
+
+pub fn compose_sources(a: Source, b: Source) -> Source {
+  Composed(a, b)
+}
+
+pub fn provenance(content_hash: String, source: Source, timestamp: Int) -> ProvenanceRecord {
+  Provenance(content_hash, source, timestamp)
+}
+
+pub fn source_label(s: Source) -> String {
+  match s {
+    Human => "human",
+    Model(name) => "model:" <> name,
+    ToolSource(name) => "tool:" <> name,
+    Composed(a, b) => source_label(a) <> "+" <> source_label(b)
+  }
+}
+
+pub fn provenance_hash(p: ProvenanceRecord) -> String {
+  match p { Provenance(h, _, _) => h }
+}
+
+pub fn provenance_timestamp(p: ProvenanceRecord) -> Int {
+  match p { Provenance(_, _, t) => t }
+}
+
+fn main() {
+  let h = human_source()
+  let lh = source_label(h)
+  println("human: " <> lh)
+  let m = model_source("claude")
+  let lm = source_label(m)
+  println("model: " <> lm)
+  let t = tool_source("search")
+  let lt = source_label(t)
+  println("tool: " <> lt)
+  let c = compose_sources(h, m)
+  let lc = source_label(c)
+  println("composed: " <> lc)
+  let p = provenance("abc123", m, 1000)
+  let ph = provenance_hash(p)
+  let pt = provenance_timestamp(p)
+  println("hash: " <> ph)
+  println("timestamp: " <> show(pt))
+}

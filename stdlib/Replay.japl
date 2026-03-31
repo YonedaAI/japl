@@ -1,0 +1,40 @@
+type ReplayEntry = | Entry(Int, String, String)
+type ReplayLog = | LogEntry(ReplayEntry, ReplayLog) | LogEmpty
+
+pub fn replay_new() -> ReplayLog {
+  LogEmpty
+}
+
+pub fn replay_record(log: ReplayLog, step: Int, action: String, result: String) -> ReplayLog {
+  let entry = Entry(step, action, result)
+  LogEntry(entry, log)
+}
+
+pub fn replay_size(log: ReplayLog) -> Int {
+  match log {
+    LogEmpty => 0,
+    LogEntry(_, rest) => 1 + replay_size(rest)
+  }
+}
+
+pub fn replay_latest(log: ReplayLog) -> Int {
+  match log {
+    LogEmpty => 0 - 1,
+    LogEntry(e, _) => match e { Entry(s, _, _) => s }
+  }
+}
+
+fn main() {
+  let log = replay_new()
+  let s0 = replay_size(log)
+  println("empty_size: " <> show(s0))
+  let lat0 = replay_latest(log)
+  println("empty_latest: " <> show(lat0))
+  let log = replay_record(log, 1, "call_tool", "ok")
+  let log = replay_record(log, 2, "parse", "done")
+  let log = replay_record(log, 3, "respond", "sent")
+  let s1 = replay_size(log)
+  println("size: " <> show(s1))
+  let lat1 = replay_latest(log)
+  println("latest: " <> show(lat1))
+}

@@ -1,0 +1,50 @@
+type Budget = | Budget(Int, Int)
+
+pub fn budget_new(max_tokens: Int) -> Budget {
+  Budget(max_tokens, max_tokens)
+}
+
+pub fn budget_remaining(b: Budget) -> Int {
+  match b { Budget(r, _) => r }
+}
+
+pub fn budget_max(b: Budget) -> Int {
+  match b { Budget(_, m) => m }
+}
+
+pub fn budget_spend(b: Budget, tokens: Int) -> Budget {
+  let r = budget_remaining(b)
+  let m = budget_max(b)
+  let new_r = r - tokens
+  Budget(new_r, m)
+}
+
+pub fn budget_exhausted(b: Budget) -> Int {
+  let r = budget_remaining(b)
+  if r <= 0 { 1 }
+  else { 0 }
+}
+
+pub fn budget_check(b: Budget, needed: Int) -> Int {
+  let r = budget_remaining(b)
+  if r >= needed { 1 }
+  else { 0 }
+}
+
+fn main() {
+  let b = budget_new(100)
+  let r = budget_remaining(b)
+  let m = budget_max(b)
+  println("remaining: " <> show(r))
+  println("max: " <> show(m))
+  let b = budget_spend(b, 30)
+  let r2 = budget_remaining(b)
+  println("after_spend: " <> show(r2))
+  let ex = budget_exhausted(b)
+  println("exhausted: " <> show(ex))
+  let chk = budget_check(b, 50)
+  println("check_50: " <> show(chk))
+  let b = budget_spend(b, 80)
+  let ex2 = budget_exhausted(b)
+  println("exhausted_after: " <> show(ex2))
+}
