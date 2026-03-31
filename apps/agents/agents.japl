@@ -1,0 +1,105 @@
+// JAPL Multi-Agent Supervisor Demo
+// Architecture: coordinator spawns classifier and summarizer worker agents,
+// sends tasks to each, collects results, prints completion status.
+
+foreign "japl" fn time_sleep(ms: Int)
+
+// Messages from coordinator to workers
+type AgentTask =
+  | Task(Int, Pid)
+  | Shutdown
+
+// Messages from workers to coordinator
+type AgentResult =
+  | Done(Int)
+
+// --- Classifier agent: assigns a category based on input ---
+
+fn classifier_handle(id: Int, reply: Pid) {
+  let _ = println("Classifier result: category=data")
+  let result = Done(id)
+  let _ = send(reply, result)
+  classifier_loop()
+}
+
+fn classifier_loop() {
+  receive {
+    Task(id, reply) => classifier_handle(id, reply),
+    Shutdown => println("Classifier shutting down")
+  }
+}
+
+fn start_classifier() {
+  classifier_loop()
+}
+
+// --- Summarizer agent: returns first few chars + "..." ---
+
+fn summarizer_handle(id: Int, reply: Pid) {
+  let _ = println("Summarizer result: summary=Anal...")
+  let result = Done(id)
+  let _ = send(reply, result)
+  summarizer_loop()
+}
+
+fn summarizer_loop() {
+  receive {
+    Task(id, reply) => summarizer_handle(id, reply),
+    Shutdown => println("Summarizer shutting down")
+  }
+}
+
+fn start_summarizer() {
+  summarizer_loop()
+}
+
+// --- Coordinator: collect results ---
+
+fn collect_result(collected: Int, total: Int) {
+  receive {
+    Done(id) => on_result(collected, total)
+  }
+}
+
+fn on_result(collected: Int, total: Int) {
+  let done = collected + 1
+  if done == total {
+    println("All tasks complete (" <> show(done) <> "/" <> show(total) <> ")")
+  } else {
+    collect_result(done, total)
+  }
+}
+
+// --- Main ---
+
+fn main() {
+  let _ = println("Agent system starting")
+
+  let classifier = spawn(fn() { start_classifier() })
+  let _ = println("Spawned classifier")
+
+  let summarizer = spawn(fn() { start_summarizer() })
+  let _ = println("Spawned summarizer")
+
+  let _ = println("Sending tasks")
+
+  let me = self()
+
+  // Send task to classifier (id=1)
+  let task1 = Task(1, me)
+  let _ = send(classifier, task1)
+
+  // Send task to summarizer (id=2)
+  let task2 = Task(2, me)
+  let _ = send(summarizer, task2)
+
+  // Collect 2 results
+  let _ = collect_result(0, 2)
+
+  // Shutdown workers
+  let _ = send(classifier, Shutdown)
+  let _ = send(summarizer, Shutdown)
+  let _ = time_sleep(10)
+
+  println("Agent system done")
+}
