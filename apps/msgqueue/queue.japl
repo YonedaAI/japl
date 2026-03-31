@@ -1,15 +1,207 @@
-type Msg = | Publish(Int) | Ack(Int)
+// JAPL Message Queue
+// Broker with producers, consumers, and acknowledgments.
+// All multi-step logic in helper functions (receive arms = single expr).
 
-fn consumer(id: Int) {
+type Msg =
+  | Enqueue(Pid, Int, Int)
+  | Dequeue(Pid)
+  | Ack(Pid, Int)
+  | Item(Int, Int)
+  | NoItem
+  | Stats(Pid)
+  | StatReply(Int, Int, Int)
+  | ProducerDone(Int)
+  | ConsumerDone(Int, Int)
+
+type Queue = | QNode(Int, Int, Queue) | QEmpty
+
+fn queue_push(q: Queue, id: Int, payload: Int) -> Queue {
+  QNode(id, payload, q)
+}
+
+fn queue_size(q: Queue) -> Int {
+  match q {
+    QEmpty => 0,
+    QNode(id, payload, rest) => 1 + queue_size(rest)
+  }
+}
+
+// --- Broker helpers (each does let-binding + recurse) ---
+
+fn broker_enqueue(q: Queue, enqueued: Int, acked: Int, id: Int, payload: Int) {
+  let _ = println("  [broker] enqueued msg " <> show(id))
+  broker_loop(queue_push(q, id, payload), enqueued + 1, acked)
+}
+
+fn broker_dequeue_empty(q: Queue, enqueued: Int, acked: Int, sender: Pid) {
+  let _ = send(sender, NoItem)
+  broker_loop(q, enqueued, acked)
+}
+
+fn broker_dequeue_item(rest: Queue, enqueued: Int, acked: Int, sender: Pid, id: Int, payload: Int) {
+  let _ = send(sender, Item(id, payload))
+  let _ = println("  [broker] dequeued msg " <> show(id))
+  broker_loop(rest, enqueued, acked)
+}
+
+fn broker_dequeue(q: Queue, enqueued: Int, acked: Int, sender: Pid) {
+  match q {
+    QEmpty => broker_dequeue_empty(q, enqueued, acked, sender),
+    QNode(id, payload, rest) => broker_dequeue_item(rest, enqueued, acked, sender, id, payload)
+  }
+}
+
+fn broker_ack(q: Queue, enqueued: Int, acked: Int, id: Int) {
+  let _ = println("  [broker] ack for msg " <> show(id))
+  broker_loop(q, enqueued, acked + 1)
+}
+
+fn broker_stats(q: Queue, enqueued: Int, acked: Int, sender: Pid) {
+  let _ = send(sender, StatReply(enqueued, acked, queue_size(q)))
+  broker_loop(q, enqueued, acked)
+}
+
+fn broker_loop(q: Queue, enqueued: Int, acked: Int) {
   receive {
-    Ack(val) => println("Got: " <> show(val))
+    Enqueue(sender, id, payload) => broker_enqueue(q, enqueued, acked, id, payload),
+    Dequeue(sender) => broker_dequeue(q, enqueued, acked, sender),
+    Ack(sender, id) => broker_ack(q, enqueued, acked, id),
+    Stats(sender) => broker_stats(q, enqueued, acked, sender)
+  }
+}
+
+// --- Producer helpers ---
+
+fn produce_one(broker: Pid, coordinator: Pid, prod_id: Int, base_id: Int, remaining: Int) {
+  let msg_id = base_id + remaining
+  let payload = prod_id * 100 + remaining
+  let _ = send(broker, Enqueue(self(), msg_id, payload))
+  let _ = println("[producer " <> show(prod_id) <> "] sent msg " <> show(msg_id))
+  produce(broker, coordinator, prod_id, base_id, remaining - 1)
+}
+
+fn produce_done(coordinator: Pid, prod_id: Int) {
+  let _ = send(coordinator, ProducerDone(prod_id))
+  println("[producer " <> show(prod_id) <> "] finished")
+}
+
+fn produce(broker: Pid, coordinator: Pid, prod_id: Int, base_id: Int, remaining: Int) {
+  if remaining == 0 {
+    produce_done(coordinator, prod_id)
+  } else {
+    produce_one(broker, coordinator, prod_id, base_id, remaining)
+  }
+}
+
+// --- Consumer helpers ---
+
+fn consume_got_item(broker: Pid, coordinator: Pid, cons_id: Int, processed: Int, attempts: Int, id: Int, payload: Int) {
+  let _ = println("[consumer " <> show(cons_id) <> "] processed msg " <> show(id) <> " payload=" <> show(payload))
+  let _ = send(broker, Ack(self(), id))
+  consume(broker, coordinator, cons_id, processed + 1, attempts - 1)
+}
+
+fn consume_empty(coordinator: Pid, cons_id: Int, processed: Int) {
+  let _ = println("[consumer " <> show(cons_id) <> "] queue empty")
+  let _ = send(coordinator, ConsumerDone(cons_id, processed))
+  println("[consumer " <> show(cons_id) <> "] done (" <> show(processed) <> " msgs)")
+}
+
+fn consume_try(broker: Pid, coordinator: Pid, cons_id: Int, processed: Int, attempts: Int) {
+  let _ = send(broker, Dequeue(self()))
+  receive {
+    Item(id, payload) => consume_got_item(broker, coordinator, cons_id, processed, attempts, id, payload),
+    NoItem => consume_empty(coordinator, cons_id, processed)
+  }
+}
+
+fn consume_done(coordinator: Pid, cons_id: Int, processed: Int) {
+  let _ = send(coordinator, ConsumerDone(cons_id, processed))
+  println("[consumer " <> show(cons_id) <> "] done (" <> show(processed) <> " msgs)")
+}
+
+fn consume(broker: Pid, coordinator: Pid, cons_id: Int, processed: Int, attempts: Int) {
+  if attempts == 0 {
+    consume_done(coordinator, cons_id, processed)
+  } else {
+    consume_try(broker, coordinator, cons_id, processed, attempts)
+  }
+}
+
+// --- Coordinator helpers ---
+
+fn wait_producer_msg(remaining: Int) {
+  receive {
+    ProducerDone(id) => wait_producers_next(remaining, id)
+  }
+}
+
+fn wait_producers_next(remaining: Int, id: Int) {
+  let _ = println("[coord] producer " <> show(id) <> " done")
+  wait_producers(remaining - 1)
+}
+
+fn wait_producers(remaining: Int) {
+  if remaining == 0 {
+    println("[coord] all producers finished")
+  } else {
+    wait_producer_msg(remaining)
+  }
+}
+
+fn wait_consumer_msg(remaining: Int, total: Int) {
+  receive {
+    ConsumerDone(id, count) => wait_consumers_next(remaining, total, id, count)
+  }
+}
+
+fn wait_consumers_next(remaining: Int, total: Int, id: Int, count: Int) {
+  let _ = println("[coord] consumer " <> show(id) <> " processed " <> show(count))
+  wait_consumers(remaining - 1, total + count)
+}
+
+fn wait_consumers(remaining: Int, total: Int) {
+  if remaining == 0 {
+    println("[coord] all consumers done, total: " <> show(total))
+  } else {
+    wait_consumer_msg(remaining, total)
+  }
+}
+
+fn print_stats(enqueued: Int, acked: Int, pending: Int) {
+  let _ = println("[stats] enqueued=" <> show(enqueued) <> " acked=" <> show(acked) <> " pending=" <> show(pending))
+  println("[stats] done")
+}
+
+fn get_stats(broker: Pid) {
+  let _ = send(broker, Stats(self()))
+  receive {
+    StatReply(enqueued, acked, pending) => print_stats(enqueued, acked, pending)
   }
 }
 
 fn main() {
-  let c1 = spawn(fn() { consumer(1) })
-  let c2 = spawn(fn() { consumer(2) })
-  send(c1, Ack(100))
-  send(c2, Ack(200))
-  println("=== Done ===")
+  let _ = println("=== JAPL Message Queue ===")
+
+  let broker = spawn(fn() { broker_loop(QEmpty, 0, 0) })
+  let _ = println("[coord] broker started")
+
+  let me = self()
+
+  let _ = spawn(fn() { produce(broker, me, 1, 10, 5) })
+  let _ = spawn(fn() { produce(broker, me, 2, 20, 5) })
+  let _ = println("[coord] 2 producers spawned")
+
+  let _ = wait_producers(2)
+
+  let _ = spawn(fn() { consume(broker, me, 1, 0, 5) })
+  let _ = spawn(fn() { consume(broker, me, 2, 0, 5) })
+  let _ = spawn(fn() { consume(broker, me, 3, 0, 5) })
+  let _ = println("[coord] 3 consumers spawned")
+
+  let _ = wait_consumers(3, 0)
+
+  let _ = get_stats(broker)
+
+  println("=== Message Queue Complete ===")
 }

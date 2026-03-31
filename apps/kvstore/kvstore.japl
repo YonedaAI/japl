@@ -1,62 +1,300 @@
-type KVCommand =
-  | Put(Int, Int, Pid)
-  | Get(Int, Pid)
-  | Size(Pid)
+// =============================================================================
+// JAPL Distributed Key-Value Store
+// =============================================================================
+// Architecture:
+//   - 4 partition workers, each owning a slice of the keyspace (key % 4)
+//   - 1 router process that routes commands to the correct partition
+//   - 1 client process that sends 24 operations and prints results
+//
+// Each partition stores state as a recursive association list (Entry).
+// The partition loops: receive command -> update state -> send reply -> recurse.
+// =============================================================================
 
-type KVResponse =
-  | Found(Int)
-  | NotFound
-  | Stored
-  | Count(Int)
+// ---------------------------------------------------------------------------
+// Store data structure — association list
+// ---------------------------------------------------------------------------
 
-fn partition(data_count: Int) {
-  receive {
-    Put(key, val, reply) =>
-      let _ = send(reply, Stored)
-      partition(data_count + 1),
-    Get(key, reply) =>
-      let _ = send(reply, Found(key * 10))
-      partition(data_count),
-    Size(reply) =>
-      let _ = send(reply, Count(data_count))
-      partition(data_count)
+type Entry = | KV(Int, Int, Entry) | Empty
+
+fn store_put(store: Entry, key: Int, val: Int) -> Entry {
+  KV(key, val, store)
+}
+
+fn store_get(store: Entry, key: Int) -> Int {
+  match store {
+    Empty => 0 - 1,
+    KV(k, v, rest) => {
+      if k == key { v }
+      else { store_get(rest, key) }
+    }
   }
 }
 
+fn store_contains(store: Entry, key: Int) -> Int {
+  match store {
+    Empty => 0,
+    KV(k, v, rest) => {
+      if k == key { 1 }
+      else { store_contains(rest, key) }
+    }
+  }
+}
+
+fn store_delete(store: Entry, key: Int) -> Entry {
+  match store {
+    Empty => Empty,
+    KV(k, v, rest) => {
+      if k == key { rest }
+      else { KV(k, v, store_delete(rest, key)) }
+    }
+  }
+}
+
+fn store_size(store: Entry) -> Int {
+  match store {
+    Empty => 0,
+    KV(k, v, rest) => 1 + store_size(rest)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Command messages: Client -> Router -> Partition
+// ---------------------------------------------------------------------------
+
+type Cmd =
+  | CmdPut(Pid, Int, Int)
+  | CmdGet(Pid, Int)
+  | CmdDel(Pid, Int)
+  | CmdSize(Pid)
+
+// ---------------------------------------------------------------------------
+// Response messages: Partition -> Client
+// ---------------------------------------------------------------------------
+
+type Resp =
+  | PutOk
+  | GetOk(Int)
+  | GetMiss
+  | DelOk
+  | DelMiss
+  | SizeIs(Int)
+
+// ---------------------------------------------------------------------------
+// Partition worker — command handlers
+// ---------------------------------------------------------------------------
+
+fn handle_put(id: Int, store: Entry, caller: Pid, key: Int, val: Int) {
+  let new_store = store_put(store, key, val)
+  let _ = send(caller, PutOk)
+  partition_loop(id, new_store)
+}
+
+fn handle_get(id: Int, store: Entry, caller: Pid, key: Int) {
+  let found = store_contains(store, key)
+  if found == 1 {
+    let _ = send(caller, GetOk(store_get(store, key)))
+    partition_loop(id, store)
+  } else {
+    let _ = send(caller, GetMiss)
+    partition_loop(id, store)
+  }
+}
+
+fn handle_del(id: Int, store: Entry, caller: Pid, key: Int) {
+  let found = store_contains(store, key)
+  if found == 1 {
+    let new_store = store_delete(store, key)
+    let _ = send(caller, DelOk)
+    partition_loop(id, new_store)
+  } else {
+    let _ = send(caller, DelMiss)
+    partition_loop(id, store)
+  }
+}
+
+fn handle_size(id: Int, store: Entry, caller: Pid) {
+  let _ = send(caller, SizeIs(store_size(store)))
+  partition_loop(id, store)
+}
+
+// ---------------------------------------------------------------------------
+// Partition worker — main receive loop
+// ---------------------------------------------------------------------------
+
+fn partition_loop(id: Int, store: Entry) {
+  receive {
+    CmdPut(caller, key, val) => handle_put(id, store, caller, key, val),
+    CmdGet(caller, key) => handle_get(id, store, caller, key),
+    CmdDel(caller, key) => handle_del(id, store, caller, key),
+    CmdSize(caller) => handle_size(id, store, caller)
+  }
+}
+
+fn start_partition(id: Int) {
+  let _ = println("  Partition " <> show(id) <> " started")
+  partition_loop(id, Empty)
+}
+
+// ---------------------------------------------------------------------------
+// Router — routes commands to the correct partition by key % 4
+// ---------------------------------------------------------------------------
+
+type RouteCmd =
+  | RoutePut(Pid, Int, Int)
+  | RouteGet(Pid, Int)
+  | RouteDel(Pid, Int)
+  | RouteSize(Pid, Int)
+
+fn pick_partition(key: Int, p0: Pid, p1: Pid, p2: Pid, p3: Pid) -> Pid {
+  let h = key % 4
+  if h == 0 { p0 }
+  else { if h == 1 { p1 }
+  else { if h == 2 { p2 }
+  else { p3 } } }
+}
+
+fn pick_by_id(id: Int, p0: Pid, p1: Pid, p2: Pid, p3: Pid) -> Pid {
+  if id == 0 { p0 }
+  else { if id == 1 { p1 }
+  else { if id == 2 { p2 }
+  else { p3 } } }
+}
+
+fn route_put(p0: Pid, p1: Pid, p2: Pid, p3: Pid, caller: Pid, key: Int, val: Int) {
+  let part = pick_partition(key, p0, p1, p2, p3)
+  let _ = send(part, CmdPut(caller, key, val))
+  router_loop(p0, p1, p2, p3)
+}
+
+fn route_get(p0: Pid, p1: Pid, p2: Pid, p3: Pid, caller: Pid, key: Int) {
+  let part = pick_partition(key, p0, p1, p2, p3)
+  let _ = send(part, CmdGet(caller, key))
+  router_loop(p0, p1, p2, p3)
+}
+
+fn route_del(p0: Pid, p1: Pid, p2: Pid, p3: Pid, caller: Pid, key: Int) {
+  let part = pick_partition(key, p0, p1, p2, p3)
+  let _ = send(part, CmdDel(caller, key))
+  router_loop(p0, p1, p2, p3)
+}
+
+fn route_size(p0: Pid, p1: Pid, p2: Pid, p3: Pid, caller: Pid, id: Int) {
+  let part = pick_by_id(id, p0, p1, p2, p3)
+  let _ = send(part, CmdSize(caller))
+  router_loop(p0, p1, p2, p3)
+}
+
+fn router_loop(p0: Pid, p1: Pid, p2: Pid, p3: Pid) {
+  receive {
+    RoutePut(caller, key, val) => route_put(p0, p1, p2, p3, caller, key, val),
+    RouteGet(caller, key) => route_get(p0, p1, p2, p3, caller, key),
+    RouteDel(caller, key) => route_del(p0, p1, p2, p3, caller, key),
+    RouteSize(caller, id) => route_size(p0, p1, p2, p3, caller, id)
+  }
+}
+
+fn start_router(p0: Pid, p1: Pid, p2: Pid, p3: Pid) {
+  let _ = println("  Router started")
+  router_loop(p0, p1, p2, p3)
+}
+
+// ---------------------------------------------------------------------------
+// Client helpers
+// ---------------------------------------------------------------------------
+
+fn do_put(router: Pid, key: Int, val: Int) {
+  let _ = send(router, RoutePut(self(), key, val))
+  receive {
+    PutOk => println("  PUT key=" <> show(key) <> " val=" <> show(val) <> " -> OK")
+  }
+}
+
+fn do_get(router: Pid, key: Int) {
+  let _ = send(router, RouteGet(self(), key))
+  receive {
+    GetOk(v) => println("  GET key=" <> show(key) <> " -> " <> show(v)),
+    GetMiss => println("  GET key=" <> show(key) <> " -> NOT FOUND")
+  }
+}
+
+fn do_del(router: Pid, key: Int) {
+  let _ = send(router, RouteDel(self(), key))
+  receive {
+    DelOk => println("  DEL key=" <> show(key) <> " -> OK"),
+    DelMiss => println("  DEL key=" <> show(key) <> " -> NOT FOUND")
+  }
+}
+
+fn do_size(router: Pid, part_id: Int) {
+  let _ = send(router, RouteSize(self(), part_id))
+  receive {
+    SizeIs(n) => println("  SIZE partition " <> show(part_id) <> " -> " <> show(n))
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Client — exercises the KV store with 24 operations
+// ---------------------------------------------------------------------------
+
+fn client(router: Pid) {
+  let _ = println("")
+  let _ = println("--- Phase 1: Insert 10 key-value pairs ---")
+  let _ = do_put(router, 0, 100)
+  let _ = do_put(router, 1, 200)
+  let _ = do_put(router, 2, 300)
+  let _ = do_put(router, 3, 400)
+  let _ = do_put(router, 4, 500)
+  let _ = do_put(router, 5, 600)
+  let _ = do_put(router, 6, 700)
+  let _ = do_put(router, 7, 800)
+  let _ = do_put(router, 8, 900)
+  let _ = do_put(router, 9, 1000)
+
+  let _ = println("")
+  let _ = println("--- Phase 2: Read back values ---")
+  let _ = do_get(router, 0)
+  let _ = do_get(router, 1)
+  let _ = do_get(router, 2)
+  let _ = do_get(router, 3)
+  let _ = do_get(router, 7)
+  let _ = do_get(router, 9)
+
+  let _ = println("")
+  let _ = println("--- Phase 3: Delete keys 2 and 5 ---")
+  let _ = do_del(router, 2)
+  let _ = do_del(router, 5)
+
+  let _ = println("")
+  let _ = println("--- Phase 4: Verify deletes ---")
+  let _ = do_get(router, 2)
+  let _ = do_get(router, 5)
+
+  let _ = println("")
+  let _ = println("--- Phase 5: Query partition sizes ---")
+  let _ = do_size(router, 0)
+  let _ = do_size(router, 1)
+  let _ = do_size(router, 2)
+  let _ = do_size(router, 3)
+
+  let _ = println("")
+  println("=== KV Store Test Complete: 24 operations ===")
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
 fn main() {
   let _ = println("=== JAPL Distributed Key-Value Store ===")
+  let _ = println("")
+  let _ = println("Starting infrastructure...")
 
-  let p1 = spawn(fn() { partition(0) })
-  let p2 = spawn(fn() { partition(0) })
+  let p0 = spawn(fn() { start_partition(0) })
+  let p1 = spawn(fn() { start_partition(1) })
+  let p2 = spawn(fn() { start_partition(2) })
+  let p3 = spawn(fn() { start_partition(3) })
 
-  let _ = println("Spawned 2 partitions")
+  let router = spawn(fn() { start_router(p0, p1, p2, p3) })
 
-  let _ = send(p1, Put(1, 100, self()))
-  let _ = receive { Stored => println("Stored key=1 on partition 1") }
-
-  let _ = send(p1, Put(2, 200, self()))
-  let _ = receive { Stored => println("Stored key=2 on partition 1") }
-
-  let _ = send(p2, Put(3, 300, self()))
-  let _ = receive { Stored => println("Stored key=3 on partition 2") }
-
-  let _ = send(p1, Get(1, self()))
-  let _ = receive {
-    Found(v) => println("Got key=1: " <> show(v)),
-    NotFound => println("key=1 not found")
-  }
-
-  let _ = send(p2, Get(3, self()))
-  let _ = receive {
-    Found(v) => println("Got key=3: " <> show(v)),
-    NotFound => println("key=3 not found")
-  }
-
-  let _ = send(p1, Size(self()))
-  let _ = receive { Count(n) => println("Partition 1 size: " <> show(n)) }
-
-  let _ = send(p2, Size(self()))
-  let _ = receive { Count(n) => println("Partition 2 size: " <> show(n)) }
-
-  println("=== KV Store Test Complete ===")
+  client(router)
 }

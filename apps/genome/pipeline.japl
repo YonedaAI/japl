@@ -1,0 +1,247 @@
+foreign "japl" fn char_at(s: String, idx: Int) -> Int
+foreign "japl" fn substring(s: String, start: Int, end: Int) -> String
+foreign "japl" fn str_length(s: String) -> Int
+foreign "japl" fn string_eq(a: String, b: String) -> Int
+
+// Gene types - what DNA sequences DO
+type GeneType =
+  | ProteinCoding(String, String)
+  | Regulatory(String, String)
+  | Structural(String, String)
+  | NonCoding(String, String)
+
+// Analysis results
+type AnalysisResult =
+  | GCContent(String, Int, Int)
+  | CodonCount(String, Int)
+  | StartCodon(String, Int)
+  | StopCodon(String, Int)
+
+// Pipeline messages
+type PipeMsg =
+  | AnalyzeGC(Pid, String, String)
+  | AnalyzeCodons(Pid, String, String)
+  | Classify(Pid, String, String)
+  | GCResult(String, Int, Int)
+  | CodonResult(String, Int, Int, Int)
+  | ClassifyResult(String, String)
+  | Shutdown
+
+// ── GC Content helpers ──────────────────────────────────────────────
+
+fn is_gc(ch: Int) -> Int {
+  if ch == 71 { 1 }
+  else { if ch == 67 { 1 } else { 0 } }
+}
+
+fn count_gc(seq: String, idx: Int, len: Int, acc: Int) -> Int {
+  if idx >= len { acc }
+  else {
+    let ch = char_at(seq, idx)
+    let gc = is_gc(ch)
+    count_gc(seq, idx + 1, len, acc + gc)
+  }
+}
+
+// ── Codon helpers ───────────────────────────────────────────────────
+
+fn has_start_codon(seq: String) -> Int {
+  let len = str_length(seq)
+  if len < 3 { 0 }
+  else {
+    let first3 = substring(seq, 0, 3)
+    string_eq(first3, "ATG")
+  }
+}
+
+fn check_stop(codon: String) -> Int {
+  if string_eq(codon, "TAA") == 1 { 1 }
+  else { if string_eq(codon, "TAG") == 1 { 1 }
+  else { if string_eq(codon, "TGA") == 1 { 1 }
+  else { 0 } } }
+}
+
+fn has_stop_codon(seq: String) -> Int {
+  let len = str_length(seq)
+  if len < 3 { 0 }
+  else {
+    let last3 = substring(seq, len - 3, len)
+    check_stop(last3)
+  }
+}
+
+// ── Classification logic ────────────────────────────────────────────
+
+fn classify_gene(gc: Int, total: Int, has_start: Int, has_stop: Int) -> String {
+  if has_start == 1 {
+    if has_stop == 1 { "ProteinCoding" }
+    else { "NonCoding" }
+  }
+  else {
+    let gc_pct = gc * 100 / total
+    if gc_pct > 60 { "Regulatory" }
+    else { if gc_pct < 20 { "Structural" }
+    else { "NonCoding" } }
+  }
+}
+
+// ── Report formatting ───────────────────────────────────────────────
+
+fn bool_str(v: Int) -> String {
+  if v == 1 { "YES" } else { "NO" }
+}
+
+// ── Worker helper functions (called from receive arms) ──────────────
+
+fn do_gc_analysis(reply: Pid, name: String, seq: String) {
+  let len = str_length(seq)
+  let gc = count_gc(seq, 0, len, 0)
+  send(reply, GCResult(name, gc, len))
+}
+
+fn do_codon_analysis(reply: Pid, name: String, seq: String) {
+  let len = str_length(seq)
+  let codons = len / 3
+  let start = has_start_codon(seq)
+  let stop = has_stop_codon(seq)
+  send(reply, CodonResult(name, codons, start, stop))
+}
+
+fn do_classify(reply: Pid, name: String, seq: String) {
+  let len = str_length(seq)
+  let gc = count_gc(seq, 0, len, 0)
+  let start = has_start_codon(seq)
+  let stop = has_stop_codon(seq)
+  let classification = classify_gene(gc, len, start, stop)
+  send(reply, ClassifyResult(name, classification))
+}
+
+// ── Sequence Analyzer process ───────────────────────────────────────
+
+fn gc_analyzer() {
+  receive {
+    AnalyzeGC(reply, name, seq) => {
+      let _ = do_gc_analysis(reply, name, seq)
+      gc_analyzer()
+    },
+    Shutdown => println("  [GC Analyzer] shutting down")
+  }
+}
+
+// ── Codon Analyzer process ──────────────────────────────────────────
+
+fn codon_analyzer() {
+  receive {
+    AnalyzeCodons(reply, name, seq) => {
+      let _ = do_codon_analysis(reply, name, seq)
+      codon_analyzer()
+    },
+    Shutdown => println("  [Codon Analyzer] shutting down")
+  }
+}
+
+// ── Classifier process ──────────────────────────────────────────────
+
+fn classifier() {
+  receive {
+    Classify(reply, name, seq) => {
+      let _ = do_classify(reply, name, seq)
+      classifier()
+    },
+    Shutdown => println("  [Classifier] shutting down")
+  }
+}
+
+// ── Result printers ─────────────────────────────────────────────────
+
+fn print_gc(gc: Int, total: Int) {
+  let pct = gc * 100 / total
+  println("  GC Content:     " <> show(gc) <> "/" <> show(total) <> " (" <> show(pct) <> "%)")
+}
+
+fn print_codons(codons: Int, start: Int, stop: Int) {
+  let _ = println("  Codons:         " <> show(codons))
+  let _ = println("  Start codon:    " <> bool_str(start))
+  println("  Stop codon:     " <> bool_str(stop))
+}
+
+// ── Result collection ───────────────────────────────────────────────
+
+fn collect_gc() {
+  receive {
+    GCResult(gname, gc, total) => print_gc(gc, total)
+  }
+}
+
+fn collect_codons() {
+  receive {
+    CodonResult(cname, codons, start, stop) => print_codons(codons, start, stop)
+  }
+}
+
+fn collect_class() {
+  receive {
+    ClassifyResult(clname, classification) =>
+      println("  Classification: " <> classification)
+  }
+}
+
+// ── Analyze one gene through the full pipeline ──────────────────────
+
+fn analyze_gene(name: String, seq: String, gc_pid: Pid, codon_pid: Pid, class_pid: Pid) {
+  let me = self()
+  let _ = send(gc_pid, AnalyzeGC(me, name, seq))
+  let _ = collect_gc()
+  let _ = send(codon_pid, AnalyzeCodons(me, name, seq))
+  let _ = collect_codons()
+  let _ = send(class_pid, Classify(me, name, seq))
+  collect_class()
+}
+
+// ── Main coordinator ────────────────────────────────────────────────
+
+fn run_gene(name: String, seq: String, gc_pid: Pid, codon_pid: Pid, class_pid: Pid) {
+  let _ = println("------------------------------------------------")
+  let _ = println("Gene: " <> name <> " | Seq: " <> seq)
+  let _ = analyze_gene(name, seq, gc_pid, codon_pid, class_pid)
+  println("")
+}
+
+fn shutdown_pipeline(gc_pid: Pid, codon_pid: Pid, class_pid: Pid) {
+  let _ = println("------------------------------------------------")
+  let _ = println("")
+  let _ = println("[Pipeline] Shutting down analyzers...")
+  let _ = send(gc_pid, Shutdown)
+  let _ = send(codon_pid, Shutdown)
+  send(class_pid, Shutdown)
+}
+
+fn main() {
+  let _ = println("================================================")
+  let _ = println("  JAPL Genome Analysis Pipeline")
+  let _ = println("================================================")
+  let _ = println("")
+
+  let gc_pid = spawn(fn() { gc_analyzer() })
+  let codon_pid = spawn(fn() { codon_analyzer() })
+  let class_pid = spawn(fn() { classifier() })
+
+  let _ = println("[Pipeline] Spawned 3 analyzer processes")
+  let _ = println("")
+
+  let _ = run_gene("BRCA1", "ATGGCCTAAACGTGCTGA", gc_pid, codon_pid, class_pid)
+  let _ = run_gene("GC_REG", "GCGCGCGCGCGCGCGC", gc_pid, codon_pid, class_pid)
+  let _ = run_gene("STRUCT1", "AAAAAATTTTTAAAAA", gc_pid, codon_pid, class_pid)
+  let _ = run_gene("INTRON7", "ACGTACGTACGTACGT", gc_pid, codon_pid, class_pid)
+
+  let _ = println("------------------------------------------------")
+  let _ = println("")
+  let _ = println("================================================")
+  let _ = println("  Pipeline Complete: 4 genes analyzed")
+  let _ = println("================================================")
+  let _ = println("")
+  let _ = println("[Pipeline] Shutting down analyzers...")
+  let _ = send(gc_pid, Shutdown)
+  let _ = send(codon_pid, Shutdown)
+  send(class_pid, Shutdown)
+}

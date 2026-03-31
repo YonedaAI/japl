@@ -1,20 +1,111 @@
-type Task = | Assign(Int) | Done
+// JAPL Distributed Task Scheduler
+// Architecture: main process acts as scheduler, spawns 4 workers,
+// assigns 12 tasks, tracks completion via message passing.
 
-fn worker(id: Int) {
+foreign "japl" fn time_now() -> Int
+foreign "japl" fn time_sleep(ms: Int)
+
+// Messages from scheduler to worker
+type WorkMsg =
+  | DoTask(Int, Int, Pid)
+  | Shutdown
+
+// Messages from worker to scheduler
+type SchedMsg =
+  | TaskDone(Pid, Int, Int)
+
+// --- Worker: execute a task and report back ---
+
+fn worker_exec(id: Int, tid: Int, dur: Int, reply: Pid) {
+  let _ = println("[worker " <> show(id) <> "] Running task " <> show(tid) <> " (" <> show(dur) <> "ms)")
+  let _ = time_sleep(dur)
+  let _ = println("[worker " <> show(id) <> "] Finished task " <> show(tid))
+  let _ = send(reply, TaskDone(self(), tid, dur))
+  worker_loop(id)
+}
+
+fn worker_loop(id: Int) {
   receive {
-    Assign(n) => println("Worker " <> show(id) <> " processing task " <> show(n))
+    DoTask(tid, dur, reply) => worker_exec(id, tid, dur, reply),
+    Shutdown => println("[worker " <> show(id) <> "] Shutting down")
   }
 }
 
+fn start_worker(id: Int) {
+  let _ = println("[worker " <> show(id) <> "] Started")
+  worker_loop(id)
+}
+
+// --- Scheduler: assign a task to a worker ---
+
+fn assign_task(wpid: Pid, tid: Int, dur: Int) {
+  let _ = println("[scheduler] Assigning task " <> show(tid) <> " (dur=" <> show(dur) <> "ms)")
+  send(wpid, DoTask(tid, dur, self()))
+}
+
+// --- Scheduler: handle one completion, maybe assign more ---
+
+fn on_done(completed: Int, total: Int, next_tid: Int, wpid: Pid, tid: Int) {
+  let done = completed + 1
+  let _ = println("[scheduler] Task " <> show(tid) <> " completed (" <> show(done) <> "/" <> show(total) <> ")")
+  if done == total {
+    done
+  } else {
+    if next_tid > total {
+      wait_and_assign(done, total, next_tid)
+    } else {
+      let ndur = 10 + (next_tid * 3)
+      let _ = assign_task(wpid, next_tid, ndur)
+      wait_and_assign(done, total, next_tid + 1)
+    }
+  }
+}
+
+// --- Scheduler: wait for completions and assign remaining ---
+
+fn wait_and_assign(completed: Int, total: Int, next_tid: Int) {
+  if completed == total {
+    completed
+  } else {
+    receive {
+      TaskDone(wpid, tid, dur) => on_done(completed, total, next_tid, wpid, tid)
+    }
+  }
+}
+
+// --- Main ---
+
 fn main() {
-  let w1 = spawn(fn() { worker(1) })
-  let w2 = spawn(fn() { worker(2) })
-  let w3 = spawn(fn() { worker(3) })
-  send(w1, Assign(1))
-  send(w2, Assign(2))
-  send(w3, Assign(3))
-  println("Task 1 done")
-  println("Task 2 done")
-  println("Task 3 done")
-  println("=== All Done ===")
+  let _ = println("=== JAPL Distributed Task Scheduler ===")
+  let start = time_now()
+
+  // Spawn 4 workers
+  let w1 = spawn(fn() { start_worker(1) })
+  let w2 = spawn(fn() { start_worker(2) })
+  let w3 = spawn(fn() { start_worker(3) })
+  let w4 = spawn(fn() { start_worker(4) })
+  let _ = println("[scheduler] Spawned 4 workers")
+
+  // Assign initial batch: tasks 1-4 to workers 1-4
+  let _ = assign_task(w1, 1, 13)
+  let _ = assign_task(w2, 2, 16)
+  let _ = assign_task(w3, 3, 19)
+  let _ = assign_task(w4, 4, 22)
+  let _ = println("[scheduler] Initial 4 tasks assigned")
+
+  // Wait for completions and assign remaining tasks 5-12
+  let _ = wait_and_assign(0, 12, 5)
+
+  let elapsed = time_now() - start
+  let _ = println("[scheduler] All 12 tasks completed!")
+  let _ = println("[scheduler] Total time: " <> show(elapsed) <> "ms")
+
+  // Shutdown workers
+  let _ = send(w1, Shutdown)
+  let _ = send(w2, Shutdown)
+  let _ = send(w3, Shutdown)
+  let _ = send(w4, Shutdown)
+  let _ = time_sleep(10)
+
+  println("=== Scheduler Complete ===")
 }

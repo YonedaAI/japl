@@ -97,8 +97,10 @@ run_test("stdlib/Crypto", "stdlib/Crypto.japl", ["Crypto module loaded"], use_ru
 compile_only_test("stdlib/File", "stdlib/File.japl")
 
 print("\n--- Apps ---")
-run_test("scheduler", "apps/scheduler/scheduler.japl", ["Worker", "done"], use_runtime=True, retries=3)
-run_test("msgqueue", "apps/msgqueue/queue.japl", ["Got"], use_runtime=True, retries=3)
+run_test("kvstore", "apps/kvstore/kvstore.japl", ["PUT key=0", "GET key=0", "DEL key=", "NOT FOUND", "SIZE partition"], use_runtime=True, retries=3)
+run_test("msgqueue", "apps/msgqueue/queue.japl", ["enqueued", "dequeued", "acked", "Queue Complete"], use_runtime=True, retries=3)
+run_test("scheduler", "apps/scheduler/scheduler.japl", ["Assigning task", "Finished task", "completed (12/12)"], use_runtime=True, retries=3)
+run_test("genome_pipeline", "apps/genome/pipeline.japl", ["ProteinCoding", "Regulatory", "Structural", "NonCoding", "GC Content", "Pipeline Complete"], use_runtime=True, retries=3)
 
 print("\n--- Type Checker ---")
 r = subprocess.run([COMPILER, "check",
