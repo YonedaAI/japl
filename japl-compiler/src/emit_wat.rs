@@ -98,8 +98,8 @@ impl WatEmitter {
             ));
         }
 
-        // Memory
-        self.line("(memory (export \"memory\") 10)");
+        // Memory - start with 10 pages (640KB), growable to 65536 pages (4GB)
+        self.line("(memory (export \"memory\") 10 65536)");
 
         // Globals
         if self.module.uses_processes {
@@ -220,6 +220,7 @@ impl WatEmitter {
     fn emit_alloc(&mut self) {
         self.push("(func $alloc (param $size i32) (result i32)");
         self.line("(local $ptr i32)");
+        self.line("(local $new_heap i32)");
         self.line("global.get $heap_ptr");
         self.line("local.set $ptr");
         // Align size to 8 bytes
@@ -230,6 +231,31 @@ impl WatEmitter {
         self.line("i32.and");
         self.line("global.get $heap_ptr");
         self.line("i32.add");
+        self.line("local.set $new_heap");
+        // Grow memory if needed: if new_heap > memory.size * 64KB
+        self.push("block $no_grow");
+        self.line("local.get $new_heap");
+        self.line("memory.size");
+        self.line("i32.const 16"); // 65536
+        self.line("i32.shl");
+        self.line("i32.lt_u");
+        self.line("br_if $no_grow");
+        // Calculate pages needed: (new_heap - current_size + 65535) / 65536
+        self.line("local.get $new_heap");
+        self.line("memory.size");
+        self.line("i32.const 16");
+        self.line("i32.shl");
+        self.line("i32.sub");
+        self.line("i32.const 65535");
+        self.line("i32.add");
+        self.line("i32.const 16");
+        self.line("i32.shr_u");
+        self.line("i32.const 1");
+        self.line("i32.add");
+        self.line("memory.grow");
+        self.line("drop");
+        self.pop("end");
+        self.line("local.get $new_heap");
         self.line("global.set $heap_ptr");
         self.line("local.get $ptr");
         self.pop(")");
