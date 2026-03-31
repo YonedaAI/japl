@@ -1,3 +1,16 @@
+foreign "japl" fn str_contains(s: String, sub: String) -> Int
+foreign "japl" fn str_starts_with(s: String, prefix: String) -> Int
+foreign "japl" fn str_ends_with(s: String, suffix: String) -> Int
+foreign "japl" fn str_trim(s: String) -> String
+foreign "japl" fn str_to_upper(s: String) -> String
+foreign "japl" fn str_to_lower(s: String) -> String
+foreign "japl" fn str_replace(s: String, old: String, new_str: String) -> String
+foreign "japl" fn str_index_of(s: String, sub: String) -> Int
+foreign "japl" fn str_parse_int(s: String) -> Int
+foreign "japl" fn str_length(s: String) -> Int
+foreign "japl" fn substring(s: String, start: Int, len: Int) -> String
+foreign "japl" fn string_index_of(s: String, sub: String) -> Int
+
 pub fn concat(a: String, b: String) -> String {
   a <> b
 }
@@ -11,8 +24,62 @@ pub fn join(sep: String, a: String, b: String) -> String {
   a <> sep <> b
 }
 
+pub fn contains(s: String, sub: String) -> Int {
+  str_contains(s, sub)
+}
+
+pub fn starts_with(s: String, prefix: String) -> Int {
+  str_starts_with(s, prefix)
+}
+
+pub fn ends_with(s: String, suffix: String) -> Int {
+  str_ends_with(s, suffix)
+}
+
+pub fn trim(s: String) -> String {
+  str_trim(s)
+}
+
+pub fn to_upper(s: String) -> String {
+  str_to_upper(s)
+}
+
+pub fn to_lower(s: String) -> String {
+  str_to_lower(s)
+}
+
+pub fn replace(s: String, old: String, new_str: String) -> String {
+  str_replace(s, old, new_str)
+}
+
+pub fn index_of(s: String, sub: String) -> Int {
+  str_index_of(s, sub)
+}
+
+pub fn parse_int(s: String) -> Int {
+  str_parse_int(s)
+}
+
+pub fn length(s: String) -> Int {
+  str_length(s)
+}
+
+pub fn slice(s: String, start: Int, len: Int) -> String {
+  substring(s, start, len)
+}
+
 fn main() {
   println("concat: " <> concat("hello", " world"))
   println("repeat: " <> repeat("ab", 3))
   println("join: " <> join(", ", "foo", "bar"))
+  println("contains hello world: " <> show(contains("hello world", "world")))
+  println("starts_with hello: " <> show(starts_with("hello world", "hello")))
+  println("ends_with world: " <> show(ends_with("hello world", "world")))
+  println("trim: [" <> trim("  hello  ") <> "]")
+  println("to_upper: " <> to_upper("hello"))
+  println("to_lower: " <> to_lower("HELLO"))
+  println("replace: " <> replace("hello world", "world", "JAPL"))
+  println("index_of: " <> show(index_of("hello world", "world")))
+  println("parse_int: " <> show(parse_int("42")))
+  println("length: " <> show(length("hello")))
 }

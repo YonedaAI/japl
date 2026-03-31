@@ -4,6 +4,11 @@ use super::ir::*;
 /// String functions that are implemented as local WAT builtins (not host imports)
 const STRING_BUILTINS: &[&str] = &[
     "char_at", "substring", "str_length", "string_eq", "from_char_code", "string_index_of",
+    "str_contains", "str_starts_with", "str_ends_with", "str_trim",
+    "str_to_upper", "str_to_lower", "str_replace", "str_index_of",
+    "str_parse_int",
+    "bytes_new", "bytes_from_string", "bytes_to_string", "bytes_length", "bytes_slice",
+    "bytes_concat", "bytes_get", "bytes_set",
 ];
 
 pub struct WatEmitter {
@@ -320,8 +325,24 @@ impl WatEmitter {
     }
 
     fn emit_string_builtins(&mut self) {
-        let builtins = self.used_string_builtins.clone();
+        let mut builtins = self.used_string_builtins.clone();
+        // Add dependencies: str_contains and str_index_of need string_index_of
+        let needs_string_index_of = builtins.iter().any(|n| n == "str_contains" || n == "str_index_of");
+        if needs_string_index_of && !builtins.contains(&"string_index_of".to_string()) {
+            builtins.push("string_index_of".to_string());
+        }
+        // str_replace needs str_concat_raw, substring, and string_index_of
+        let needs_replace_deps = builtins.contains(&"str_replace".to_string());
+        if needs_replace_deps {
+            if !builtins.contains(&"substring".to_string()) {
+                builtins.push("substring".to_string());
+            }
+            // str_concat_raw is always emitted when str_replace is present
+        }
+        let mut emitted = std::collections::HashSet::new();
         for name in &builtins {
+            if emitted.contains(name.as_str()) { continue; }
+            emitted.insert(name.as_str());
             match name.as_str() {
                 "char_at" => self.emit_builtin_char_at(),
                 "str_length" => self.emit_builtin_str_length(),
@@ -329,6 +350,26 @@ impl WatEmitter {
                 "substring" => self.emit_builtin_substring(),
                 "from_char_code" => self.emit_builtin_from_char_code(),
                 "string_index_of" => self.emit_builtin_string_index_of(),
+                "str_contains" => self.emit_builtin_str_contains(),
+                "str_starts_with" => self.emit_builtin_str_starts_with(),
+                "str_ends_with" => self.emit_builtin_str_ends_with(),
+                "str_trim" => self.emit_builtin_str_trim(),
+                "str_to_upper" => self.emit_builtin_str_to_upper(),
+                "str_to_lower" => self.emit_builtin_str_to_lower(),
+                "str_replace" => {
+                    self.emit_builtin_str_concat_raw();
+                    self.emit_builtin_str_replace();
+                },
+                "str_index_of" => self.emit_builtin_str_index_of(),
+                "str_parse_int" => self.emit_builtin_str_parse_int(),
+                "bytes_new" => self.emit_builtin_bytes_new(),
+                "bytes_from_string" => self.emit_builtin_bytes_from_string(),
+                "bytes_to_string" => self.emit_builtin_bytes_to_string(),
+                "bytes_length" => self.emit_builtin_bytes_length(),
+                "bytes_slice" => self.emit_builtin_bytes_slice(),
+                "bytes_concat" => self.emit_builtin_bytes_concat(),
+                "bytes_get" => self.emit_builtin_bytes_get(),
+                "bytes_set" => self.emit_builtin_bytes_set(),
                 _ => {}
             }
         }
@@ -436,6 +477,416 @@ impl WatEmitter {
         self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
         self.line("    (br $outer)))");
         self.line("(i64.const -1)");
+        self.pop(")");
+    }
+
+    // str_contains(haystack, needle) -> i64 (0 or 1)
+    // Reuses string_index_of logic: contains iff index_of >= 0
+    fn emit_builtin_str_contains(&mut self) {
+        self.push("(func $str_contains (param $hay i64) (param $ndl i64) (result i64)");
+        self.line("(if (result i64) (i64.ge_s (call $string_index_of (local.get $hay) (local.get $ndl)) (i64.const 0))");
+        self.line("  (then (i64.const 1))");
+        self.line("  (else (i64.const 0)))");
+        self.pop(")");
+    }
+
+    // str_starts_with(str, prefix) -> i64 (0 or 1)
+    fn emit_builtin_str_starts_with(&mut self) {
+        self.push("(func $str_starts_with (param $str i64) (param $pfx i64) (result i64)");
+        self.line("(local $str_len i32) (local $pfx_len i32) (local $i i32)");
+        self.line("(local.set $str_len (i32.load (i32.wrap_i64 (local.get $str))))");
+        self.line("(local.set $pfx_len (i32.load (i32.wrap_i64 (local.get $pfx))))");
+        self.line("(if (i32.gt_u (local.get $pfx_len) (local.get $str_len))");
+        self.line("  (then (return (i64.const 0))))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $pfx_len)))");
+        self.line("    (if (i32.ne");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (local.get $i)))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $pfx)) (i32.const 4)) (local.get $i))))");
+        self.line("      (then (return (i64.const 0))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $lp)))");
+        self.line("(i64.const 1)");
+        self.pop(")");
+    }
+
+    // str_ends_with(str, suffix) -> i64 (0 or 1)
+    fn emit_builtin_str_ends_with(&mut self) {
+        self.push("(func $str_ends_with (param $str i64) (param $sfx i64) (result i64)");
+        self.line("(local $str_len i32) (local $sfx_len i32) (local $i i32) (local $off i32)");
+        self.line("(local.set $str_len (i32.load (i32.wrap_i64 (local.get $str))))");
+        self.line("(local.set $sfx_len (i32.load (i32.wrap_i64 (local.get $sfx))))");
+        self.line("(if (i32.gt_u (local.get $sfx_len) (local.get $str_len))");
+        self.line("  (then (return (i64.const 0))))");
+        self.line("(local.set $off (i32.sub (local.get $str_len) (local.get $sfx_len)))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $sfx_len)))");
+        self.line("    (if (i32.ne");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (i32.add (local.get $off) (local.get $i))))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $sfx)) (i32.const 4)) (local.get $i))))");
+        self.line("      (then (return (i64.const 0))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $lp)))");
+        self.line("(i64.const 1)");
+        self.pop(")");
+    }
+
+    // str_trim(str) -> new string with leading/trailing whitespace removed
+    fn emit_builtin_str_trim(&mut self) {
+        self.push("(func $str_trim (param $str i64) (result i64)");
+        self.line("(local $len i32) (local $start i32) (local $end i32) (local $new_len i32) (local $ptr i32) (local $i i32)");
+        self.line("(local.set $len (i32.load (i32.wrap_i64 (local.get $str))))");
+        self.line("(local.set $start (i32.const 0))");
+        self.line("(local.set $end (local.get $len))");
+        // Find start (skip spaces, tabs, newlines)
+        self.line("(block $s_done");
+        self.line("  (loop $s_lp");
+        self.line("    (br_if $s_done (i32.ge_u (local.get $start) (local.get $end)))");
+        self.line("    (br_if $s_done (i32.gt_u");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (local.get $start)))");
+        self.line("      (i32.const 32)))");  // > 32 means not whitespace (space=32, tab=9, nl=10, cr=13)
+        // Also check it's not just > 32 but actually a whitespace char
+        self.line("    (local.set $start (i32.add (local.get $start) (i32.const 1)))");
+        self.line("    (br $s_lp)))");
+        // Find end (skip trailing spaces)
+        self.line("(block $e_done");
+        self.line("  (loop $e_lp");
+        self.line("    (br_if $e_done (i32.le_u (local.get $end) (local.get $start)))");
+        self.line("    (br_if $e_done (i32.gt_u");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (i32.sub (local.get $end) (i32.const 1))))");
+        self.line("      (i32.const 32)))");
+        self.line("    (local.set $end (i32.sub (local.get $end) (i32.const 1)))");
+        self.line("    (br $e_lp)))");
+        // Allocate new string
+        self.line("(local.set $new_len (i32.sub (local.get $end) (local.get $start)))");
+        self.line("(local.set $ptr (call $alloc (i32.add (i32.const 4) (local.get $new_len))))");
+        self.line("(i32.store (local.get $ptr) (local.get $new_len))");
+        // Copy bytes
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $c_done");
+        self.line("  (loop $c_lp");
+        self.line("    (br_if $c_done (i32.ge_u (local.get $i) (local.get $new_len)))");
+        self.line("    (i32.store8");
+        self.line("      (i32.add (i32.add (local.get $ptr) (i32.const 4)) (local.get $i))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (i32.add (local.get $start) (local.get $i)))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $c_lp)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+    }
+
+    // str_to_upper(str) -> new string with ASCII uppercase
+    fn emit_builtin_str_to_upper(&mut self) {
+        self.push("(func $str_to_upper (param $str i64) (result i64)");
+        self.line("(local $len i32) (local $ptr i32) (local $i i32) (local $ch i32)");
+        self.line("(local.set $len (i32.load (i32.wrap_i64 (local.get $str))))");
+        self.line("(local.set $ptr (call $alloc (i32.add (i32.const 4) (local.get $len))))");
+        self.line("(i32.store (local.get $ptr) (local.get $len))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $len)))");
+        self.line("    (local.set $ch (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (local.get $i))))");
+        // if ch >= 'a' && ch <= 'z' then ch -= 32
+        self.line("    (if (i32.and (i32.ge_u (local.get $ch) (i32.const 97)) (i32.le_u (local.get $ch) (i32.const 122)))");
+        self.line("      (then (local.set $ch (i32.sub (local.get $ch) (i32.const 32)))))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (local.get $i)) (local.get $ch))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $lp)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+    }
+
+    // str_to_lower(str) -> new string with ASCII lowercase
+    fn emit_builtin_str_to_lower(&mut self) {
+        self.push("(func $str_to_lower (param $str i64) (result i64)");
+        self.line("(local $len i32) (local $ptr i32) (local $i i32) (local $ch i32)");
+        self.line("(local.set $len (i32.load (i32.wrap_i64 (local.get $str))))");
+        self.line("(local.set $ptr (call $alloc (i32.add (i32.const 4) (local.get $len))))");
+        self.line("(i32.store (local.get $ptr) (local.get $len))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $len)))");
+        self.line("    (local.set $ch (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (local.get $i))))");
+        self.line("    (if (i32.and (i32.ge_u (local.get $ch) (i32.const 65)) (i32.le_u (local.get $ch) (i32.const 90)))");
+        self.line("      (then (local.set $ch (i32.add (local.get $ch) (i32.const 32)))))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (local.get $i)) (local.get $ch))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $lp)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+    }
+
+    // str_replace(str, old, new) -> new string with all occurrences of old replaced with new
+    fn emit_builtin_str_replace(&mut self) {
+        self.push("(func $str_replace (param $str i64) (param $old i64) (param $new i64) (result i64)");
+        self.line("(local $str_len i32) (local $old_len i32) (local $new_len i32)");
+        self.line("(local $i i32) (local $j i32) (local $match i32)");
+        self.line("(local $result i64) (local $seg_start i32)");
+        // Get lengths
+        self.line("(local.set $str_len (i32.load (i32.wrap_i64 (local.get $str))))");
+        self.line("(local.set $old_len (i32.load (i32.wrap_i64 (local.get $old))))");
+        self.line("(local.set $new_len (i32.load (i32.wrap_i64 (local.get $new))))");
+        // If old is empty, return str unchanged
+        self.line("(if (i32.eqz (local.get $old_len))");
+        self.line("  (then (return (local.get $str))))");
+        // Start with empty string
+        self.line("(local.set $result (i64.extend_i32_u (call $alloc (i32.const 4))))");
+        self.line("(i32.store (i32.wrap_i64 (local.get $result)) (i32.const 0))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(local.set $seg_start (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.gt_u (i32.add (local.get $i) (local.get $old_len)) (local.get $str_len)))");
+        // Check for match at position i
+        self.line("    (local.set $j (i32.const 0))");
+        self.line("    (local.set $match (i32.const 1))");
+        self.line("    (block $mm");
+        self.line("      (loop $ml");
+        self.line("        (br_if $mm (i32.ge_u (local.get $j) (local.get $old_len)))");
+        self.line("        (if (i32.ne");
+        self.line("          (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (i32.add (local.get $i) (local.get $j))))");
+        self.line("          (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $old)) (i32.const 4)) (local.get $j))))");
+        self.line("          (then (local.set $match (i32.const 0)) (br $mm)))");
+        self.line("        (local.set $j (i32.add (local.get $j) (i32.const 1)))");
+        self.line("        (br $ml)))");
+        self.line("    (if (local.get $match)");
+        self.line("      (then");
+        // Append segment from seg_start to i
+        self.line("        (if (i32.gt_u (local.get $i) (local.get $seg_start))");
+        self.line("          (then");
+        self.line("            (local.set $result (call $str_concat_raw (local.get $result)");
+        self.line("              (call $substring (local.get $str) (i64.extend_i32_u (local.get $seg_start)) (i64.extend_i32_u (i32.sub (local.get $i) (local.get $seg_start))))))))");
+        // Append replacement
+        self.line("        (local.set $result (call $str_concat_raw (local.get $result) (local.get $new)))");
+        self.line("        (local.set $i (i32.add (local.get $i) (local.get $old_len)))");
+        self.line("        (local.set $seg_start (local.get $i)))");
+        self.line("      (else");
+        self.line("        (local.set $i (i32.add (local.get $i) (i32.const 1)))))");
+        self.line("    (br $lp)))");
+        // Append remaining segment
+        self.line("(if (i32.lt_u (local.get $seg_start) (local.get $str_len))");
+        self.line("  (then");
+        self.line("    (local.set $result (call $str_concat_raw (local.get $result)");
+        self.line("      (call $substring (local.get $str) (i64.extend_i32_u (local.get $seg_start)) (i64.extend_i32_u (i32.sub (local.get $str_len) (local.get $seg_start))))))))");
+        self.line("(local.get $result)");
+        self.pop(")");
+    }
+
+    // str_index_of(str, sub) -> i64 index (-1 if not found) — alias for string_index_of
+    fn emit_builtin_str_index_of(&mut self) {
+        self.push("(func $str_index_of (param $hay i64) (param $ndl i64) (result i64)");
+        self.line("(call $string_index_of (local.get $hay) (local.get $ndl))");
+        self.pop(")");
+    }
+
+    // str_parse_int(str) -> i64 integer value (0 if invalid)
+    fn emit_builtin_str_parse_int(&mut self) {
+        self.push("(func $str_parse_int (param $str i64) (result i64)");
+        self.line("(local $len i32) (local $i i32) (local $ch i32) (local $result i64) (local $neg i32)");
+        self.line("(local.set $len (i32.load (i32.wrap_i64 (local.get $str))))");
+        self.line("(if (i32.eqz (local.get $len)) (then (return (i64.const 0))))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(local.set $result (i64.const 0))");
+        self.line("(local.set $neg (i32.const 0))");
+        // Check for leading '-'
+        self.line("(if (i32.eq (i32.load8_u (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4))) (i32.const 45))");
+        self.line("  (then (local.set $neg (i32.const 1)) (local.set $i (i32.const 1))))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $len)))");
+        self.line("    (local.set $ch (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (local.get $i))))");
+        self.line("    (br_if $done (i32.lt_u (local.get $ch) (i32.const 48)))");
+        self.line("    (br_if $done (i32.gt_u (local.get $ch) (i32.const 57)))");
+        self.line("    (local.set $result (i64.add (i64.mul (local.get $result) (i64.const 10)) (i64.extend_i32_u (i32.sub (local.get $ch) (i32.const 48)))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $lp)))");
+        self.line("(if (result i64) (local.get $neg)");
+        self.line("  (then (i64.sub (i64.const 0) (local.get $result)))");
+        self.line("  (else (local.get $result)))");
+        self.pop(")");
+    }
+
+    // Helper: str_concat_raw(a, b) -> new string that is a <> b
+    // Used by str_replace internally
+    fn emit_builtin_str_concat_raw(&mut self) {
+        self.push("(func $str_concat_raw (param $a i64) (param $b i64) (result i64)");
+        self.line("(local $a_len i32) (local $b_len i32) (local $new_len i32) (local $ptr i32) (local $i i32)");
+        self.line("(local.set $a_len (i32.load (i32.wrap_i64 (local.get $a))))");
+        self.line("(local.set $b_len (i32.load (i32.wrap_i64 (local.get $b))))");
+        self.line("(local.set $new_len (i32.add (local.get $a_len) (local.get $b_len)))");
+        self.line("(local.set $ptr (call $alloc (i32.add (i32.const 4) (local.get $new_len))))");
+        self.line("(i32.store (local.get $ptr) (local.get $new_len))");
+        // Copy a bytes
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $d1");
+        self.line("  (loop $l1");
+        self.line("    (br_if $d1 (i32.ge_u (local.get $i) (local.get $a_len)))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (local.get $i))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $a)) (i32.const 4)) (local.get $i))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $l1)))");
+        // Copy b bytes
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $d2");
+        self.line("  (loop $l2");
+        self.line("    (br_if $d2 (i32.ge_u (local.get $i) (local.get $b_len)))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (i32.add (local.get $a_len) (local.get $i)))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $b)) (i32.const 4)) (local.get $i))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $l2)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+    }
+
+    // bytes_new(size) -> ptr to zero-initialized Bytes buffer [4 byte length][zeroed data]
+    fn emit_builtin_bytes_new(&mut self) {
+        self.push("(func $bytes_new (param $size i64) (result i64)");
+        self.line("(local $len i32) (local $ptr i32) (local $i i32)");
+        self.line("(local.set $len (i32.wrap_i64 (local.get $size)))");
+        self.line("(local.set $ptr (call $alloc (i32.add (i32.const 4) (local.get $len))))");
+        self.line("(i32.store (local.get $ptr) (local.get $len))");
+        // Zero-fill data
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $len)))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (local.get $i)) (i32.const 0))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $lp)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+    }
+
+    // bytes_from_string(str) -> ptr to Bytes (4 byte len + raw data, no length prefix from string)
+    // Bytes layout: [4 byte length][raw bytes]
+    fn emit_builtin_bytes_from_string(&mut self) {
+        self.push("(func $bytes_from_string (param $str i64) (result i64)");
+        self.line("(local $len i32) (local $ptr i32) (local $i i32)");
+        self.line("(local.set $len (i32.load (i32.wrap_i64 (local.get $str))))");
+        self.line("(local.set $ptr (call $alloc (i32.add (i32.const 4) (local.get $len))))");
+        self.line("(i32.store (local.get $ptr) (local.get $len))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $len)))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (local.get $i))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $str)) (i32.const 4)) (local.get $i))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $lp)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+    }
+
+    // bytes_to_string(bytes) -> JAPL string (same layout: 4 byte len + data)
+    fn emit_builtin_bytes_to_string(&mut self) {
+        self.push("(func $bytes_to_string (param $bytes i64) (result i64)");
+        // Bytes and strings have the same layout [len:4][data:len], so just return the pointer
+        self.line("(local.get $bytes)");
+        self.pop(")");
+    }
+
+    // bytes_length(bytes) -> i64 length
+    fn emit_builtin_bytes_length(&mut self) {
+        self.push("(func $bytes_length (param $bytes i64) (result i64)");
+        self.line("(i64.extend_i32_u (i32.load (i32.wrap_i64 (local.get $bytes))))");
+        self.pop(")");
+    }
+
+    // bytes_slice(bytes, start, end) -> new Bytes
+    fn emit_builtin_bytes_slice(&mut self) {
+        self.push("(func $bytes_slice (param $bytes i64) (param $start i64) (param $end i64) (result i64)");
+        self.line("(local $s i32) (local $e i32) (local $len i32) (local $new_len i32) (local $ptr i32) (local $i i32)");
+        self.line("(local.set $len (i32.load (i32.wrap_i64 (local.get $bytes))))");
+        self.line("(local.set $s (i32.wrap_i64 (local.get $start)))");
+        self.line("(local.set $e (i32.wrap_i64 (local.get $end)))");
+        // Clamp
+        self.line("(if (i32.gt_u (local.get $e) (local.get $len))");
+        self.line("  (then (local.set $e (local.get $len))))");
+        self.line("(if (i32.ge_u (local.get $s) (local.get $e))");
+        self.line("  (then");
+        self.line("    (local.set $ptr (call $alloc (i32.const 4)))");
+        self.line("    (i32.store (local.get $ptr) (i32.const 0))");
+        self.line("    (return (i64.extend_i32_u (local.get $ptr)))))");
+        self.line("(local.set $new_len (i32.sub (local.get $e) (local.get $s)))");
+        self.line("(local.set $ptr (call $alloc (i32.add (i32.const 4) (local.get $new_len))))");
+        self.line("(i32.store (local.get $ptr) (local.get $new_len))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $new_len)))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (local.get $i))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $bytes)) (i32.const 4)) (i32.add (local.get $s) (local.get $i)))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $lp)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+    }
+
+    // bytes_concat(a, b) -> new Bytes
+    fn emit_builtin_bytes_concat(&mut self) {
+        self.push("(func $bytes_concat (param $a i64) (param $b i64) (result i64)");
+        self.line("(local $a_len i32) (local $b_len i32) (local $new_len i32) (local $ptr i32) (local $i i32)");
+        self.line("(local.set $a_len (i32.load (i32.wrap_i64 (local.get $a))))");
+        self.line("(local.set $b_len (i32.load (i32.wrap_i64 (local.get $b))))");
+        self.line("(local.set $new_len (i32.add (local.get $a_len) (local.get $b_len)))");
+        self.line("(local.set $ptr (call $alloc (i32.add (i32.const 4) (local.get $new_len))))");
+        self.line("(i32.store (local.get $ptr) (local.get $new_len))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $d1");
+        self.line("  (loop $l1");
+        self.line("    (br_if $d1 (i32.ge_u (local.get $i) (local.get $a_len)))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (local.get $i))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $a)) (i32.const 4)) (local.get $i))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $l1)))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $d2");
+        self.line("  (loop $l2");
+        self.line("    (br_if $d2 (i32.ge_u (local.get $i) (local.get $b_len)))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (i32.add (local.get $a_len) (local.get $i)))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $b)) (i32.const 4)) (local.get $i))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $l2)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
+        self.pop(")");
+    }
+
+    // bytes_get(bytes, index) -> i64 byte value
+    fn emit_builtin_bytes_get(&mut self) {
+        self.push("(func $bytes_get (param $bytes i64) (param $idx i64) (result i64)");
+        self.line("(i64.extend_i32_u");
+        self.line("  (i32.load8_u");
+        self.line("    (i32.add");
+        self.line("      (i32.add (i32.wrap_i64 (local.get $bytes)) (i32.const 4))");
+        self.line("      (i32.wrap_i64 (local.get $idx)))))");
+        self.pop(")");
+    }
+
+    // bytes_set(bytes, index, value) -> new Bytes with byte set
+    fn emit_builtin_bytes_set(&mut self) {
+        self.push("(func $bytes_set (param $bytes i64) (param $idx i64) (param $val i64) (result i64)");
+        self.line("(local $len i32) (local $ptr i32) (local $i i32)");
+        self.line("(local.set $len (i32.load (i32.wrap_i64 (local.get $bytes))))");
+        // Copy entire buffer
+        self.line("(local.set $ptr (call $alloc (i32.add (i32.const 4) (local.get $len))))");
+        self.line("(i32.store (local.get $ptr) (local.get $len))");
+        self.line("(local.set $i (i32.const 0))");
+        self.line("(block $done");
+        self.line("  (loop $lp");
+        self.line("    (br_if $done (i32.ge_u (local.get $i) (local.get $len)))");
+        self.line("    (i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (local.get $i))");
+        self.line("      (i32.load8_u (i32.add (i32.add (i32.wrap_i64 (local.get $bytes)) (i32.const 4)) (local.get $i))))");
+        self.line("    (local.set $i (i32.add (local.get $i) (i32.const 1)))");
+        self.line("    (br $lp)))");
+        // Set the specific byte
+        self.line("(i32.store8 (i32.add (i32.add (local.get $ptr) (i32.const 4)) (i32.wrap_i64 (local.get $idx))) (i32.wrap_i64 (local.get $val)))");
+        self.line("(i64.extend_i32_u (local.get $ptr))");
         self.pop(")");
     }
 

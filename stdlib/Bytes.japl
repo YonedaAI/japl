@@ -1,0 +1,32 @@
+foreign "japl" fn bytes_new(size: Int) -> Int
+foreign "japl" fn bytes_from_string(s: String) -> Int
+foreign "japl" fn bytes_to_string(b: Int) -> String
+foreign "japl" fn bytes_length(b: Int) -> Int
+foreign "japl" fn bytes_slice(b: Int, start: Int, end: Int) -> Int
+foreign "japl" fn bytes_concat(a: Int, b: Int) -> Int
+foreign "japl" fn bytes_get(b: Int, index: Int) -> Int
+foreign "japl" fn bytes_set(b: Int, index: Int, value: Int) -> Int
+
+pub fn new_bytes(size: Int) -> Int { bytes_new(size) }
+pub fn from_string(s: String) -> Int { bytes_from_string(s) }
+pub fn to_string(b: Int) -> String { bytes_to_string(b) }
+pub fn length(b: Int) -> Int { bytes_length(b) }
+pub fn slice(b: Int, start: Int, end: Int) -> Int { bytes_slice(b, start, end) }
+pub fn concat(a: Int, b: Int) -> Int { bytes_concat(a, b) }
+pub fn get(b: Int, index: Int) -> Int { bytes_get(b, index) }
+pub fn set(b: Int, index: Int, value: Int) -> Int { bytes_set(b, index, value) }
+
+fn main() {
+  let b = from_string("hello")
+  println("Bytes length: " <> show(length(b)))
+  println("Bytes to_string: " <> to_string(b))
+  println("Byte 0: " <> show(get(b, 0)))
+  println("Byte 4: " <> show(get(b, 4)))
+  let b2 = set(b, 0, 72)
+  println("After set: " <> to_string(b2))
+  let s = slice(b, 1, 4)
+  println("Slice 1..4: " <> to_string(s))
+  let c = concat(b, from_string(" world"))
+  println("Concat: " <> to_string(c))
+  println("Bytes module loaded")
+}
