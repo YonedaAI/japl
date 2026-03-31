@@ -2,17 +2,10 @@
 build/
 *.wasm
 *.wat
-!japl-runtime/tests/*.wasm
-
-# Dependencies
-node_modules/
-compiler/ts/dist/
 
 # Rust
-japl-runtime/target/
-
-# Binary
-bin/japl-compiler
+japl/target/
+japl-http-adapter/target/
 
 # OS
 .DS_Store
@@ -23,7 +16,3 @@ bin/japl-compiler
 
 # Temp
 .japl-build/
-japl-compiler/target/
-japl-http-adapter/target/
-japl-serve/target/
-japl/target/

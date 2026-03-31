@@ -13,11 +13,16 @@ else
   git clone https://github.com/YonedaAI/japl.git "$JAPL_HOME/src"
 fi
 
-cd "$JAPL_HOME/src/japl-compiler" && cargo build --release 2>&1 | tail -1
-cd "$JAPL_HOME/src/japl-runtime" && cargo build --release 2>&1 | tail -1
-cp "$JAPL_HOME/src/japl-compiler/target/release/japl-compiler" "$JAPL_HOME/bin/japl-compiler"
-cp "$JAPL_HOME/src/japl-runtime/target/release/japl-runtime" "$JAPL_HOME/bin/japl-runtime"
-cp "$JAPL_HOME/src/bin/japl" "$JAPL_HOME/bin/japl"
-chmod +x "$JAPL_HOME/bin/japl-compiler" "$JAPL_HOME/bin/japl-runtime" "$JAPL_HOME/bin/japl"
+cd "$JAPL_HOME/src/japl" && cargo build --release 2>&1 | tail -1
+cp "$JAPL_HOME/src/japl/target/release/japl" "$JAPL_HOME/bin/japl"
+chmod +x "$JAPL_HOME/bin/japl"
 
-echo "JAPL installed! export PATH=\"$JAPL_HOME/bin:\$PATH\""
+echo "JAPL installed! Add to your shell config:"
+echo "  export PATH=\"$JAPL_HOME/bin:\$PATH\""
+echo ""
+echo "Usage:"
+echo "  japl build app.japl     # compile to .wasm"
+echo "  japl run app.japl       # compile + run"
+echo "  japl serve app.japl     # compile + serve HTTP"
+echo "  japl check app.japl     # type check"
+echo "  japl fmt app.japl       # format"
