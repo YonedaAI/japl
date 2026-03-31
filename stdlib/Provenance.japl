@@ -38,6 +38,24 @@ pub fn provenance_timestamp(p: ProvenanceRecord) -> Int {
   match p { Provenance(_, _, t) => t }
 }
 
+pub fn llm_provenance(prompt_hash: String, model_name: String, timestamp: Int) -> ProvenanceRecord {
+  let src = model_source(model_name)
+  provenance(prompt_hash, src, timestamp)
+}
+
+pub fn tool_provenance(tool_name: String, timestamp: Int) -> ProvenanceRecord {
+  let src = tool_source(tool_name)
+  provenance(tool_name, src, timestamp)
+}
+
+pub fn record_source(pr: ProvenanceRecord) -> String {
+  match pr { Provenance(_, s, _) => source_label(s) }
+}
+
+pub fn record_timestamp(pr: ProvenanceRecord) -> Int {
+  match pr { Provenance(_, _, t) => t }
+}
+
 fn main() {
   let h = human_source()
   let lh = source_label(h)
@@ -56,4 +74,14 @@ fn main() {
   let pt = provenance_timestamp(p)
   println("hash: " <> ph)
   println("timestamp: " <> show(pt))
+  let lp = llm_provenance("hash99", "gpt4", 2000)
+  let ls = record_source(lp)
+  println("llm_source: " <> ls)
+  let lt2 = record_timestamp(lp)
+  println("llm_ts: " <> show(lt2))
+  let tp = tool_provenance("bash", 3000)
+  let ts = record_source(tp)
+  println("tool_source: " <> ts)
+  let tt = record_timestamp(tp)
+  println("tool_ts: " <> show(tt))
 }

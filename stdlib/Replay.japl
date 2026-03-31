@@ -24,6 +24,25 @@ pub fn replay_latest(log: ReplayLog) -> Int {
   }
 }
 
+pub fn replay_llm_call(log: ReplayLog, step: Int, prompt: String) -> ReplayLog {
+  replay_record(log, step, "llm_call", prompt)
+}
+
+pub fn replay_tool_call(log: ReplayLog, step: Int, tool_name: String) -> ReplayLog {
+  replay_record(log, step, "tool_call", tool_name)
+}
+
+pub fn replay_spawn(log: ReplayLog, step: Int, pid: String) -> ReplayLog {
+  replay_record(log, step, "spawn", pid)
+}
+
+pub fn replay_latest_action(log: ReplayLog) -> String {
+  match log {
+    LogEmpty => "none",
+    LogEntry(e, _) => match e { Entry(_, a, _) => a }
+  }
+}
+
 fn main() {
   let log = replay_new()
   let s0 = replay_size(log)
@@ -37,4 +56,14 @@ fn main() {
   println("size: " <> show(s1))
   let lat1 = replay_latest(log)
   println("latest: " <> show(lat1))
+  let log2 = replay_new()
+  let log2 = replay_llm_call(log2, 1, "hello")
+  let log2 = replay_tool_call(log2, 2, "search")
+  let log2 = replay_spawn(log2, 3, "pid_42")
+  let s2 = replay_size(log2)
+  println("event_size: " <> show(s2))
+  let a2 = replay_latest_action(log2)
+  println("latest_action: " <> a2)
+  let empty_action = replay_latest_action(replay_new())
+  println("empty_action: " <> empty_action)
 }
