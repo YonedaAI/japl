@@ -1,0 +1,6 @@
+// Negative test: Pid cannot be used in arithmetic.
+// Expected error: "type error: arithmetic expects Int, got Pid"
+fn main() {
+  let pid = spawn(fn() { println("hi") })
+  let x = pid + 1
+}
