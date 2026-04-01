@@ -8,3 +8,11 @@ interface handler {
 world http-app {
     export handler;
 }
+
+/// A JAPL component that uses the process runtime provider.
+/// This is the primary world for actor-model JAPL applications.
+world runtime-app {
+    import japl:runtime/processes@0.1.0;
+    import japl:runtime/logging@0.1.0;
+    export handler;
+}
