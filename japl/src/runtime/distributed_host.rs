@@ -121,16 +121,23 @@ fn build_linker(engine: &Engine, shared: &Arc<SharedState>) -> Result<Linker<Dis
         let pid = caller.data().pid;
         let nc = caller.data().nc.clone();
         let subject = format!("japl.runtime.receive.{}", pid);
+        eprintln!("[distributed:pid-{}] receive: waiting on {}", pid, subject);
         match nc.request_timeout(&subject, "{}", std::time::Duration::from_secs(30)) {
             Ok(resp) => {
                 let body = String::from_utf8_lossy(&resp.data);
+                eprintln!("[distributed:pid-{}] receive: got {} bytes: {}", pid, resp.data.len(), &body[..body.len().min(100)]);
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
                     if let Some(msg_arr) = v["message"].as_array() {
                         let bytes: Vec<u8> = msg_arr.iter()
                             .filter_map(|b| b.as_u64().map(|n| n as u8))
                             .collect();
+                        eprintln!("[distributed:pid-{}] receive: decoded {} bytes", pid, bytes.len());
                         return write_bytes_to_heap(&mut caller, &bytes);
+                    } else {
+                        eprintln!("[distributed:pid-{}] receive: no 'message' array in response", pid);
                     }
+                } else {
+                    eprintln!("[distributed:pid-{}] receive: invalid JSON: {}", pid, body);
                 }
                 0
             }

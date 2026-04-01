@@ -1,0 +1,182 @@
+// =============================================================================
+// JAPL Distributed Key-Value Store — Persistent Service
+// =============================================================================
+// A persistent KV store service that stays running and accepts external
+// requests. Process messaging flows through NATS via the japl-provider.
+//
+// Architecture:
+//   - 4 partition workers (each owns key % 4 of the keyspace)
+//   - 1 coordinator that receives external commands and routes to partitions
+//
+// Run:  japl run --distributed apps/kvstore-service/kvstore_service.japl
+// Test: python3 test/deploy/test_kvstore_service.py <coordinator_pid>
+// =============================================================================
+
+foreign "japl" fn time_sleep(ms: Int)
+
+// Store data structure
+type Entry = | KV(Int, Int, Entry) | Empty
+
+fn store_put(store: Entry, key: Int, val: Int) -> Entry {
+  KV(key, val, store)
+}
+
+fn store_get(store: Entry, key: Int) -> Int {
+  match store {
+    Empty => 0 - 1,
+    KV(k, v, rest) => {
+      if k == key { v }
+      else { store_get(rest, key) }
+    }
+  }
+}
+
+fn store_del(store: Entry, key: Int) -> Entry {
+  match store {
+    Empty => Empty,
+    KV(k, v, rest) => {
+      if k == key { rest }
+      else {
+        let tail = store_del(rest, key)
+        KV(k, v, tail)
+      }
+    }
+  }
+}
+
+fn store_size(store: Entry) -> Int {
+  match store {
+    Empty => 0,
+    KV(_, _, rest) => 1 + store_size(rest)
+  }
+}
+
+// Flat command protocol (no nested ADTs — nested variants don't survive cross-process send)
+type KVCmd =
+  | CmdPut(Int, Int, Pid)
+  | CmdGet(Int, Pid)
+  | CmdDel(Int, Pid)
+  | CmdSize(Pid)
+
+type KVReply =
+  | ReplyOk(Int)
+  | ReplyValue(Int)
+  | ReplyNotFound
+  | ReplyCount(Int)
+
+// Partition process — handles commands for its slice of the keyspace
+fn partition_loop(store: Entry) {
+  receive {
+    CmdPut(key, val, reply) => {
+      let new_store = store_put(store, key, val)
+      send(reply, ReplyOk(0))
+      partition_loop(new_store)
+    },
+    CmdGet(key, reply) => {
+      let val = store_get(store, key)
+      if val == (0 - 1) {
+        send(reply, ReplyNotFound)
+      } else {
+        send(reply, ReplyValue(val))
+      }
+      partition_loop(store)
+    },
+    CmdDel(key, reply) => {
+      let new_store = store_del(store, key)
+      send(reply, ReplyOk(0))
+      partition_loop(new_store)
+    },
+    CmdSize(reply) => {
+      let s = store_size(store)
+      send(reply, ReplyCount(s))
+      partition_loop(store)
+    }
+  }
+}
+
+fn start_partition() {
+  partition_loop(Empty)
+}
+
+// Service coordinator: receives external commands, routes to correct partition
+fn service_loop(p0: Pid, p1: Pid, p2: Pid, p3: Pid, request_count: Int) {
+  let me = self()
+
+  receive {
+    CmdPut(key, val, reply_to) => {
+      // Route to correct partition
+      let part = key - (key / 4 * 4)
+      if part == 0 { send(p0, CmdPut(key, val, me)) }
+      else { if part == 1 { send(p1, CmdPut(key, val, me)) }
+      else { if part == 2 { send(p2, CmdPut(key, val, me)) }
+      else { send(p3, CmdPut(key, val, me)) } } }
+      // Wait for partition reply
+      receive {
+        ReplyOk(_) => {
+          send(reply_to, ReplyOk(request_count + 1))
+          println("[service] PUT key=" <> show(key) <> " val=" <> show(val) <> " -> OK (req #" <> show(request_count + 1) <> ")")
+        }
+      }
+      service_loop(p0, p1, p2, p3, request_count + 1)
+    },
+    CmdGet(key, reply_to) => {
+      let part = key - (key / 4 * 4)
+      if part == 0 { send(p0, CmdGet(key, me)) }
+      else { if part == 1 { send(p1, CmdGet(key, me)) }
+      else { if part == 2 { send(p2, CmdGet(key, me)) }
+      else { send(p3, CmdGet(key, me)) } } }
+      receive {
+        ReplyValue(v) => {
+          send(reply_to, ReplyValue(v))
+          println("[service] GET key=" <> show(key) <> " -> " <> show(v))
+        },
+        ReplyNotFound => {
+          send(reply_to, ReplyNotFound)
+          println("[service] GET key=" <> show(key) <> " -> NOT FOUND")
+        }
+      }
+      service_loop(p0, p1, p2, p3, request_count + 1)
+    },
+    CmdDel(key, reply_to) => {
+      let part = key - (key / 4 * 4)
+      if part == 0 { send(p0, CmdDel(key, me)) }
+      else { if part == 1 { send(p1, CmdDel(key, me)) }
+      else { if part == 2 { send(p2, CmdDel(key, me)) }
+      else { send(p3, CmdDel(key, me)) } } }
+      receive {
+        ReplyOk(_) => {
+          send(reply_to, ReplyOk(request_count + 1))
+          println("[service] DEL key=" <> show(key) <> " -> OK")
+        }
+      }
+      service_loop(p0, p1, p2, p3, request_count + 1)
+    },
+    CmdSize(reply_to) => {
+      send(p0, CmdSize(me))
+      receive {
+        ReplyCount(c) => {
+          send(reply_to, ReplyCount(c))
+          println("[service] SIZE p0 -> " <> show(c))
+        }
+      }
+      service_loop(p0, p1, p2, p3, request_count + 1)
+    }
+  }
+}
+
+fn main() {
+  println("=== JAPL KV Store Service Starting ===")
+
+  let p0 = spawn(fn() { start_partition() })
+  let p1 = spawn(fn() { start_partition() })
+  let p2 = spawn(fn() { start_partition() })
+  let p3 = spawn(fn() { start_partition() })
+  println("[service] 4 partitions started")
+
+  let me = self()
+  println("[service] coordinator PID: " <> show(me))
+  println("[service] ready for requests")
+  println("=== Service Running ===")
+
+  service_loop(p0, p1, p2, p3, 0)
+}
