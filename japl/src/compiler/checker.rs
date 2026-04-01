@@ -85,18 +85,9 @@ fn substitute_type_params(ty: &Type, subst: &HashMap<String, Type>) -> Type {
 }
 
 /// Check if two types are compatible.
-/// Pid and Int are distinct types — Pid cannot be used in arithmetic
-/// and Int cannot be passed where Pid is expected (or vice versa).
-/// However, Pid/Int are compatible for function arguments and assignments
-/// since Pid is represented as Int at runtime and existing code relies on this.
+/// Pid and Int are fully distinct types — no implicit conversion in any context.
 fn types_compatible(a: &Type, b: &Type) -> bool {
-    if a == b {
-        return true;
-    }
-    matches!(
-        (a, b),
-        (Type::Pid, Type::Int) | (Type::Int, Type::Pid)
-    )
+    a == b
 }
 
 impl Checker {
@@ -187,7 +178,7 @@ impl Checker {
                 }
             }
             _ => {
-                // Concrete types: check equality or Pid/Int compatibility
+                // Concrete types: strict equality check
                 *declared == *actual || *declared == Type::Var(0) || types_compatible(declared, actual)
             }
         }
@@ -275,7 +266,16 @@ impl Checker {
                         }
                         "send" => {
                             self.record_effect(Effect::Process);
-                            for arg in args {
+                            if args.len() >= 1 {
+                                let pid_ty = self.infer_expr(&args[0]);
+                                if pid_ty != Type::Pid && pid_ty != Type::Var(0) {
+                                    self.errors.push(format!(
+                                        "type error: send expects Pid as first argument, got {}",
+                                        pid_ty
+                                    ));
+                                }
+                            }
+                            for arg in args.iter().skip(1) {
                                 self.infer_expr(arg);
                             }
                             Type::Unit

@@ -422,7 +422,7 @@ fn rewrite_expr_qualified(expr: &mut ast::Expr, module_names: &HashSet<String>) 
 }
 
 /// Type-check a .japl file.
-/// When `strict` is true, Pid/Int implicit conversions emit warnings.
+/// When `strict` is true, additional type warnings are emitted.
 pub fn check(path: &str, strict: bool) -> Result<(), String> {
     let input_path = PathBuf::from(path);
 

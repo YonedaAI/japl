@@ -1,0 +1,6 @@
+// Negative test: passing an Int literal where Pid is expected must fail.
+// send() expects (Pid, msg) — an Int literal is not a Pid.
+
+fn main() {
+  send(42, "hello")
+}

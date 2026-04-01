@@ -1,7 +1,7 @@
 foreign "japl" fn time_sleep(ms: Int)
-foreign "japl" fn mailbox_size(pid: Int) -> Int
+foreign "japl" fn mailbox_size(pid: Pid) -> Int
 foreign "japl" fn process_count() -> Int
-foreign "japl" fn is_process_alive(pid: Int) -> Int
+foreign "japl" fn is_process_alive(pid: Pid) -> Int
 
 type ProcMsg = | Ping(Int)
 
@@ -47,11 +47,11 @@ type ProcMsg = | Ping(Int)
 
 // Process utilities
 
-pub fn spawn_fn(f: fn() -> Unit) -> Int {
+pub fn spawn_fn(f: fn() -> Unit) -> Pid {
   spawn(f)
 }
 
-pub fn self_id() -> Int {
+pub fn self_id() -> Pid {
   self_pid()
 }
 
@@ -61,7 +61,7 @@ pub fn sleep(ms: Int) -> Unit {
 
 // Returns the number of pending messages in the mailbox of the given process.
 // Pass -1 to query the calling process's own mailbox.
-pub fn pending_messages(pid: Int) -> Int {
+pub fn pending_messages(pid: Pid) -> Int {
   mailbox_size(pid)
 }
 
@@ -71,7 +71,7 @@ pub fn alive_count() -> Int {
 }
 
 // Returns 1 if the process with the given pid is alive, 0 otherwise.
-pub fn is_alive(pid: Int) -> Int {
+pub fn is_alive(pid: Pid) -> Int {
   is_process_alive(pid)
 }
 
