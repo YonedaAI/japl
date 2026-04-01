@@ -84,14 +84,26 @@ impl ProcessTable {
         self.processes.get(&pid).map(|p| p.notify.clone())
     }
 
-    /// Remove processes that have had no activity for the given duration
-    /// and whose mailboxes are empty.
+    /// Touch a process's last_activity timestamp (e.g., when receive is called).
+    fn touch(&mut self, pid: u64) {
+        if let Some(p) = self.processes.get_mut(&pid) {
+            p.last_activity = Instant::now();
+        }
+    }
+
+    /// Remove processes that have had no activity for the given duration,
+    /// whose mailboxes are empty, and whose Notify has no pending waiters.
+    /// A process blocked in receive() will have been touched when receive
+    /// was called, keeping it alive.
     fn cleanup_stale(&mut self, max_idle: Duration) -> usize {
         let now = Instant::now();
         let stale: Vec<u64> = self
             .processes
             .iter()
-            .filter(|(_, p)| p.mailbox.is_empty() && now.duration_since(p.last_activity) > max_idle)
+            .filter(|(_, p)| {
+                p.mailbox.is_empty()
+                    && now.duration_since(p.last_activity) > max_idle
+            })
             .map(|(pid, _)| *pid)
             .collect();
         let count = stale.len();
@@ -220,6 +232,9 @@ async fn handle_send(table: &SharedTable, pid: u64, payload: &[u8]) -> Vec<u8> {
 }
 
 async fn handle_receive(table: &SharedTable, pid: u64) -> Vec<u8> {
+    // Touch activity timestamp so the cleanup task doesn't reap this process
+    // while it's waiting for a message.
+    { table.lock().await.touch(pid); }
     // Try to receive immediately; if empty, wait for notification then retry.
     loop {
         {
@@ -317,7 +332,7 @@ async fn main() -> Result<()> {
     // Spawn periodic cleanup task: remove stale processes every 5 minutes
     let cleanup_table = table.clone();
     tokio::spawn(async move {
-        let idle_threshold = Duration::from_secs(300);
+        let idle_threshold = Duration::from_secs(1800); // 30 minutes
         loop {
             tokio::time::sleep(Duration::from_secs(300)).await;
             let cleaned = cleanup_table.lock().await.cleanup_stale(idle_threshold);
