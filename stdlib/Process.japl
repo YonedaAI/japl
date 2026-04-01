@@ -8,6 +8,24 @@ type ProcMsg = | Ping(Int)
 // =========================================================================
 // Process module — JAPL stdlib
 //
+// Typed Process Contract:
+//   - `spawn(f)` returns a Pid, typed as Pid in the checker but represented
+//     as Int at runtime. All pid values are non-negative integers assigned
+//     sequentially by the scheduler.
+//   - `send(pid, msg)` takes a Pid (Int) and any message type. The message
+//     is enqueued asynchronously in the target process's mailbox.
+//   - `receive { Pattern => body }` pattern-matches on the message type.
+//     Each process implicitly defines its accepted message type through the
+//     set of patterns in its receive expressions.
+//   - The typed process model: a process's "message type" is the union of
+//     all variant patterns it handles in receive blocks. Currently this is
+//     checked structurally — the compiler verifies that send arguments match
+//     the declared type at the call site, but does not yet track which
+//     process will receive the message.
+//   - Future: Pid<T> will be a parameterized type so that send(pid, msg)
+//     is statically checked against the process's declared message type T.
+//     This requires generic type support in the checker (planned).
+//
 // Mailbox delivery semantics:
 //   - Messages are delivered asynchronously. send() returns immediately;
 //     the message is enqueued in the target process's mailbox by the
@@ -58,6 +76,18 @@ pub fn alive_count() -> Int {
 // Returns 1 if the process with the given pid is alive, 0 otherwise.
 pub fn is_alive(pid: Int) -> Int {
   is_process_alive(pid)
+}
+
+// Typed spawn: same as spawn but documents the intent that the returned
+// Int is a Pid. When Pid<T> lands, this will become spawn_typed<T>.
+pub fn spawn_typed(f: fn() -> Unit) -> Int {
+  spawn(f)
+}
+
+// Send with explicit pid type — wrapper that makes the pid/msg contract
+// visible in signatures. Currently Int-only; will become generic.
+pub fn send_to(pid: Int, msg: Int) -> Unit {
+  send(pid, msg)
 }
 
 // Echo worker for demo
