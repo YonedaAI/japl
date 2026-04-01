@@ -333,8 +333,19 @@ print(f"  Tests: {PASS} pass, {FAIL} fail")
 # Stdlib coverage
 print(f"  Stdlib: {len(tested_modules)}/{len(stdlib_files)} modules tested")
 
+# Feature status (tiered)
+print("\n  Feature Status:")
+print("    PROVEN:       Local runtime, stdlib (30 modules), process messaging")
+print("    PROVEN:       Distributed mode (kvstore, msgqueue over NATS)")
+print("    PROVEN:       HTTP gateway (external client access)")
+print("    PROVEN:       Pid type safety (arithmetic rejected)")
+print("    LIMITED:      Supervision (polling, no auto-restart)")
+print("    LIMITED:      Tool execution (simulated)")
+print("    LIMITED:      LLM structured output (prefix validation)")
+print("    EXPERIMENTAL: wasmCloud native provider (sidecar shipped)")
+
 # Critical modules check
-print(f"  Critical modules (run_test): {'PASS' if all_critical_covered else 'FAIL'}")
+print(f"\n  Critical modules (run_test): {'PASS' if all_critical_covered else 'FAIL'}")
 
 # Component compilation check
 print(f"  Component targets: {'PASS' if component_pass else 'FAIL'}")

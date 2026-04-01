@@ -122,18 +122,18 @@ This builds the compiler in release mode, runs the full verification suite with 
 - Code formatter (`japl fmt`)
 - Type checker (`japl check`, `--strict` for Pid warnings)
 - Process spawn/send/receive (real OS threads via embedded wasmtime)
-- Supervision trees (`OneForOne`, `AllForOne`, `RestForOne`)
 - HTTP serving (`japl serve` via tiny_http)
-- wasmCloud deployment (`japl deploy` with NATS-based process provider)
 - Real env var reading, file I/O
-- AI-native abstractions: LLM as tracked effect, `llm_structured` for typed I/O
-- Tool contracts (`ToolSpec`, `ToolResult`), budget tracking, replay logs, provenance
 - Standard library: 30 modules, 2400+ LOC (`Math`, `String`, `Option`, `Result`, `List`, `Map`, `Set`, `Json`, `Http`, `Net`, `Bytes`, `Codec`, `Retry`, `Log`, `Config`, `File`, `Env`, `Time`, `Crypto`, `Process`, `Supervisor`, `Registry`, `LLM`, `Tool`, `Budget`, `Replay`, `Provenance`, `Core`, `IO`, `Test`)
 - Verification suite: 68+ tests, 28 negative checker tests, 2 strict mode tests
 - Benchmark suite and stdlib API doc generator
 
 ### Partial
 
+- Supervision trees (`OneForOne`, `AllForOne`, `RestForOne`) — polling-based, no automatic restart (requires monitor/link primitives)
+- wasmCloud deployment (`japl deploy`) — component build works, full deploy requires NATS + japl-provider sidecar
+- AI-native abstractions: LLM as tracked effect, `llm_structured` validates JSON prefix only (no schema enforcement)
+- Tool contracts (`ToolSpec`, `ToolResult`), budget tracking, replay logs, provenance — simulated execution, no real dispatch backend
 - Distributed typed message passing (local works; TCP cross-machine experimental via `japl run --node-name`)
 - Package manager foundation (`japl init`, `japl deps`)
 
@@ -142,6 +142,7 @@ This builds the compiler in release mode, runs the full verification suite with 
 - LSP / editor support
 - REPL
 - Full package registry
+- Native wasmCloud capability provider (currently sidecar mode)
 
 ---
 
@@ -244,12 +245,13 @@ papers/               Research papers (7 JAPL papers)
 
 ## Known Limitations
 
-- **Supervision**: Supervisor can spawn children but cannot automatically restart crashed processes (requires runtime monitor/link primitives)
-- **Distribution**: Custom TCP layer is experimental; wasmCloud provider is a NATS sidecar, not a native wasmCloud capability
+- **Supervision**: Polling-based only. Supervisor can spawn children but cannot automatically restart crashed processes (requires runtime monitor/link primitives not yet implemented)
+- **Distribution**: Custom TCP layer is experimental; wasmCloud provider runs as a NATS sidecar, not a native wasmCloud capability provider
 - **Tool execution**: Tool.japl provides types and simulated execution, not real tool dispatch
 - **LLM structured output**: Validates JSON prefix only, no schema enforcement
-- **String FFI**: Some stdlib modules (Net) can't pass Strings through FFI cleanly
+- **String FFI**: Some stdlib modules (Net) cannot pass Strings through FFI cleanly (compile-only tested)
 - **Process messages**: String fields in ADT messages may be empty when received cross-process
+- **Budget/Replay/Provenance**: Pure-JAPL wrappers tracking state in-process; no runtime-level enforcement
 
 ---
 
