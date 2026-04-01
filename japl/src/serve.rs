@@ -317,6 +317,8 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
     linker.func_wrap("japl", "crypto_sha256", |_: i32, _: i32, _: i32| {})?;
     linker.func_wrap("japl", "crypto_random", |_: i32, _: i32| {})?;
     linker.func_wrap("japl", "file_read_str", |_: i32| -> i32 { 0 })?;
+    linker.func_wrap("japl", "file_write_str", |_: i32, _: i32| -> i32 { -1 })?;
+    linker.func_wrap("japl", "file_exists_str", |_: i32| -> i32 { 0 })?;
     linker.func_wrap("japl", "file_read", |_: i32, _: i32| -> (i32, i32) { (0, 0) })?;
     linker.func_wrap("japl", "file_write", |_: i32, _: i32, _: i32, _: i32| -> i32 { -1 })?;
     linker.func_wrap("japl", "file_exists", |_: i32, _: i32| -> i32 { 0 })?;

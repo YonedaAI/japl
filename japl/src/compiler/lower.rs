@@ -32,6 +32,8 @@ fn runtime_signature(module: &str, name: &str) -> Option<(Vec<WasmType>, Vec<Was
         "crypto_sha256"  => Some((vec![I32, I32, I32], vec![])),
         "crypto_random"  => Some((vec![I32, I32], vec![])),
         "file_read_str"  => Some((vec![I32], vec![I32])),
+        "file_write_str" => Some((vec![I32, I32], vec![I32])),
+        "file_exists_str"=> Some((vec![I32], vec![I32])),
         "file_read"      => Some((vec![I32, I32], vec![I32, I32])),
         "file_write"     => Some((vec![I32, I32, I32, I32], vec![I32])),
         "file_exists"    => Some((vec![I32, I32], vec![I32])),

@@ -844,6 +844,34 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         if std::path::Path::new(path).exists() { 1 } else { 0 }
     })?;
 
+    // japl.file_write_str(path_ptr: i32, content_ptr: i32) -> i32 (0=success, -1=error)
+    // Takes two JAPL strings (length-prefixed), writes content to the file at path.
+    linker.func_wrap("japl", "file_write_str", |mut caller: Caller<'_, ProcessState>, path_ptr: i32, content_ptr: i32| -> i32 {
+        let path = read_japl_string(&mut caller, path_ptr);
+        let content = read_japl_string(&mut caller, content_ptr);
+        if path.is_empty() {
+            eprintln!("[japl::file_write_str] empty path");
+            return -1;
+        }
+        match std::fs::write(&path, content.as_bytes()) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("file_write_str error: {}: {}", path, e);
+                -1
+            }
+        }
+    })?;
+
+    // japl.file_exists_str(path_ptr: i32) -> i32 (1=exists, 0=not found)
+    // Takes a JAPL string (length-prefixed), checks if the path exists.
+    linker.func_wrap("japl", "file_exists_str", |mut caller: Caller<'_, ProcessState>, path_ptr: i32| -> i32 {
+        let path = read_japl_string(&mut caller, path_ptr);
+        if path.is_empty() {
+            return 0;
+        }
+        if std::path::Path::new(&path).exists() { 1 } else { 0 }
+    })?;
+
     // =========================================================================
     // Bytes Helper Functions
     // =========================================================================
