@@ -1,4 +1,9 @@
-import subprocess, os, sys, time, shutil
+import subprocess, os, sys, time, shutil, argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--release', action='store_true', help='Strict release mode: wasmCloud verification is mandatory')
+args = parser.parse_args()
+RELEASE_MODE = args.release or os.environ.get('RELEASE_MODE', '').lower() in ('1', 'true', 'yes')
 
 JAPL_HOME = os.path.join(os.path.dirname(__file__), "..", "..")
 JAPL = os.path.join(JAPL_HOME, "japl/target/release/japl")
@@ -291,16 +296,29 @@ if wash_available:
             print(f"  FAIL wasmcloud:component_build: {r.stderr.strip()}")
             FAIL += 1
     else:
-        print("  SKIP wasmcloud: host not running (start with: wash up --detached)")
+        if RELEASE_MODE:
+            print("  FAIL wasmcloud: host not running (required in release mode)")
+            print("       Start with: wash up --detached")
+            FAIL += 1
+        else:
+            print("  SKIP wasmcloud: host not running (start with: wash up --detached)")
 else:
-    print("  SKIP wasmcloud: wash CLI not found (install: https://wasmcloud.com/docs/installation)")
+    if RELEASE_MODE:
+        print("  FAIL wasmcloud: wash CLI required in release mode")
+        print("       Install: https://wasmcloud.com/docs/installation")
+        FAIL += 1
+    else:
+        print("  SKIP wasmcloud: wash CLI not found (install: https://wasmcloud.com/docs/installation)")
 
 print("\n" + "="*60)
 print("  RELEASE READINESS REPORT")
 print("="*60)
 
+mode = "RELEASE" if RELEASE_MODE else "DEVELOPMENT"
+print(f"\n  Mode: {mode}")
+
 # Test summary
-print(f"\n  Tests: {PASS} pass, {FAIL} fail")
+print(f"  Tests: {PASS} pass, {FAIL} fail")
 
 # Stdlib coverage
 print(f"  Stdlib: {len(tested_modules)}/{len(stdlib_files)} modules tested")
@@ -318,10 +336,17 @@ print(f"  Type checker: {'PASS' if checker_pass else 'FAIL'}")
 print(f"  wasmCloud deploy: {'PASS' if wasmcloud_pass else 'SKIP (not running)'}")
 
 # Overall
-if FAIL == 0:
-    print(f"\n  VERDICT: RELEASE GATE PASS")
+if RELEASE_MODE:
+    if FAIL == 0 and wasmcloud_pass:
+        print(f"\n  VERDICT: RELEASE GATE PASS")
+    else:
+        print(f"\n  VERDICT: RELEASE GATE FAIL ({FAIL} failures)")
 else:
-    print(f"\n  VERDICT: RELEASE GATE FAIL ({FAIL} failures)")
+    # Dev mode - more lenient
+    if FAIL == 0:
+        print(f"\n  VERDICT: DEV GATE PASS")
+    else:
+        print(f"\n  VERDICT: DEV GATE FAIL ({FAIL} failures)")
 print("="*60)
 
 sys.exit(0 if FAIL == 0 else 1)
