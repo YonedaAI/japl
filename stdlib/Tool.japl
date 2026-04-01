@@ -1,6 +1,10 @@
+foreign "japl" fn string_eq(a: String, b: String) -> Int
+
 type ToolSpec = | Tool(String, String, String)
 
 type ToolResult = | ToolOk(String) | ToolErr(String)
+
+type ToolRegistry = | ToolEntry(ToolSpec, ToolRegistry) | ToolRegistryEmpty
 
 pub fn tool(name: String, description: String, schema: String) -> ToolSpec {
   Tool(name, description, schema)
@@ -44,6 +48,53 @@ pub fn tool_error(spec: ToolSpec, reason: String) -> ToolResult {
   ToolErr(msg)
 }
 
+pub fn registry_new() -> ToolRegistry { ToolRegistryEmpty }
+
+pub fn registry_add(r: ToolRegistry, spec: ToolSpec) -> ToolRegistry {
+  ToolEntry(spec, r)
+}
+
+pub fn registry_find(r: ToolRegistry, name: String) -> ToolResult {
+  match r {
+    ToolRegistryEmpty => {
+      let msg = "not found: " <> name
+      ToolErr(msg)
+    },
+    ToolEntry(spec, rest) => {
+      let sname = tool_name(spec)
+      let eq = string_eq(sname, name)
+      if eq == 1 {
+        let schema = tool_schema(spec)
+        ToolOk(schema)
+      } else {
+        let recurse = registry_find(rest, name)
+        recurse
+      }
+    }
+  }
+}
+
+pub fn registry_size(r: ToolRegistry) -> Int {
+  match r {
+    ToolRegistryEmpty => 0,
+    ToolEntry(_, rest) => 1 + registry_size(rest)
+  }
+}
+
+pub fn execute_validated(registry: ToolRegistry, tname: String, args: String) -> ToolResult {
+  let found = registry_find(registry, tname)
+  match found {
+    ToolOk(_) => {
+      let result = tname <> "(" <> args <> ") => ok"
+      ToolOk(result)
+    },
+    ToolErr(e) => {
+      let msg = "tool not registered: " <> tname
+      ToolErr(msg)
+    }
+  }
+}
+
 fn main() {
   let spec = tool("search", "Search the web", "{\"query\": \"string\"}")
   let n = tool_name(spec)
@@ -68,4 +119,28 @@ fn main() {
   println("tool_error_ok: " <> show(terr_ok))
   let terr_val = tool_result_value(terr)
   println("tool_error_val: " <> terr_val)
+  // Registry tests
+  let reg = registry_new()
+  let reg_size0 = registry_size(reg)
+  println("registry_size_empty: " <> show(reg_size0))
+  let spec2 = tool("calc", "Calculator", "{\"expr\": \"string\"}")
+  let reg1 = registry_add(reg, spec)
+  let reg2 = registry_add(reg1, spec2)
+  let reg_size2 = registry_size(reg2)
+  println("registry_size: " <> show(reg_size2))
+  let found = registry_find(reg2, "search")
+  let found_ok = is_tool_ok(found)
+  println("registry_find_ok: " <> show(found_ok))
+  let not_found = registry_find(reg2, "missing")
+  let not_found_ok = is_tool_ok(not_found)
+  println("registry_find_missing: " <> show(not_found_ok))
+  // Validated execution tests
+  let vexec = execute_validated(reg2, "search", "test")
+  let vexec_ok = is_tool_ok(vexec)
+  println("validated_exec_ok: " <> show(vexec_ok))
+  let vexec_val = tool_result_value(vexec)
+  println("validated_exec_val: " <> vexec_val)
+  let vfail = execute_validated(reg2, "missing", "test")
+  let vfail_ok = is_tool_ok(vfail)
+  println("validated_exec_missing: " <> show(vfail_ok))
 }
