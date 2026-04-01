@@ -174,3 +174,12 @@ The WADM manifest (`deploy/japl-provider.wadm.yaml`) declares:
 
 8. **Unbounded mailboxes.** No backpressure or size limits on process
    mailboxes; a fast sender can exhaust memory.
+
+## Architecture Decision
+
+The decision to keep the provider as a standalone NATS sidecar (rather than
+converting to a native wasmCloud capability provider) is documented in
+[provider-architecture-decision.md](provider-architecture-decision.md). Summary:
+the sidecar is functionally equivalent for single-host deployments, and
+converting to a native provider requires non-trivial wRPC plumbing that is
+deferred until the WIT interface stabilizes.
