@@ -1,5 +1,5 @@
 foreign "japl" fn time_sleep(ms: Int)
-foreign "japl" fn is_process_alive(pid: Int) -> Int
+foreign "japl" fn is_process_alive(pid: Pid) -> Int
 
 // =========================================================================
 // Supervisor module — JAPL stdlib

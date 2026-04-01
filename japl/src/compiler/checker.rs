@@ -181,7 +181,6 @@ impl Checker {
                 }
             }
             _ => {
-<<<<<<< HEAD
                 // Concrete types: check strict equality (Pid and Int are NOT compatible)
                 *declared == *actual || *declared == Type::Var(0) || types_compatible(declared, actual)
             }
