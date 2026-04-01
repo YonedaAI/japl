@@ -1,4 +1,7 @@
 foreign "japl" fn str_starts_with(s: String, prefix: String) -> Int
+foreign "japl" fn str_ends_with(s: String, suffix: String) -> Int
+foreign "japl" fn str_contains(s: String, sub: String) -> Int
+foreign "japl" fn str_length(s: String) -> Int
 
 pub fn ask(prompt: String) -> String {
   let result = llm(prompt)
@@ -39,10 +42,58 @@ pub fn ask_structured(prompt: String, schema: String) -> String {
   llm_structured(prompt, schema)
 }
 
+pub fn is_json_object(s: String) -> Int {
+  let len = str_length(s)
+  if len < 2 {
+    0
+  } else {
+    let starts = str_starts_with(s, "{")
+    let ends = str_ends_with(s, "}")
+    if starts == 1 {
+      if ends == 1 { 1 } else { 0 }
+    } else { 0 }
+  }
+}
+
+pub fn is_json_array(s: String) -> Int {
+  let len = str_length(s)
+  if len < 2 {
+    0
+  } else {
+    let starts = str_starts_with(s, "[")
+    let ends = str_ends_with(s, "]")
+    if starts == 1 {
+      if ends == 1 { 1 } else { 0 }
+    } else { 0 }
+  }
+}
+
+pub fn has_field(response: String, field: String) -> Int {
+  let quoted = "\"" <> field <> "\""
+  str_contains(response, quoted)
+}
+
+pub fn validate_response(response: String, expected_field: String) -> Int {
+  let is_obj = is_json_object(response)
+  if is_obj == 1 {
+    has_field(response, expected_field)
+  } else { 0 }
+}
+
 fn main() {
   println("LLM module loaded")
-  // NOTE: All LLM functions (ask, classify, summarize) require a live LLM
-  // backend with API credentials. Cannot be tested without network/API access.
-  // The module compiles and loads correctly; functional tests require
-  // integration test infrastructure with mock LLM responses.
+  // Validation helper tests (no network needed)
+  let obj = "{\"name\": \"test\"}"
+  let arr = "[1, 2, 3]"
+  let plain = "hello world"
+  println("is_json_object_obj: " <> show(is_json_object(obj)))
+  println("is_json_object_arr: " <> show(is_json_object(arr)))
+  println("is_json_object_plain: " <> show(is_json_object(plain)))
+  println("is_json_array_arr: " <> show(is_json_array(arr)))
+  println("is_json_array_obj: " <> show(is_json_array(obj)))
+  println("has_field_name: " <> show(has_field(obj, "name")))
+  println("has_field_missing: " <> show(has_field(obj, "age")))
+  println("validate_ok: " <> show(validate_response(obj, "name")))
+  println("validate_missing_field: " <> show(validate_response(obj, "age")))
+  println("validate_not_obj: " <> show(validate_response(plain, "name")))
 }
