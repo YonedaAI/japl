@@ -71,6 +71,9 @@ enum Commands {
         /// Skip wasmCloud and serve locally instead
         #[arg(long)]
         local: bool,
+        /// Print the generated WADM manifest without deploying
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Show cluster node status
     Cluster {
@@ -183,8 +186,8 @@ fn main() {
             println!("Node ID: {}", node.node_id());
             println!("Peers: {:?}", node.connected_peers());
         }
-        Commands::Deploy { file, port, target, local } => {
-            deploy(&file, port, &target, local);
+        Commands::Deploy { file, port, target, local, dry_run } => {
+            deploy(&file, port, &target, local, dry_run);
         }
         Commands::Init { path } => {
             let dir = std::path::Path::new(&path).canonicalize().unwrap_or_else(|_| {
@@ -324,6 +327,9 @@ metadata:
   annotations:
     version: v0.1.0
     description: "JAPL application deployed via japl deploy"
+    japl.provider.required: "true"
+    japl.provider.type: "nats-sidecar"
+    japl.provider.startup: "cd japl-provider && cargo run"
 spec:
   components:
     - name: {app_name}
@@ -340,7 +346,7 @@ spec:
     )
 }
 
-fn deploy(file: &str, port: u16, _target: &str, local: bool) {
+fn deploy(file: &str, port: u16, _target: &str, local: bool, dry_run: bool) {
     eprintln!("[deploy] Compiling {}...", file);
 
     // Step 1: Compile JAPL to WASM component (always use component target for deploy)
@@ -354,6 +360,14 @@ fn deploy(file: &str, port: u16, _target: &str, local: bool) {
         }
     };
     eprintln!("[deploy] Compiled to {}", wasm_path);
+
+    // If --dry-run flag is set, print the manifest and exit
+    if dry_run {
+        let app_name = extract_app_name(file);
+        let manifest = generate_wadm_manifest(&app_name, &wasm_path);
+        println!("{}", manifest);
+        return;
+    }
 
     // If --local flag is set, skip wasmCloud and serve directly
     if local {
