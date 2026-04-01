@@ -29,9 +29,10 @@ japl:runtime/processes  <-link->  NATS subjects
 ```
 
 A compiled JAPL component imports `japl:runtime/processes` via the WIT
-component model. At deployment time, wasmCloud links the component to the
-`japl-provider` capability provider. The provider translates WIT function
-calls into NATS request/reply messages against a shared process table.
+component model. The `japl-provider` is a standalone NATS sidecar (not yet
+a native wasmCloud capability). It must be started separately and translates
+NATS request/reply messages against a shared process table. Converting it
+to use `wasmcloud-provider-sdk` is required for true wasmCloud-managed linking.
 
 ## Provider Details
 
@@ -142,7 +143,7 @@ The WADM manifest (`deploy/japl-provider.wadm.yaml`) declares:
 - Provider compiles and runs as a standalone NATS service.
 - Spawn, send, and blocking receive all function correctly (self-test passes).
 - WIT interfaces are defined and semantically match the provider API.
-- WADM manifests are ready for `wash app deploy`.
+- WADM component manifest can be deployed via `wash app deploy` (provider runs as separate sidecar).
 
 ## Current Blockers and Limitations
 
