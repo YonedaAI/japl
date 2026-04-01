@@ -1,0 +1,31 @@
+apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  name: japl-app
+  annotations:
+    version: v0.1.0
+    description: "JAPL app with process runtime provider"
+spec:
+  components:
+    - name: app
+      type: component
+      properties:
+        image: file:///tmp/japl_app.wasm
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
+        - type: link
+          properties:
+            target: japl-provider
+            namespace: japl
+            package: runtime
+            interfaces: [processes]
+    - name: japl-provider
+      type: capability
+      properties:
+        image: file:///tmp/japl_provider
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
