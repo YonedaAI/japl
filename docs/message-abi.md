@@ -139,76 +139,41 @@ exact size cannot be determined statically, a safe upper bound of
 - **Blocking receive** — a process calling `receive` blocks its OS thread
   until a message arrives or the scheduler initiates shutdown.
 
+## Protocol Contract
+
+Both local and deployed modes support the same logical operations:
+1. `spawn(entry) -> pid`: Create a new process, return its identifier
+2. `send(pid, msg)`: Deliver a message to a process mailbox
+3. `receive() -> msg`: Block until a message arrives, return it
+4. `self_pid() -> pid`: Return the caller's process identifier
+
 ## Deployed Mode (NATS Provider)
 
 When running on wasmCloud via the `japl-provider`, processes are managed by
 a NATS-backed process table instead of the local wasmtime scheduler.
 
-### Message format
+| Operation | NATS Subject | Request Body | Response Body |
+|-----------|-------------|-------------|--------------|
+| spawn | `japl.runtime.spawn` | `{"closure_data": [u8, ...]}` | `{"pid": <u64>}` |
+| send | `japl.runtime.send.<pid>` | `{"message": [u8, ...]}` | `"ok"` or `"err"` |
+| receive | `japl.runtime.receive.<pid>` | `{}` | `{"message": [u8, ...]}` |
+| self-pid | `japl.runtime.self-pid` | `{"pid": N}` | `{"pid": N}` |
 
-In deployed mode, all NATS payloads are **JSON-encoded** rather than the raw
-variant-struct bytes used in local mode.  The provider serializes/deserializes
-with `serde_json`.
+### Local vs Deployed Comparison
 
-| Operation | NATS Subject                  | Request Body                       | Response Body                |
-|-----------|-------------------------------|------------------------------------|------------------------------|
-| spawn     | `japl.runtime.spawn`          | `{"closure_data": [u8, ...]}`      | `{"pid": <u64>}`             |
-| send      | `japl.runtime.send.<pid>`     | `{"message": [u8, ...]}`           | `"ok"` or `"err"`            |
-| receive   | `japl.runtime.receive.<pid>`  | `{}`                               | `{"message": [u8, ...]}`     |
-| self-pid  | `japl.runtime.self-pid`       | (empty)                            | `{"pid": <u64>}`             |
-
-### Process identity
-
-PIDs are allocated by the provider's `ProcessTable.next_pid` counter
-(a simple `u64` incremented under a `tokio::sync::Mutex`).  PID `0` is
-reserved as an error/placeholder value.
-
-### Message delivery
-
-The provider uses NATS **request/reply** semantics via `async_nats`.
-A send operation publishes to `japl.runtime.send.<pid>`, and the provider
-replies with `"ok"` or `"err"`.  Receive blocks by awaiting a
-`tokio::sync::Notify` signal on the target process's mailbox.
-
-### Differences from local mode
-
-| Aspect             | Local Mode                           | Deployed Mode                         |
-|--------------------|--------------------------------------|---------------------------------------|
-| Message encoding   | Raw variant-struct bytes (binary)    | JSON-encoded byte arrays              |
-| Transport          | `mpsc` channels (in-process)         | NATS request/reply (networked)        |
-| Process table      | Scheduler `HashMap` + `mpsc`         | Provider `HashMap` + `Notify`         |
-| Mailbox cap        | 10,000 messages (configurable)       | Unbounded (provider Vec)              |
-| self-pid           | Returns caller's actual PID          | Returns placeholder `0` (no context)  |
-| Blocking receive   | Blocks OS thread on `mpsc::recv`     | Blocks async task on `Notify`         |
-| Pointer relocation | Not needed (shared linear memory)    | Not applicable (JSON payloads)        |
+| Aspect | Local Mode | Deployed Mode |
+|--------|-----------|--------------|
+| Message encoding | Raw variant-struct bytes | JSON-encoded byte arrays |
+| Transport | `mpsc` channels (in-process) | NATS request/reply |
+| Mailbox cap | 10,000 messages | 10,000 messages |
+| self-pid | Returns caller's actual PID | Echoes PID from request body |
+| Blocking receive | Blocks OS thread | Blocks async task on Notify |
 
 ## ABI Stability
 
-### Stable
+**Stable:** spawn, send, receive — fixed semantics, will not break.
 
-These operations have fixed semantics across both local and deployed modes.
-Their WIT signatures and behavior are committed and will not change in
-backwards-incompatible ways.
-
-- **`spawn`** — Create a new process.  Returns a non-zero PID on success.
-- **`send`** — Deliver a message to a process mailbox.  Returns success/failure.
-- **`receive`** — Block until a message arrives.  Returns raw message bytes.
-
-### Experimental
-
-These operations exist in both modes but have known limitations or semantics
-that may change.
-
-- **`self-pid`** — In deployed mode, NATS request/reply does not carry
-  caller context, so the provider returns `0`.  Semantics will change when
-  caller identity is threaded through the NATS subject or headers.
-- **`mailbox-size`** — Returns current mailbox depth.  Semantics are
-  well-defined locally but undefined when mailboxes span multiple provider
-  instances in a distributed deployment.
-- **`is-alive`** — Queries the process table.  Only reflects liveness within
-  a single provider instance; cross-provider liveness is not yet defined.
-- **`logging.println`** — Writes to stdout.  Output destination in deployed
-  mode (provider stderr, structured log, NATS subject) is not yet stable.
+**Experimental:** self-pid (context model may change), mailbox-size (cross-provider undefined), is-alive (single-provider only), logging (output destination unstable).
 
 ## Future: Typed Protocols
 
