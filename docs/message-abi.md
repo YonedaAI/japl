@@ -139,6 +139,36 @@ exact size cannot be determined statically, a safe upper bound of
 - **Blocking receive** — a process calling `receive` blocks its OS thread
   until a message arrives or the scheduler initiates shutdown.
 
+## Protocol Contract
+
+Both local and deployed modes must support the same logical operations:
+1. `spawn(entry) -> pid`: Create a new process, return its identifier
+2. `send(pid, msg)`: Deliver a message to a process mailbox
+3. `receive() -> msg`: Block until a message arrives, return it
+4. `self_pid() -> pid`: Return the caller's process identifier
+
+### Message Format
+
+**Local mode (`japl run`):**
+- Binary: `[tag:u32][field_count:u32][field_0:i64]...[field_n:i64]`
+- Shared linear memory, no serialization needed
+- Direct `mpsc` channel delivery
+- Bump-allocated into receiver's heap on `receive()`
+
+**Deployed mode (`japl deploy` + provider):**
+- JSON over NATS request/reply
+- `spawn`: publish to `japl.runtime.spawn` with `{"closure_data": [bytes]}`, reply `{"pid": N}`
+- `send`: publish to `japl.runtime.send.{pid}` with `{"message": [bytes]}`, reply `"ok"` or `"err"`
+- `receive`: request on `japl.runtime.receive.{pid}` with `{}`, reply `{"message": [bytes]}`
+- `self_pid`: request on `japl.runtime.self-pid`, reply `{"pid": N}`
+
+### Implications
+- Local mode is zero-copy (shared memory within a single WASM instance)
+- Deployed mode requires JSON serialization (future `Codec` module)
+- ADT variant tags are preserved in both modes (binary bytes are opaque to the provider)
+- String fields in messages may not survive cross-process boundaries (known limitation: pointer fields reference sender's linear memory and are not relocated)
+- Local mailbox backpressure caps at 10,000 messages; deployed mode has no cap yet
+
 ## Future: Typed Protocols
 
 - `Pid<T>` would encode the expected message type at the type level.
