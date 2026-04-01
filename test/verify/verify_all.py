@@ -189,26 +189,26 @@ if os.path.isdir(neg_dir):
 print("\n--- Strict Mode Checker Tests ---")
 strict_dir = os.path.join(JAPL_HOME, "test/checker-strict")
 if os.path.isdir(strict_dir):
-    # pid_arithmetic.japl: should pass in normal mode, warn in strict mode
+    # pid_arithmetic.japl: Pid in arithmetic is now a hard type error in all modes
     pid_arith = os.path.join(strict_dir, "pid_arithmetic.japl")
     if os.path.isfile(pid_arith):
-        # Normal mode: no errors
+        # Normal mode: should produce a type error (Pid + Int rejected)
         r = subprocess.run([JAPL, "check", pid_arith],
                            capture_output=True, text=True, timeout=10)
-        if r.returncode == 0:
-            print("  PASS pid_arithmetic (normal mode: no error)")
+        if r.returncode != 0 and "Pid" in r.stderr:
+            print("  PASS pid_arithmetic (normal mode: Pid arithmetic rejected)")
             PASS += 1
         else:
-            print(f"  FAIL pid_arithmetic (normal mode): unexpected error: {r.stderr.strip()}")
+            print(f"  FAIL pid_arithmetic (normal mode): expected type error for Pid arithmetic, got: {r.stderr.strip()}")
             FAIL += 1
-        # Strict mode: should emit Pid warning on stderr
+        # Strict mode: should also produce a type error
         r = subprocess.run([JAPL, "check", "--strict", pid_arith],
                            capture_output=True, text=True, timeout=10)
-        if "Pid" in r.stderr and "warning" in r.stderr.lower():
-            print("  PASS pid_arithmetic (strict mode: Pid warning emitted)")
+        if r.returncode != 0 and "Pid" in r.stderr:
+            print("  PASS pid_arithmetic (strict mode: Pid arithmetic rejected)")
             PASS += 1
         else:
-            print(f"  FAIL pid_arithmetic (strict mode): expected Pid warning, got: {r.stderr.strip()}")
+            print(f"  FAIL pid_arithmetic (strict mode): expected type error for Pid arithmetic, got: {r.stderr.strip()}")
             FAIL += 1
 
 print("\n--- Stdlib Completeness ---")
