@@ -1,40 +1,23 @@
 foreign "japl" fn time_sleep(ms: Int)
+foreign "japl" fn is_process_alive(pid: Int) -> Int
 
 // =========================================================================
 // Supervisor module — JAPL stdlib
 //
-// CURRENT STATUS: This module provides child-spawning and bookkeeping
-// utilities. It does NOT provide automatic restart, crash detection,
-// or process linking. Those features require runtime primitives
-// (monitor/link) that are not yet exposed to JAPL user code.
+// Provides child-spawning, bookkeeping, and polling-based restart via
+// check_and_restart. Uses is_process_alive to detect exited children.
 //
-// Supervision Contract (current capabilities and limitations):
+// Capabilities:
+//   - start_child(f): spawn a process, return pid
+//   - spawn_supervised(f): spawn with supervision intent
+//   - start_link(f, policy): spawn and return a SuperRecord (pid, policy, count)
+//   - check_and_restart(sr, f): poll-based restart — if child exited, respawn
 //
-//   - `start_child(f)` spawns a process and returns its pid. This is a
-//     simple spawn with no supervision metadata attached.
+// Strategies (OneForOne, AllForOne, RestForOne) are defined as types
+// for forward compatibility but not yet enforced.
 //
-//   - `supervise(f)` spawns a child process but CANNOT restart it on
-//     failure. The JAPL runtime does not yet expose monitor/link primitives,
-//     so there is no way to detect when a child process exits. The function
-//     exists to mark intent: "this child should be supervised."
-//
-//   - `start_link(f, policy)` creates a SuperRecord that pairs a child pid
-//     with a restart policy tag and a restart counter. However, it does NOT
-//     create a real link between the supervisor and the child. The record
-//     is purely bookkeeping — no automatic restart occurs on child exit.
-//
-//   - Strategies (OneForOne, AllForOne, RestForOne) are defined as types
-//     but NOT enforced. They exist for forward compatibility.
-//
-//   What needs to change for real supervision:
-//     1. Runtime must expose `monitor(pid) -> MonitorRef` so a supervisor
-//        can watch a child.
-//     2. Runtime must deliver `Exit(pid, reason)` messages to the monitor
-//        when a process terminates.
-//     3. Supervisor loop must handle Exit messages and apply the restart
-//        policy (permanent/transient/temporary) and strategy.
-//     4. Max restart intensity (e.g. 3 restarts in 5 seconds) should be
-//        configurable per supervisor to prevent restart storms.
+// For event-driven supervision, the runtime would need monitor/link
+// primitives and Exit message delivery.
 // =========================================================================
 
 // Supervisor strategies
@@ -61,12 +44,24 @@ pub fn start_child(child_fn: fn() -> Unit) -> Pid {
   spawn(child_fn)
 }
 
-// LIMITED: spawns only, no crash detection or restart
-// True supervision requires runtime monitor/link primitives
-// which are not yet exposed to JAPL user code.
+// Spawns a child process. Use check_and_restart to poll and restart if exited.
 pub fn spawn_supervised(child_fn: fn() -> Unit) -> Pid {
   let child = spawn(child_fn)
   child
+}
+
+// Restart a child if it has exited. Call periodically.
+pub fn check_and_restart(sr: SuperRecord, child_fn: fn() -> Unit) -> SuperRecord {
+  let pid = sr_pid(sr)
+  let alive = is_process_alive(pid)
+  if alive == 1 { sr }
+  else {
+    let new_pid = spawn(child_fn)
+    let new_sr = inc_restart(sr)
+    match new_sr {
+      SuperRec(_, pol, c) => SuperRec(new_pid, pol, c)
+    }
+  }
 }
 
 // Create a ChildSpec with the given pid and restart policy tag
@@ -128,5 +123,11 @@ fn main() {
   let sr2 = inc_restart(sr)
   let rc2 = restart_count(sr2)
   println("after inc_restart: " <> show(rc2))
+  // Test check_and_restart: child should still be alive
+  let sr3 = check_and_restart(sr, fn() {
+    println("restarted child")
+  })
+  let rc3 = restart_count(sr3)
+  println("check_and_restart_alive: " <> show(rc3))
   println("done")
 }

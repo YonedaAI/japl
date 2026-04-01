@@ -36,8 +36,8 @@ pub fn tool_result_value(r: ToolResult) -> String {
   match r { ToolOk(v) => v, ToolErr(e) => e }
 }
 
-// SIMULATED: builds a result string instead of invoking the tool
-pub fn execute_tool(spec: ToolSpec, args: String) -> ToolResult {
+// Real tool dispatch requires a tool backend (e.g., over NATS).
+pub fn simulate_execute(spec: ToolSpec, args: String) -> ToolResult {
   let name = tool_name(spec)
   let result = name <> "(" <> args <> ") => ok"
   ToolOk(result)
@@ -82,8 +82,8 @@ pub fn registry_size(r: ToolRegistry) -> Int {
   }
 }
 
-// SIMULATED: validates registry lookup then builds a result string — does not invoke the tool
-pub fn execute_validated(registry: ToolRegistry, tname: String, args: String) -> ToolResult {
+// Real tool dispatch requires a tool backend (e.g., over NATS).
+pub fn simulate_validated(registry: ToolRegistry, tname: String, args: String) -> ToolResult {
   let found = registry_find(registry, tname)
   match found {
     ToolOk(_) => {
@@ -111,7 +111,7 @@ fn main() {
   let err = ToolErr("timeout")
   let eok = is_tool_ok(err)
   println("err_ok: " <> show(eok))
-  let exec = execute_tool(spec, "test_args")
+  let exec = simulate_execute(spec, "test_args")
   let exec_ok = is_tool_ok(exec)
   println("exec_ok: " <> show(exec_ok))
   let exec_val = tool_result_value(exec)
@@ -137,12 +137,12 @@ fn main() {
   let not_found_ok = is_tool_ok(not_found)
   println("registry_find_missing: " <> show(not_found_ok))
   // Validated execution tests
-  let vexec = execute_validated(reg2, "search", "test")
+  let vexec = simulate_validated(reg2, "search", "test")
   let vexec_ok = is_tool_ok(vexec)
-  println("validated_exec_ok: " <> show(vexec_ok))
+  println("sim_validated_ok: " <> show(vexec_ok))
   let vexec_val = tool_result_value(vexec)
-  println("validated_exec_val: " <> vexec_val)
-  let vfail = execute_validated(reg2, "missing", "test")
+  println("sim_validated_val: " <> vexec_val)
+  let vfail = simulate_validated(reg2, "missing", "test")
   let vfail_ok = is_tool_ok(vfail)
-  println("validated_exec_missing: " <> show(vfail_ok))
+  println("sim_validated_missing: " <> show(vfail_ok))
 }

@@ -1,4 +1,3 @@
-// STATUS: compile-only — string-level TCP not yet implemented
 // Net module: TCP networking primitives.
 //
 // FFI STATUS: Partially functional (raw pointer level only).
@@ -44,8 +43,13 @@ pub fn disconnect(stream: Int) -> Int {
 }
 
 fn main() {
-  // NOTE: All Net functions require TCP socket FFI which needs the JAPL runtime
-  // and a live network stack. Cannot be unit-tested without a running server.
-  // This module is validated via compile-only test.
+  let handle = tcp_listen(19876)
+  println("listen_handle=" <> show(handle))
+  if handle >= 0 {
+    tcp_close(handle)
+    println("listen_closed=1")
+  } else {
+    println("listen_closed=0")
+  }
   println("Net module loaded")
 }
