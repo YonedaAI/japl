@@ -1,91 +1,141 @@
 #!/usr/bin/env python3
-"""JAPL Deployed Process Proof Test
+"""JAPL Deploy Functional Test
 
-Proves that process spawn/send/receive works through the wasmCloud + provider path.
+Exercises the FULL deployed process path:
+  1. Component compilation (--target component)
+  2. WADM manifest generation (--dry-run)
+  3. Provider self-test (spawn/send/receive over NATS)
+  4. Direct NATS process messaging verification
 
 Prerequisites:
-  - nats-server running (nats-server -js)
-  - wasmCloud host running (wash up --detached)
-  - japl-provider running (cd japl-provider && cargo run)
+  - nats-server running with JetStream: nats-server -js
+  - japl-provider running: cd japl-provider && cargo run --release
 
 Usage:
   python3 test/deploy/deploy_proof.py
 
 Returns exit code 0 on success, 1 on failure.
 """
-import subprocess, os, sys, time, json
+import subprocess, os, sys, json, time
 
 JAPL_HOME = os.path.join(os.path.dirname(__file__), "..", "..")
 JAPL = os.path.join(JAPL_HOME, "japl/target/release/japl")
+PASS = 0
+FAIL = 0
 
-def check_prerequisite(name, check_cmd):
-    """Check if a prerequisite is available."""
-    try:
-        r = subprocess.run(check_cmd, capture_output=True, timeout=5)
-        return r.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+def check(name, result, detail=""):
+    global PASS, FAIL
+    if result:
+        print(f"  PASS  {name}")
+        PASS += 1
+        return True
+    else:
+        msg = f"  FAIL  {name}"
+        if detail:
+            msg += f": {detail}"
+        print(msg)
+        FAIL += 1
         return False
 
+def nats_request(subject, payload="", timeout=5):
+    """Send a NATS request/reply and return the response."""
+    try:
+        cmd = ["nats", "request", subject, payload, "--timeout", f"{timeout}s"]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout+2)
+        if r.returncode == 0:
+            # nats cli prints response after header lines
+            lines = r.stdout.strip().split('\n')
+            # Find the actual response body (last non-empty line)
+            for line in reversed(lines):
+                line = line.strip()
+                if line:
+                    return line
+        return None
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
 def main():
-    print("=== JAPL Deployed Process Proof Test ===\n")
+    global PASS, FAIL
+    print("=== JAPL Deploy Functional Test ===\n")
 
     # Check prerequisites
-    prereqs = {
-        "wash CLI": ["wash", "--version"],
-        "NATS": ["nats", "server", "check"],  # or just check port
-    }
+    has_nats_cli = subprocess.run(["nats", "--version"], capture_output=True).returncode == 0 \
+        if os.popen("which nats").read().strip() else False
 
-    all_ok = True
-    for name, cmd in prereqs.items():
-        if check_prerequisite(name, cmd):
-            print(f"  OK  {name}")
-        else:
-            print(f"  MISSING  {name}")
-            all_ok = False
-
-    if not all_ok:
-        print("\nPrerequisites not met. Install missing components.")
-        print("See: docs/release-process.md")
-        sys.exit(1)
-
-    # Step 1: Compile as component
+    # 1. Component compilation
+    print("--- Component Build ---")
     app = os.path.join(JAPL_HOME, "apps/distributed/hello_distributed.japl")
-    print("\n1. Compiling as component...")
     r = subprocess.run([JAPL, "build", app, "--target", "component", "--out", "/tmp"],
                        capture_output=True, text=True)
-    if r.returncode != 0:
-        print(f"   FAIL: {r.stderr.strip()}")
-        sys.exit(1)
-    print("   OK: component built")
+    check("component compilation", r.returncode == 0,
+          r.stderr.strip() if r.returncode != 0 else "")
 
-    # Step 2: Deploy via wash
-    print("2. Deploying via wash app deploy...")
-    # Use dry-run to generate manifest, then deploy
-    manifest_r = subprocess.run([JAPL, "deploy", "--dry-run", app],
-                                capture_output=True, text=True)
-    if manifest_r.returncode == 0 and manifest_r.stdout.strip():
-        manifest_path = "/tmp/japl_deploy_proof.wadm.yaml"
-        with open(manifest_path, 'w') as f:
-            f.write(manifest_r.stdout)
-        print(f"   OK: manifest written to {manifest_path}")
+    # 2. Manifest generation
+    print("\n--- Manifest Generation ---")
+    r = subprocess.run([JAPL, "deploy", "--dry-run", app],
+                       capture_output=True, text=True)
+    has_manifest = r.returncode == 0 and "apiVersion" in r.stdout
+    check("WADM manifest (--dry-run)", has_manifest)
+
+    # 3. Provider health check via NATS
+    print("\n--- Provider Functional Tests ---")
+    if not has_nats_cli:
+        print("  SKIP nats CLI not found — install with: brew install nats-io/nats-tools/nats")
+        print("  (provider tests require nats CLI for request/reply)")
     else:
-        print("   OK: dry-run verified manifest generation")
+        # Health check
+        health = nats_request("japl.runtime.health", "{}")
+        if health:
+            try:
+                h = json.loads(health)
+                check("provider health", h.get("status") == "ok",
+                      f"got: {health}")
+            except json.JSONDecodeError:
+                check("provider health", False, f"invalid JSON: {health}")
+        else:
+            check("provider health", False, "no response (is japl-provider running?)")
 
-    # Step 3: Verify provider is responsive (check health endpoint)
-    print("3. Checking provider health...")
-    # This would check japl.runtime.health via NATS
-    # For now, verify the provider binary exists
-    provider_path = os.path.join(JAPL_HOME, "japl-provider/target/debug/japl-provider")
-    if os.path.exists(provider_path):
-        print("   OK: provider binary exists")
+        # Spawn a process
+        spawn_resp = nats_request("japl.runtime.spawn", '{"closure_data":[]}')
+        spawned_pid = None
+        if spawn_resp:
+            try:
+                s = json.loads(spawn_resp)
+                spawned_pid = s.get("pid")
+                check("spawn process", spawned_pid is not None and spawned_pid > 0,
+                      f"got pid={spawned_pid}")
+            except json.JSONDecodeError:
+                check("spawn process", False, f"invalid JSON: {spawn_resp}")
+        else:
+            check("spawn process", False, "no response")
+
+        # Send a message to the spawned process
+        if spawned_pid:
+            send_resp = nats_request(f"japl.runtime.send.{spawned_pid}",
+                                     '{"message":[72,101,108,108,111]}')
+            check("send message", send_resp is not None and "ok" in str(send_resp).lower(),
+                  f"got: {send_resp}")
+
+            # Receive the message back
+            recv_resp = nats_request(f"japl.runtime.receive.{spawned_pid}", "{}", timeout=3)
+            if recv_resp:
+                try:
+                    rv = json.loads(recv_resp)
+                    msg_bytes = rv.get("message", [])
+                    check("receive message", len(msg_bytes) > 0,
+                          f"got {len(msg_bytes)} bytes")
+                except json.JSONDecodeError:
+                    check("receive message", "message" in recv_resp, f"got: {recv_resp}")
+            else:
+                check("receive message", False, "timeout (expected — message already delivered)")
+
+    # Summary
+    print(f"\n=== Results: {PASS} pass, {FAIL} fail ===")
+    if FAIL == 0:
+        print("DEPLOY FUNCTIONAL TEST: PASS")
     else:
-        print("   WARN: provider not built (cd japl-provider && cargo build)")
-
-    print("\n=== Proof Test Complete ===")
-    print("Component compilation: PASS")
-    print("Manifest generation: PASS")
-    print("Provider availability: CHECKED")
-    sys.exit(0)
+        print("DEPLOY FUNCTIONAL TEST: FAIL")
+    sys.exit(0 if FAIL == 0 else 1)
 
 if __name__ == "__main__":
     main()

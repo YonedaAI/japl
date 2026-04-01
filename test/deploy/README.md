@@ -1,28 +1,26 @@
-# JAPL Deployed Process Proof Test
+# JAPL Deploy Functional Test
 
-Proves that JAPL process spawn/send/receive works through the full wasmCloud + provider deployment path, not just component compilation.
+Exercises the FULL deployed process path over NATS:
+
+1. **Component compilation** — builds JAPL app as WASM component
+2. **WADM manifest generation** — produces deployment manifest via `--dry-run`
+3. **Provider health** — verifies japl-provider is running and responsive
+4. **Process spawn** — spawns a new process through provider via NATS
+5. **Message send** — sends a message to the spawned process mailbox
+6. **Message receive** — receives the message back from the mailbox
 
 ## Prerequisites
 
-1. **NATS server** with JetStream enabled:
-   ```bash
-   nats-server -js
-   ```
+```bash
+# 1. Start NATS with JetStream
+nats-server -js
 
-2. **wasmCloud host** running:
-   ```bash
-   wash up --detached
-   ```
+# 2. Build and start the JAPL provider
+cd japl-provider && cargo run --release
 
-3. **JAPL provider** running:
-   ```bash
-   cd japl-provider && cargo run
-   ```
-
-4. **JAPL CLI** built:
-   ```bash
-   cd japl && cargo build --release
-   ```
+# 3. Build the JAPL compiler
+cd japl && cargo build --release
+```
 
 ## Usage
 
@@ -30,14 +28,8 @@ Proves that JAPL process spawn/send/receive works through the full wasmCloud + p
 python3 test/deploy/deploy_proof.py
 ```
 
-Returns exit code 0 on success, 1 on failure.
+## Integration with verify_all.py
 
-## What It Tests
-
-1. **Component compilation** -- builds `hello_distributed.japl` as a WASM component
-2. **Manifest generation** -- runs `japl deploy --dry-run` to produce a WADM manifest
-3. **Provider availability** -- checks the japl-provider binary exists
-
-## Relationship to verify_all.py
-
-`verify_all.py` already tests component compilation and local process execution. This script goes further by exercising the deployed path: manifest generation via `japl deploy --dry-run` and provider readiness checks. It requires external infrastructure (NATS, wasmCloud) and is therefore run separately from the main verification suite.
+The functional deploy test is called automatically by `verify_all.py`.
+- In dev mode: SKIP if NATS/provider not running
+- In release mode (`--release`): FAIL if NATS/provider not running
