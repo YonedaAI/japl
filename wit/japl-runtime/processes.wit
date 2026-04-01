@@ -1,6 +1,12 @@
 /// Process lifecycle and messaging interface for the JAPL actor runtime.
 ///
-/// This interface is implemented by two backends:
+/// STATUS: This WIT describes the TARGET interface contract. The current
+/// compiler (emit_wat.rs) and provider (japl-provider) still use their
+/// own raw ABIs (i32/i64 host functions and NATS JSON respectively).
+/// This WIT will become the binding contract when the provider is
+/// converted to use wasmcloud-provider-sdk with wRPC.
+///
+/// Backends:
 ///   - Local mode: wasmtime-based scheduler with mpsc channels
 ///   - Deployed mode: NATS-backed provider (japl-provider)
 ///
