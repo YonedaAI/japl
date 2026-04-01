@@ -313,6 +313,7 @@ fn register_host_functions(linker: &mut Linker<()>) -> wasmtime::Result<()> {
         std::thread::sleep(std::time::Duration::from_millis(millis as u64));
     })?;
     linker.func_wrap("japl", "env_get", |_: i32, _: i32| -> (i32, i32) { (0, 0) })?;
+    linker.func_wrap("japl", "env_get_str", |_: i32| -> i32 { 0 })?;
     linker.func_wrap("japl", "env_args_count", || -> i32 { 0 })?;
     linker.func_wrap("japl", "crypto_sha256", |_: i32, _: i32, _: i32| {})?;
     linker.func_wrap("japl", "crypto_random", |_: i32, _: i32| {})?;

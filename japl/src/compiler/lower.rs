@@ -28,6 +28,7 @@ fn runtime_signature(module: &str, name: &str) -> Option<(Vec<WasmType>, Vec<Was
         "tcp_write"      => Some((vec![I64, I32, I32], vec![I32])),
         "tcp_close"      => Some((vec![I64], vec![])),
         "env_get"        => Some((vec![I32, I32], vec![I32, I32])),
+        "env_get_str"    => Some((vec![I32], vec![I32])),
         "env_args_count" => Some((vec![], vec![I32])),
         "crypto_sha256"  => Some((vec![I32, I32, I32], vec![])),
         "crypto_random"  => Some((vec![I32, I32], vec![])),

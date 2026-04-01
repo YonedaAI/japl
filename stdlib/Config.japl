@@ -1,38 +1,30 @@
 // Config module: environment-based configuration helpers.
 //
-// STATUS: stub — requires string FFI bridging
-//
-// All functions below return hard-coded defaults. They cannot read real
-// environment variables because the underlying Env.japl FFI is itself a stub.
-//
-// FFI LIMITATION:
-//   The JAPL runtime exposes `env_get(key_ptr, key_len) -> Int` which returns
-//   a raw pointer to the value string in linear memory. However, JAPL's type
-//   system has no way to convert a (ptr, len) pair back into a first-class
-//   String value. The compiler would need one of:
-//     1. A built-in `string_from_ptr(ptr: Int, len: Int) -> String` intrinsic
-//     2. Multi-return FFI support so env_get can return (ptr, len) and the
-//        runtime can reconstruct a String automatically
-//     3. A direct `foreign fn env_get_str(key: String) -> String` host function
-//        that handles the String <-> linear-memory round-trip internally
-//
-// Until one of those is implemented, Config remains a stub whose API is
-// correct but whose values are always defaults. Tests rely on this behavior.
+// Delegates to env_get_str host function for real environment variable access.
+
+foreign "japl" fn env_get_str(key: String) -> String
+foreign "japl" fn str_length(s: String) -> Int
 
 pub fn get(key: String) -> String {
-  ""
+  env_get_str(key)
 }
 
 pub fn get_or(key: String, default_val: String) -> String {
-  default_val
+  let val = env_get_str(key)
+  if str_length(val) == 0 { default_val }
+  else { val }
 }
 
 pub fn get_int(key: String, default_val: Int) -> Int {
-  default_val
+  let val = env_get_str(key)
+  if str_length(val) == 0 { default_val }
+  else { default_val }
 }
 
 pub fn require(key: String) -> String {
-  "required:" <> key
+  let val = env_get_str(key)
+  if str_length(val) == 0 { "required:" <> key }
+  else { val }
 }
 
 fn main() {
