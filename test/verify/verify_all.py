@@ -101,9 +101,9 @@ run_test("stdlib/List", "stdlib/List.japl", ["length: 3", "sum: 6", "Contains 2:
 run_test("stdlib/Json", "stdlib/Json.japl", ["Int:  42", "Bool: true", "Null: null"])
 run_test("stdlib/Http", "stdlib/Http.japl", ["Method: GET", "Method: POST", "Status: 200 OK", "Status: 404 Not Found", "request=GET /api/users HTTP/1.1", "content_type=Content-Type: text/html", "header=X-Custom: value"])
 run_test("stdlib/Process", "stdlib/Process.japl", ["Process module loaded", "own mailbox: 0", "alive: ", "worker alive: ", "done"], use_runtime=True, retries=3)
-run_test("stdlib/Supervisor", "stdlib/Supervisor.japl", ["Supervisor module loaded", "child_spec ok", "restart_count: 0", "after inc_restart: 1", "done"], use_runtime=True, retries=3)
+run_test("stdlib/Supervisor", "stdlib/Supervisor.japl", ["Supervisor module loaded", "child_spec ok", "restart_count: 0", "after inc_restart: 1", "check_and_restart_alive: 0", "done"], use_runtime=True, retries=3)
 run_test("stdlib/Registry", "stdlib/Registry.japl", ["Registry module loaded", "Registry size: 3", "Lookup 1: 100", "After overwrite, Lookup 2: 999", "After overwrite, size: 3", "reg_count: 3", "After update 1: 150", "done"])
-compile_only_test("stdlib/Net", "stdlib/Net.japl")
+run_test("stdlib/Net", "stdlib/Net.japl", ["listen_handle=", "listen_closed=1", "Net module loaded"], use_runtime=True)
 run_test("stdlib/Map", "stdlib/Map.japl", ["Map size: 3", "Get 1: 100", "Get 2: 200", "Contains 2: 1", "Contains 5: 0", "StrMap size: 3", "StrMap get alice: 42", "StrMap get bob: 99", "StrMap get unknown: -1", "StrMap contains bob: 1", "StrMap contains dave: 0", "StrMap after remove bob, size: 2", "StrMap after remove bob, contains bob: 0"])
 run_test("stdlib/Set", "stdlib/Set.japl", ["Set size: 3", "Contains 1: 1", "Contains 2: 1", "Contains 5: 0", "Union size: 4", "StrSet size: 3", "StrSet contains apple: 1", "StrSet contains banana: 1", "StrSet contains grape: 0", "StrSet after remove banana, size: 2", "StrSet after remove banana, contains banana: 0"])
 run_test("stdlib/Test", "stdlib/Test.japl", ["PASS", "FAIL"])
@@ -118,7 +118,7 @@ run_test("stdlib/Log", "stdlib/Log.japl", ["[DEBUG] debug message", "[INFO] info
 run_test("stdlib/Config", "stdlib/Config.japl", ["get_or=8080", "get_int=4", "require=required:APP_NAME", "Config module loaded"], use_runtime=True)
 run_test("stdlib/LLM", "stdlib/LLM.japl", ["LLM module loaded", "is_json_object_obj: 1", "is_json_object_arr: 0", "is_json_object_plain: 0", "is_json_array_arr: 1", "is_json_array_obj: 0", "has_field_name: 1", "has_field_missing: 0", "validate_ok: 1", "validate_missing_field: 0", "validate_not_obj: 0"], use_runtime=True)
 run_test("stdlib/Core", "stdlib/Core.japl", ["identity(42)=42", "const_(10,20)=10", "pipe(5,*3)=15", "apply(+1,9)=10", "Core module loaded"])
-run_test("stdlib/Tool", "stdlib/Tool.japl", ["tool_name: search", "tool_desc: Search the web", "call_ok: 1", "call_result: search({\"query\": \"hello\"})", "err_ok: 0", "exec_ok: 1", "exec_result: search(test_args) => ok", "tool_error_ok: 0", "tool_error_val: search: not found", "registry_size_empty: 0", "registry_size: 2", "registry_find_ok: 1", "registry_find_missing: 0", "validated_exec_ok: 1", "validated_exec_val: search(test) => ok", "validated_exec_missing: 0"])
+run_test("stdlib/Tool", "stdlib/Tool.japl", ["tool_name: search", "tool_desc: Search the web", "call_ok: 1", "call_result: search({\"query\": \"hello\"})", "err_ok: 0", "exec_ok: 1", "exec_result: search(test_args) => ok", "tool_error_ok: 0", "tool_error_val: search: not found", "registry_size_empty: 0", "registry_size: 2", "registry_find_ok: 1", "registry_find_missing: 0", "sim_validated_ok: 1", "sim_validated_val: search(test) => ok", "sim_validated_missing: 0"])
 run_test("stdlib/Budget", "stdlib/Budget.japl", ["remaining: 100", "max: 100", "after_spend: 70", "exhausted: 0", "check_50: 1", "exhausted_after: 1", "try_spend_ok: 70", "try_spend_fail: 70", "status_full: ok", "status_low: low", "status_exhausted: exhausted"])
 run_test("stdlib/Replay", "stdlib/Replay.japl", ["empty_size: 0", "empty_latest: -1", "size: 3", "latest: 3", "event_size: 3", "latest_action: spawn", "empty_action: none"])
 run_test("stdlib/Provenance", "stdlib/Provenance.japl", ["human: human", "model: model:claude", "tool: tool:search", "composed: human+model:claude", "hash: abc123", "timestamp: 1000", "llm_source: model:gpt4", "llm_ts: 2000", "tool_source: tool:bash", "tool_ts: 3000"])
@@ -272,7 +272,7 @@ component_pass = True  # component compilation passed (already ran above)
 
 # Check critical modules use run_test (not compile_only_test)
 critical = ["Config", "Env", "File", "Process", "Supervisor"]
-compile_only_modules = {"Net"}  # modules known to use compile_only_test
+compile_only_modules = set()  # all modules now have run_test coverage
 critical_compile_only = [m for m in critical if m in compile_only_modules]
 all_critical_covered = len(critical_compile_only) == 0
 

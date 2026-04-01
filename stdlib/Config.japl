@@ -4,6 +4,7 @@
 
 foreign "japl" fn env_get_str(key: String) -> String
 foreign "japl" fn str_length(s: String) -> Int
+foreign "japl" fn str_parse_int(s: String) -> Int
 
 pub fn get(key: String) -> String {
   env_get_str(key)
@@ -15,11 +16,10 @@ pub fn get_or(key: String, default_val: String) -> String {
   else { val }
 }
 
-// STUB: always returns default — JAPL has no parse_int for env values
 pub fn get_int(key: String, default_val: Int) -> Int {
   let val = env_get_str(key)
   if str_length(val) == 0 { default_val }
-  else { default_val }
+  else { str_parse_int(val) }
 }
 
 pub fn require(key: String) -> String {
