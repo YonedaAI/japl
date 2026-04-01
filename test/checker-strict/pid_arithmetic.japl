@@ -1,0 +1,7 @@
+// Strict-mode test: Pid used in arithmetic should produce a warning.
+// Normal mode: passes without warnings.
+// Strict mode: warns "Pid used in arithmetic expression"
+fn main() {
+  let pid = spawn(fn() { println("hi") })
+  let x = pid + 1
+}

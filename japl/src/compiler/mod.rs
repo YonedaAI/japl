@@ -422,7 +422,8 @@ fn rewrite_expr_qualified(expr: &mut ast::Expr, module_names: &HashSet<String>) 
 }
 
 /// Type-check a .japl file.
-pub fn check(path: &str) -> Result<(), String> {
+/// When `strict` is true, Pid/Int implicit conversions emit warnings.
+pub fn check(path: &str, strict: bool) -> Result<(), String> {
     let input_path = PathBuf::from(path);
 
     let mut program = parse_file(&input_path)?;
@@ -438,7 +439,7 @@ pub fn check(path: &str) -> Result<(), String> {
         // Continue type checking even with import errors, but report them
     }
 
-    let errors = checker::check_program(&program, true);
+    let errors = checker::check_program(&program, strict);
     if errors.is_empty() {
         eprintln!("No errors found.");
         Ok(())

@@ -86,11 +86,20 @@ fn substitute_type_params(ty: &Type, subst: &HashMap<String, Type>) -> Type {
 
 /// Check if two types are compatible, treating Pid and Int as interchangeable
 /// (Pid is represented as Int at runtime).
+/// Future: this Pid/Int bridge will become a hard error.
 fn types_compatible(a: &Type, b: &Type) -> bool {
     if a == b {
         return true;
     }
     matches!(
+        (a, b),
+        (Type::Pid, Type::Int) | (Type::Int, Type::Pid)
+    )
+}
+
+/// Returns true if the compatibility was due to the Pid/Int bridge.
+fn is_pid_int_compat(a: &Type, b: &Type) -> bool {
+    a != b && matches!(
         (a, b),
         (Type::Pid, Type::Int) | (Type::Int, Type::Pid)
     )
@@ -125,6 +134,17 @@ impl Checker {
             current_fn: None,
             const_names: HashMap::new(),
             foreign_fns: HashMap::new(),
+        }
+    }
+
+    /// Emit a deprecation warning when Pid/Int implicit conversion is used.
+    /// Only triggers in strict mode to avoid breaking existing code.
+    fn warn_pid_int_compat(&mut self, context: &str, a: &Type, b: &Type) {
+        if self.strict && is_pid_int_compat(a, b) {
+            self.warnings.push(format!(
+                "warning: implicit Pid/Int conversion in {}: {} used where {} expected (will become an error in a future release)",
+                context, a, b
+            ));
         }
     }
 
@@ -374,6 +394,11 @@ impl Checker {
                                                     i + 1, name, expected, actual
                                                 ));
                                             }
+                                        } else {
+                                            self.warn_pid_int_compat(
+                                                &format!("argument {} of '{}'", i + 1, name),
+                                                actual, expected
+                                            );
                                         }
                                     }
                                 }
@@ -426,9 +451,17 @@ impl Checker {
                     ast::BinOp::Add | ast::BinOp::Sub | ast::BinOp::Mul | ast::BinOp::Div | ast::BinOp::Mod => {
                         if lt != Type::Var(0) && lt != Type::Int && lt != Type::Pid && !matches!(lt, Type::TypeParam(_)) {
                             self.errors.push(format!("type error: arithmetic expects Int, got {}", lt));
+                        } else if self.strict && lt == Type::Pid {
+                            self.warnings.push(format!(
+                                "warning: Pid used in arithmetic expression; use explicit Int conversion (will become an error in a future release)"
+                            ));
                         }
                         if rt != Type::Var(0) && rt != Type::Int && rt != Type::Pid && !matches!(rt, Type::TypeParam(_)) {
                             self.errors.push(format!("type error: arithmetic expects Int, got {}", rt));
+                        } else if self.strict && rt == Type::Pid {
+                            self.warnings.push(format!(
+                                "warning: Pid used in arithmetic expression; use explicit Int conversion (will become an error in a future release)"
+                            ));
                         }
                         Type::Int
                     }
@@ -505,6 +538,11 @@ impl Checker {
                             let actual = self.infer_expr(e);
                             if actual != Type::Var(0) && expected != actual && !matches!(actual, Type::TypeParam(_)) && !types_compatible(&expected, &actual) {
                                 self.errors.push(format!("type error: expected {}, got {}", expected, actual));
+                            } else {
+                                self.warn_pid_int_compat(
+                                    &format!("let binding '{}'", name),
+                                    &actual, &expected
+                                );
                             }
                             self.env.insert(name.clone(), expected);
                         }
@@ -599,6 +637,8 @@ impl Checker {
                                 "type error: pipe argument has type {}, but function expects {}",
                                 lt, expected
                             ));
+                        } else {
+                            self.warn_pid_int_compat("pipe expression", &lt, expected);
                         }
                         *ret.clone()
                     } else {
@@ -776,6 +816,11 @@ pub fn check_program(program: &ast::Program, strict: bool) -> Vec<String> {
                         "type error in fn {}: declared return type {} but body has type {}",
                         fd.name, expected, body_ty
                     ));
+                } else {
+                    checker.warn_pid_int_compat(
+                        &format!("return type of fn {}", fd.name),
+                        &body_ty, &expected
+                    );
                 }
             }
 

@@ -52,6 +52,9 @@ enum Commands {
     /// Type-check a .japl file
     Check {
         file: String,
+        /// Enable strict mode: warns on Pid/Int implicit conversions
+        #[arg(long)]
+        strict: bool,
     },
     /// Format a .japl file
     Fmt {
@@ -154,8 +157,8 @@ fn main() {
                 }
             }
         }
-        Commands::Check { file } => {
-            match compiler::check(&file) {
+        Commands::Check { file, strict } => {
+            match compiler::check(&file, strict) {
                 Ok(()) => {}
                 Err(_) => {
                     // Errors already printed by check()

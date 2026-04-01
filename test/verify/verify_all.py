@@ -186,6 +186,31 @@ if os.path.isdir(neg_dir):
     else:
         print(f"  {neg_pass}/{neg_total} negative tests passed")
 
+print("\n--- Strict Mode Checker Tests ---")
+strict_dir = os.path.join(JAPL_HOME, "test/checker-strict")
+if os.path.isdir(strict_dir):
+    # pid_arithmetic.japl: should pass in normal mode, warn in strict mode
+    pid_arith = os.path.join(strict_dir, "pid_arithmetic.japl")
+    if os.path.isfile(pid_arith):
+        # Normal mode: no errors
+        r = subprocess.run([JAPL, "check", pid_arith],
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            print("  PASS pid_arithmetic (normal mode: no error)")
+            PASS += 1
+        else:
+            print(f"  FAIL pid_arithmetic (normal mode): unexpected error: {r.stderr.strip()}")
+            FAIL += 1
+        # Strict mode: should emit Pid warning on stderr
+        r = subprocess.run([JAPL, "check", "--strict", pid_arith],
+                           capture_output=True, text=True, timeout=10)
+        if "Pid" in r.stderr and "warning" in r.stderr.lower():
+            print("  PASS pid_arithmetic (strict mode: Pid warning emitted)")
+            PASS += 1
+        else:
+            print(f"  FAIL pid_arithmetic (strict mode): expected Pid warning, got: {r.stderr.strip()}")
+            FAIL += 1
+
 print("\n--- Stdlib Completeness ---")
 import glob
 stdlib_files = set(
