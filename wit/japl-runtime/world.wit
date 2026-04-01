@@ -1,20 +1,15 @@
 package japl:runtime@0.1.0;
 
-interface processes {
-    /// Spawn a new process. Returns the process ID.
-    spawn: func(closure-data: list<u8>) -> u64;
-
-    /// Send a message to a process.
-    send: func(pid: u64, message: list<u8>);
-
-    /// Receive a message (blocks until one arrives).
-    receive: func() -> list<u8>;
-
-    /// Get the current process ID.
-    self-pid: func() -> u64;
-}
+/// Process interface is defined in processes.wit.
+/// It provides: spawn, send, receive, self-pid, mailbox-size, is-alive.
 
 interface logging {
     /// Print a line to stdout.
+    /// Stability: EXPERIMENTAL
     println: func(message: string);
+}
+
+world runtime {
+    import processes;
+    import logging;
 }

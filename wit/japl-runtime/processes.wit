@@ -1,0 +1,39 @@
+/// Process lifecycle and messaging interface for the JAPL actor runtime.
+///
+/// This interface is implemented by two backends:
+///   - Local mode: wasmtime-based scheduler with mpsc channels
+///   - Deployed mode: NATS-backed provider (japl-provider)
+///
+/// Stability annotations are listed per-function.
+
+interface processes {
+    /// Spawn a new process from an entry-point name or closure data.
+    /// Returns the allocated PID (>0 on success, 0 on failure).
+    /// Stability: STABLE
+    spawn: func(entry: string) -> u64;
+
+    /// Send a message to a process mailbox.
+    /// Returns true if the target process exists and accepted the message.
+    /// Stability: STABLE
+    send: func(pid: u64, msg: list<u8>) -> bool;
+
+    /// Block until a message is available in the caller's mailbox.
+    /// Returns the raw message bytes.
+    /// Stability: STABLE
+    receive: func(pid: u64) -> list<u8>;
+
+    /// Return the PID of the calling process.
+    /// Stability: EXPERIMENTAL — deployed mode currently returns a
+    /// placeholder (0) because NATS request/reply lacks caller context.
+    self-pid: func() -> u64;
+
+    /// Return the number of pending messages in a process's mailbox.
+    /// Stability: EXPERIMENTAL — semantics may change when distributed
+    /// mailboxes span multiple provider instances.
+    mailbox-size: func(pid: u64) -> u64;
+
+    /// Check if a process is alive (has an entry in the process table).
+    /// Stability: EXPERIMENTAL — liveness detection across provider
+    /// instances is not yet defined.
+    is-alive: func(pid: u64) -> bool;
+}
