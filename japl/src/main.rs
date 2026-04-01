@@ -30,6 +30,12 @@ enum Commands {
     /// Compile and run a .japl file locally (dev mode)
     Run {
         file: String,
+        /// Run distributed: route spawn/send/receive through NATS provider
+        #[arg(long)]
+        distributed: bool,
+        /// NATS server URL for distributed mode
+        #[arg(long, default_value = "nats://localhost:4222")]
+        nats_url: String,
         /// Distribution node name (enables clustering)
         #[arg(long)]
         node_name: Option<String>,
@@ -109,33 +115,45 @@ fn main() {
                 }
             }
         }
-        Commands::Run { file, node_name, listen_port, peer, cookie } => {
+        Commands::Run { file, distributed, nats_url, node_name, listen_port, peer, cookie } => {
             // Compile to temp directory, then run
             let tmp_dir = std::env::temp_dir().join("japl_build");
             let tmp_str = tmp_dir.display().to_string();
             match compiler::compile(&file, &tmp_str) {
                 Ok(wasm_path) => {
-                    // If any distribution flag is set, create and start DistributionNode
-                    let _dist_node = if node_name.is_some() || peer.is_some() {
-                        let host = "127.0.0.1";
-                        let node = runtime::distribution::DistributionNode::new(
-                            host, listen_port, node_name.as_deref(), cookie.as_deref(),
-                        );
-                        if let Err(e) = node.listen() {
-                            eprintln!("dist listen error: {}", e);
+                    if distributed {
+                        // Distributed mode: process operations go through NATS provider
+                        eprintln!("[run] Distributed mode: connecting to NATS at {}", nats_url);
+                        if let Err(e) = runtime::run_distributed(&wasm_path, &nats_url) {
+                            eprintln!("Distributed runtime error: {}", e);
+                            std::process::exit(1);
                         }
-                        if let Some(peer_addr) = &peer {
-                            if let Err(e) = node.connect_to(peer_addr) {
-                                eprintln!("dist connect error: {}", e);
-                            }
-                        }
-                        Some(node)
                     } else {
-                        None
-                    };
-                    if let Err(e) = runtime::run(&wasm_path) {
-                        eprintln!("Runtime error: {}", e);
-                        std::process::exit(1);
+                        // Local mode: embedded scheduler with OS threads
+                        // If any distribution flag is set, create and start DistributionNode
+                        let _dist_node = if node_name.is_some() || peer.is_some() {
+                            let host = "127.0.0.1";
+                            let node = runtime::distribution::DistributionNode::new(
+                                host, listen_port, node_name.as_deref(), cookie.as_deref(),
+                            );
+                            if let Err(e) = node.listen() {
+                                eprintln!("dist listen error: {}", e);
+                            }
+                            if let Some(peer_addr) = &peer {
+                                if let Err(e) = node.connect_to(peer_addr) {
+                                    eprintln!("dist connect error: {}", e);
+                                }
+                            }
+                            Some(node)
+                        } else {
+                            None
+                        };
+                    }
+                    if !distributed {
+                        if let Err(e) = runtime::run(&wasm_path) {
+                            eprintln!("Runtime error: {}", e);
+                            std::process::exit(1);
+                        }
                     }
                 }
                 Err(e) => {

@@ -314,7 +314,11 @@ if os.path.exists(deploy_proof):
         else:
             print(f"  SKIP deploy:functional (infrastructure not running)")
 else:
-    print("  SKIP deploy:functional (test/deploy/deploy_proof.py not found)")
+    if RELEASE_MODE:
+        print("  FAIL deploy:functional (test/deploy/deploy_proof.py not found)")
+        FAIL += 1
+    else:
+        print("  SKIP deploy:functional (test/deploy/deploy_proof.py not found)")
 
 print("\n" + "="*60)
 print("  RELEASE READINESS REPORT")
