@@ -1,3 +1,26 @@
+// =========================================================================
+// Codec module — JAPL stdlib
+//
+// Message Encoding Model:
+//   - At the runtime level, messages between processes are passed as raw
+//     tagged values (the runtime's internal Value representation). There is
+//     no serialization boundary within a single VM instance.
+//   - Codec provides typed encode/decode functions that wrap values in the
+//     Encoded ADT. This gives a uniform representation for structured
+//     messages: integers, strings, pairs, and lists.
+//   - The intended usage pattern: all cross-process messages that carry
+//     structured data should go through Codec's encode/decode functions.
+//     This ensures type safety at both the send and receive sites — the
+//     sender encodes into Encoded, the receiver decodes and handles the
+//     DecodeNone case for type mismatches.
+//   - For distributed messaging (future): when messages cross VM or node
+//     boundaries, Codec's Encoded type will serve as the serialization
+//     format. encode -> bytes -> network -> bytes -> decode.
+//   - tag(e) returns a numeric discriminant (0=Int, 1=Str, 2=Pair,
+//     3=List, 4=Nil) useful for runtime dispatch without full pattern
+//     matching.
+// =========================================================================
+
 type Encoded = | IntVal(Int) | StrVal(String) | PairVal(Encoded, Encoded) | ListVal(Encoded, Encoded) | NilVal
 
 type DecodeResult = | DecodeOk(Int) | DecodeNone
