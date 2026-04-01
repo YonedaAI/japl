@@ -1,0 +1,47 @@
+// JAPL Distributed Hello World
+// This app is designed to run through the wasmCloud deployment path.
+// When running locally (japl run): uses embedded runtime
+// When deployed (japl deploy): uses wasmCloud + JAPL provider
+
+type DistMsg = | Ping(Int, Pid) | Pong(Int)
+
+fn worker_handle(n: Int, reply: Pid) {
+  let _ = println("Worker received: " <> show(n))
+  let result = Pong(n * 2)
+  let _ = send(reply, result)
+  worker()
+}
+
+fn worker() {
+  receive {
+    Ping(n, reply) => worker_handle(n, reply)
+  }
+}
+
+fn main() {
+  let _ = println("Distributed Hello starting")
+
+  // Spawn workers (local: OS threads, deployed: via JAPL provider)
+  let w1 = spawn(fn() { worker() })
+  let w2 = spawn(fn() { worker() })
+
+  let _ = println("Spawned 2 workers")
+
+  let me = self()
+
+  // Send work
+  let task1 = Ping(10, me)
+  let _ = send(w1, task1)
+  let task2 = Ping(20, me)
+  let _ = send(w2, task2)
+
+  // Collect results
+  let _ = receive {
+    Pong(r1) => println("Result 1: " <> show(r1))
+  }
+  let _ = receive {
+    Pong(r2) => println("Result 2: " <> show(r2))
+  }
+
+  println("Distributed Hello complete")
+}
