@@ -290,9 +290,10 @@ fn ensure_wasmcloud() -> Result<(), String> {
             }
         }
         Err(e) => {
-            eprintln!("[deploy] wash not found ({}), skipping wasmCloud host", e);
-            eprintln!("[deploy] Install with: curl -s https://raw.githubusercontent.com/wasmCloud/wasmCloud/main/crates/wash-cli/install.sh | bash");
-            Ok(()) // Non-fatal: we can still serve directly
+            Err(format!(
+                "wash not found ({}). Install with: curl -s https://raw.githubusercontent.com/wasmCloud/wasmCloud/main/crates/wash-cli/install.sh | bash",
+                e
+            ))
         }
     }
 }
@@ -369,12 +370,21 @@ fn deploy(file: &str, port: u16, _target: &str, local: bool) {
 
     // Step 2: Start NATS if not running
     if let Err(e) = ensure_nats() {
-        eprintln!("[deploy] Warning: {}", e);
+        eprintln!("[deploy] ERROR: {}", e);
+        eprintln!("[deploy] NATS is required for wasmCloud deployment.");
+        eprintln!("[deploy] Install: brew install nats-server && nats-server -js");
+        eprintln!("[deploy] Or use --local: japl deploy --local {}", file);
+        std::process::exit(1);
     }
 
     // Step 3: Start wasmCloud host if not running
     if let Err(e) = ensure_wasmcloud() {
-        eprintln!("[deploy] Warning: {}", e);
+        eprintln!("[deploy] ERROR: {}", e);
+        eprintln!("[deploy] wasmCloud is required for deployment.");
+        eprintln!("[deploy] Install wash: curl -s https://raw.githubusercontent.com/wasmCloud/wasmCloud/main/crates/wash-cli/install.sh | bash");
+        eprintln!("[deploy] Start wasmCloud: wash up --detached");
+        eprintln!("[deploy] Or use --local: japl deploy --local {}", file);
+        std::process::exit(1);
     }
 
     // Step 4: Generate and write WADM manifest
@@ -401,19 +411,26 @@ fn deploy(file: &str, port: u16, _target: &str, local: bool) {
         }
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            eprintln!("[deploy] wadm deploy failed: {}", stderr);
-            eprintln!("[deploy] Falling back to local serve on port {}...", port);
-            if let Err(e) = serve::serve(&wasm_path, port) {
-                eprintln!("Serve error: {}", e);
-                std::process::exit(1);
-            }
+            eprintln!("[deploy] ERROR: wasmCloud deployment failed: {}", stderr);
+            eprintln!("[deploy] ");
+            eprintln!("[deploy] To fix:");
+            eprintln!("[deploy]   1. Install wash: curl -s https://raw.githubusercontent.com/wasmCloud/wasmCloud/main/crates/wash-cli/install.sh | bash");
+            eprintln!("[deploy]   2. Start wasmCloud: wash up --detached");
+            eprintln!("[deploy]   3. Start NATS: nats-server -js");
+            eprintln!("[deploy] ");
+            eprintln!("[deploy] Or use --local for local-only serving: japl deploy --local {}", file);
+            std::process::exit(1);
         }
         Err(e) => {
-            eprintln!("[deploy] wash not available ({}), falling back to local serve", e);
-            if let Err(e) = serve::serve(&wasm_path, port) {
-                eprintln!("Serve error: {}", e);
-                std::process::exit(1);
-            }
+            eprintln!("[deploy] ERROR: wasmCloud deployment failed: {}", e);
+            eprintln!("[deploy] ");
+            eprintln!("[deploy] To fix:");
+            eprintln!("[deploy]   1. Install wash: curl -s https://raw.githubusercontent.com/wasmCloud/wasmCloud/main/crates/wash-cli/install.sh | bash");
+            eprintln!("[deploy]   2. Start wasmCloud: wash up --detached");
+            eprintln!("[deploy]   3. Start NATS: nats-server -js");
+            eprintln!("[deploy] ");
+            eprintln!("[deploy] Or use --local for local-only serving: japl deploy --local {}", file);
+            std::process::exit(1);
         }
     }
 }
