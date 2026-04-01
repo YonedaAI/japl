@@ -42,14 +42,22 @@ impl ProcessTable {
         pid
     }
 
-    fn send(&mut self, pid: u64, message: Vec<u8>) -> bool {
+    fn send(&mut self, pid: u64, message: Vec<u8>) -> Result<(), &'static str> {
         if let Some(proc) = self.processes.get_mut(&pid) {
+            if proc.mailbox.len() >= 10_000 {
+                eprintln!("[japl-provider] mailbox for pid {pid} is full, dropping message");
+                return Err("mailbox full");
+            }
             proc.mailbox.push(message);
             proc.notify.notify_one();
-            true
+            Ok(())
         } else {
-            false
+            Err("no such process")
         }
+    }
+
+    fn process_count(&self) -> usize {
+        self.processes.len()
     }
 
     fn try_receive(&mut self, pid: u64) -> Option<Vec<u8>> {
@@ -90,8 +98,20 @@ struct ReceiveResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+struct SelfPidRequest {
+    pid: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct SelfPidResponse {
     pid: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct HealthResponse {
+    status: String,
+    process_count: usize,
+    next_pid: u64,
 }
 
 type SharedTable = Arc<Mutex<ProcessTable>>;
@@ -117,13 +137,15 @@ async fn handle_send(table: &SharedTable, pid: u64, payload: &[u8]) -> Vec<u8> {
             return b"err".to_vec();
         }
     };
-    let ok = table.lock().await.send(pid, req.message);
-    if ok {
-        println!("  sent message to pid={pid}");
-        b"ok".to_vec()
-    } else {
-        eprintln!("  send: no such process pid={pid}");
-        b"err".to_vec()
+    match table.lock().await.send(pid, req.message) {
+        Ok(()) => {
+            println!("  sent message to pid={pid}");
+            b"ok".to_vec()
+        }
+        Err(reason) => {
+            eprintln!("  send: {reason} pid={pid}");
+            format!("err: {reason}").into_bytes()
+        }
     }
 }
 
@@ -246,9 +268,27 @@ async fn main() -> Result<()> {
                     Err(_) => b"err: invalid pid".to_vec(),
                 }
             } else if subject == "japl.runtime.self-pid" {
-                // In a real system, this would be context-dependent.
-                // For now, return 0 as a placeholder.
-                serde_json::to_vec(&SelfPidResponse { pid: 0 }).unwrap()
+                // The caller passes its own PID in the request body.
+                let pid = match serde_json::from_slice::<SelfPidRequest>(&msg.payload) {
+                    Ok(req) => req.pid,
+                    Err(_) => {
+                        eprintln!("[japl-provider] self-pid: bad payload, returning 0");
+                        0
+                    }
+                };
+                serde_json::to_vec(&SelfPidResponse { pid }).unwrap()
+            } else if subject == "japl.runtime.log" {
+                let log_msg = String::from_utf8_lossy(&msg.payload);
+                eprintln!("[japl-provider:log] {}", log_msg);
+                b"ok".to_vec()
+            } else if subject == "japl.runtime.health" {
+                let t = table.lock().await;
+                let resp = HealthResponse {
+                    status: "ok".into(),
+                    process_count: t.process_count(),
+                    next_pid: t.next_pid,
+                };
+                serde_json::to_vec(&resp).unwrap()
             } else {
                 eprintln!("unknown subject: {subject}");
                 b"err: unknown subject".to_vec()
