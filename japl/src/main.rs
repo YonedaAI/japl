@@ -57,7 +57,7 @@ enum Commands {
     Fmt {
         file: String,
     },
-    /// Deploy a JAPL HTTP app (compile, start NATS + wasmCloud, serve)
+    /// Deploy a JAPL HTTP app via wasmCloud/wadm (or locally with --local)
     Deploy {
         file: String,
         #[arg(long, default_value = "8080")]
@@ -65,6 +65,9 @@ enum Commands {
         /// Target: "local" (default) or "component" (Component Model canonical ABI)
         #[arg(long, default_value = "local")]
         target: String,
+        /// Skip wasmCloud and serve locally instead
+        #[arg(long)]
+        local: bool,
     },
     /// Show cluster node status
     Cluster {
@@ -177,8 +180,8 @@ fn main() {
             println!("Node ID: {}", node.node_id());
             println!("Peers: {:?}", node.connected_peers());
         }
-        Commands::Deploy { file, port, target } => {
-            deploy(&file, port, &target);
+        Commands::Deploy { file, port, target, local } => {
+            deploy(&file, port, &target, local);
         }
         Commands::Init { path } => {
             let dir = std::path::Path::new(&path).canonicalize().unwrap_or_else(|_| {
@@ -291,13 +294,49 @@ fn ensure_wasmcloud() -> Result<(), String> {
     }
 }
 
-fn deploy(file: &str, port: u16, target: &str) {
+fn extract_app_name(file: &str) -> String {
+    std::path::Path::new(file)
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string()
+}
+
+fn generate_wadm_manifest(app_name: &str, wasm_path: &str) -> String {
+    let abs_wasm = std::path::Path::new(wasm_path)
+        .canonicalize()
+        .unwrap_or_else(|_| std::path::PathBuf::from(wasm_path));
+    format!(
+        r#"apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  name: {app_name}
+  annotations:
+    version: v0.1.0
+    description: "JAPL application deployed via japl deploy"
+spec:
+  components:
+    - name: {app_name}
+      type: component
+      properties:
+        image: file://{wasm_path}
+      traits:
+        - type: spreadscaler
+          properties:
+            instances: 1
+"#,
+        app_name = app_name,
+        wasm_path = abs_wasm.display(),
+    )
+}
+
+fn deploy(file: &str, port: u16, _target: &str, local: bool) {
     eprintln!("[deploy] Compiling {}...", file);
 
-    // Step 1: Compile JAPL to core WASM
+    // Step 1: Compile JAPL to WASM component (always use component target for deploy)
     let tmp_dir = std::env::temp_dir().join("japl_deploy");
     let tmp_str = tmp_dir.display().to_string();
-    let wasm_path = match compiler::compile_with_target(file, &tmp_str, target) {
+    let wasm_path = match compiler::compile_with_target(file, &tmp_str, "component") {
         Ok(path) => path,
         Err(e) => {
             eprintln!("Compilation failed: {}", e);
@@ -305,6 +344,19 @@ fn deploy(file: &str, port: u16, target: &str) {
         }
     };
     eprintln!("[deploy] Compiled to {}", wasm_path);
+
+    // If --local flag is set, skip wasmCloud and serve directly
+    if local {
+        eprintln!("[deploy] --local mode: serving directly on port {}", port);
+        eprintln!("[deploy] URL: http://localhost:{}", port);
+        eprintln!("[deploy] Press Ctrl+C to stop");
+        eprintln!();
+        if let Err(e) = serve::serve(&wasm_path, port) {
+            eprintln!("Serve error: {}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
 
     // Step 2: Start NATS if not running
     if let Err(e) = ensure_nats() {
@@ -316,15 +368,43 @@ fn deploy(file: &str, port: u16, target: &str) {
         eprintln!("[deploy] Warning: {}", e);
     }
 
-    // Step 4: Serve the compiled WASM via japl serve (provides host functions + HTTP)
-    eprintln!("[deploy] Starting HTTP server on port {}...", port);
-    eprintln!("[deploy] URL: http://localhost:{}", port);
-    eprintln!("[deploy] NATS: nats://localhost:4222");
-    eprintln!("[deploy] Press Ctrl+C to stop");
-    eprintln!();
-
-    if let Err(e) = serve::serve(&wasm_path, port) {
-        eprintln!("Serve error: {}", e);
+    // Step 4: Generate and write WADM manifest
+    let app_name = extract_app_name(file);
+    let manifest = generate_wadm_manifest(&app_name, &wasm_path);
+    let manifest_path = format!("{}/{}.wadm.yaml", tmp_str, app_name);
+    std::fs::create_dir_all(&tmp_str).ok();
+    if let Err(e) = std::fs::write(&manifest_path, &manifest) {
+        eprintln!("[deploy] Failed to write manifest: {}", e);
         std::process::exit(1);
+    }
+    eprintln!("[deploy] Generated WADM manifest: {}", manifest_path);
+
+    // Step 5: Deploy via wash app deploy
+    let deploy_result = Command::new("wash")
+        .args(["app", "deploy", &manifest_path])
+        .output();
+
+    match deploy_result {
+        Ok(output) if output.status.success() => {
+            eprintln!("[deploy] Application '{}' deployed to wasmCloud", app_name);
+            eprintln!("[deploy] Manifest: {}", manifest_path);
+            eprintln!("[deploy] Check status: wash app list");
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("[deploy] wadm deploy failed: {}", stderr);
+            eprintln!("[deploy] Falling back to local serve on port {}...", port);
+            if let Err(e) = serve::serve(&wasm_path, port) {
+                eprintln!("Serve error: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("[deploy] wash not available ({}), falling back to local serve", e);
+            if let Err(e) = serve::serve(&wasm_path, port) {
+                eprintln!("Serve error: {}", e);
+                std::process::exit(1);
+            }
+        }
     }
 }
