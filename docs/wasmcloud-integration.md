@@ -52,7 +52,7 @@ The provider (`japl-provider/src/main.rs`) is a standalone Tokio binary:
 | `japl.runtime.spawn` | `{ "closure_data": [bytes] }` | `{ "pid": <u64> }` | Create a new process, returns its PID |
 | `japl.runtime.send.<pid>` | `{ "message": [bytes] }` | `"ok"` or `"err"` | Deliver a message to the process mailbox |
 | `japl.runtime.receive.<pid>` | `{}` | `{ "message": [bytes] }` | Block until a message is available, then return it |
-| `japl.runtime.self-pid` | any | `{ "pid": 0 }` | Placeholder -- returns 0 (not yet context-aware) |
+| `japl.runtime.self-pid` | `{}` | `{ "pid": <u64> }` | Returns PID from provider process table (used by external tools) |
 
 ### Process Table
 
@@ -99,7 +99,7 @@ The WIT interface and the NATS provider are semantically aligned:
 | `spawn(closure-data)` | `japl.runtime.spawn` | Matched |
 | `send(pid, message)` | `japl.runtime.send.<pid>` | PID encoded in subject |
 | `receive()` | `japl.runtime.receive.<pid>` | Provider needs caller PID from context |
-| `self-pid()` | `japl.runtime.self-pid` | Returns placeholder 0 |
+| `self-pid()` | `japl.runtime.self-pid` | Runtime-derived from process table |
 
 Key difference: `receive()` in WIT takes no arguments (the current process is
 implicit), but the NATS subject requires a PID suffix. The wasmCloud link
@@ -144,36 +144,35 @@ The WADM manifest (`deploy/japl-provider.wadm.yaml`) declares:
 - Spawn, send, and blocking receive all function correctly (self-test passes).
 - WIT interfaces are defined and semantically match the provider API.
 - WADM component manifest can be deployed via `wash app deploy` (provider runs as separate sidecar).
+- JAPL apps run distributed with the `--distributed` flag.
+- HTTP gateway exposes JAPL services on configurable ports for external clients.
+- External clients connect via HTTP (through japl-http-adapter) or directly via NATS.
+- Provider manages the process table with activity-based cleanup of stale processes.
+- Mailbox backpressure enforced at 10,000 messages per process.
 
 ## Current Blockers and Limitations
 
-1. **self-pid is a placeholder.** Returns 0; needs wasmCloud call-context
-   integration to return the actual PID of the calling component instance.
-
-2. **No real closure execution.** `spawn` creates a mailbox but ignores
+1. **No real closure execution.** `spawn` creates a mailbox but ignores
    `closure_data`. The provider does not load or execute WASM closures --
    it is a message-routing broker only.
 
-3. **receive() PID gap.** The WIT `receive()` takes no arguments (implicit
+2. **receive() PID gap.** The WIT `receive()` takes no arguments (implicit
    self), but the NATS subject needs an explicit PID. A bridge adapter is
    needed in the wasmCloud link layer.
 
-4. **No persistence.** The process table is in-memory. Provider restart
+3. **No persistence.** The process table is in-memory. Provider restart
    loses all processes and pending messages.
 
-5. **No process supervision.** No monitors, links, or crash restart
+4. **No process supervision.** No monitors, links, or crash restart
    semantics. Processes are fire-and-forget mailboxes.
 
-6. **Provider is not yet a wasmCloud native capability provider.** It runs
-   as a standalone NATS service. Wrapping it with the wasmCloud provider SDK
-   (`wasmcloud-provider-sdk`) would enable proper lifecycle management,
-   health checks, and link-definition handling.
+5. **Provider is not yet a wasmCloud native capability provider.** It runs
+   as a standalone NATS service. Converting to use `wasmcloud-provider-sdk`
+   v0.17.1 with `wit-bindgen-wrpc` stubs is deferred to the next release
+   cycle after WIT interface stabilization.
 
-7. **logging interface not implemented.** The WIT defines a `logging`
+6. **logging interface not implemented.** The WIT defines a `logging`
    interface but the provider has no corresponding NATS handler.
-
-8. **Unbounded mailboxes.** No backpressure or size limits on process
-   mailboxes; a fast sender can exhaust memory.
 
 ## Architecture Decision
 

@@ -121,7 +121,11 @@ exact size cannot be determined statically, a safe upper bound of
 ## Process Identity
 
 - `ProcessId` is a `u64`, allocated sequentially by the scheduler.
-- `japl.self_pid()` returns the caller's PID as an i64.
+- `japl.self_pid()` returns the caller's PID as an i64. In local mode the
+  runtime tracks each process's PID directly. In deployed mode the provider
+  derives the PID from its process table; the `japl.runtime.self-pid`
+  endpoint is used only for external tool queries (e.g. health checks,
+  debugging dashboards), not for intra-process identity.
 - `japl.is_alive(pid)` queries the scheduler for process liveness.
 - `japl.mailbox_size(pid)` queries the current mailbox depth.
 
@@ -157,7 +161,7 @@ a NATS-backed process table instead of the local wasmtime scheduler.
 | spawn | `japl.runtime.spawn` | `{"closure_data": [u8, ...]}` | `{"pid": <u64>}` |
 | send | `japl.runtime.send.<pid>` | `{"message": [u8, ...]}` | `"ok"` or `"err"` |
 | receive | `japl.runtime.receive.<pid>` | `{}` | `{"message": [u8, ...]}` |
-| self-pid | `japl.runtime.self-pid` | `{"pid": N}` | `{"pid": N}` |
+| self-pid | `japl.runtime.self-pid` | `{}` | `{"pid": N}` |
 
 ### Local vs Deployed Comparison
 
@@ -166,7 +170,7 @@ a NATS-backed process table instead of the local wasmtime scheduler.
 | Message encoding | Raw variant-struct bytes | JSON-encoded byte arrays |
 | Transport | `mpsc` channels (in-process) | NATS request/reply |
 | Mailbox cap | 10,000 messages | 10,000 messages |
-| self-pid | Returns caller's actual PID | Echoes PID from request body |
+| self-pid | Returns caller's actual PID | Runtime-derived from process table |
 | Blocking receive | Blocks OS thread | Blocks async task on Notify |
 
 ## ABI Stability
