@@ -85,7 +85,10 @@ fn substitute_type_params(ty: &Type, subst: &HashMap<String, Type>) -> Type {
 }
 
 /// Check if two types are compatible.
-/// Pid and Int are fully distinct types — no implicit conversion in any context.
+/// Pid and Int are distinct types — no implicit conversion is allowed.
+/// Pid cannot be used in arithmetic, and Int cannot be passed where Pid
+/// is expected (or vice versa). At runtime both are i64, but the type
+/// checker enforces the distinction.
 fn types_compatible(a: &Type, b: &Type) -> bool {
     a == b
 }
@@ -178,7 +181,8 @@ impl Checker {
                 }
             }
             _ => {
-                // Concrete types: strict equality check
+<<<<<<< HEAD
+                // Concrete types: check strict equality (Pid and Int are NOT compatible)
                 *declared == *actual || *declared == Type::Var(0) || types_compatible(declared, actual)
             }
         }
