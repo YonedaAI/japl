@@ -31,7 +31,7 @@ The JAPL provider in `japl-provider/`:
 - Standalone Tokio binary (not yet a native wasmCloud capability)
 - Self-tests on startup
 
-Future: Convert to use `wasmcloud-provider-sdk` for native wasmCloud integration.
+Planned: Convert to use `wasmcloud-provider-sdk` for native wasmCloud integration.
 
 ## Recommended Usage
 
