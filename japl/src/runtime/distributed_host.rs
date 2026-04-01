@@ -254,8 +254,148 @@ fn run_process(shared: Arc<SharedState>, pid: u64, closure_data: Vec<u8>) -> Res
     Ok(())
 }
 
+/// Start an HTTP gateway that bridges REST requests to NATS-backed JAPL processes.
+/// Routes: PUT /kv/{key}/{val}, GET /kv/{key}, DELETE /kv/{key}, GET /health
+fn start_http_gateway(port: u16, nats_url: &str, service_pid: u64) -> Result<(), anyhow::Error> {
+    let nc = nats::connect(nats_url)?;
+    let addr = format!("0.0.0.0:{}", port);
+    let server = tiny_http::Server::http(&addr)
+        .map_err(|e| anyhow::anyhow!("HTTP bind failed: {}", e))?;
+    eprintln!("[http-gateway] Listening on http://localhost:{}", port);
+    eprintln!("[http-gateway] Routes: PUT /kv/{{key}}/{{val}}, GET /kv/{{key}}, DELETE /kv/{{key}}, GET /health");
+
+    // Allocate a gateway PID for receiving NATS replies
+    let spawn_resp = nc.request_timeout("japl.runtime.spawn", r#"{"closure_data":[]}"#, std::time::Duration::from_secs(5))?;
+    let gw_pid: u64 = serde_json::from_str::<serde_json::Value>(&String::from_utf8_lossy(&spawn_resp.data))?
+        ["pid"].as_u64().unwrap_or(0);
+    eprintln!("[http-gateway] Gateway PID: {}", gw_pid);
+
+    std::thread::Builder::new()
+        .name("http-gateway".into())
+        .spawn(move || {
+            for request in server.incoming_requests() {
+                let method = request.method().to_string();
+                let url = request.url().to_string();
+                let parts: Vec<&str> = url.trim_start_matches('/').split('/').collect();
+
+                let response = match (method.as_str(), parts.as_slice()) {
+                    ("GET", ["health"]) => {
+                        match nc.request_timeout("japl.runtime.health", "{}", std::time::Duration::from_secs(3)) {
+                            Ok(resp) => String::from_utf8_lossy(&resp.data).to_string(),
+                            Err(e) => format!(r#"{{"error":"{}"}}"#, e),
+                        }
+                    }
+                    ("PUT", ["kv", key_str, val_str]) => {
+                        let key: i64 = key_str.parse().unwrap_or(0);
+                        let val: i64 = val_str.parse().unwrap_or(0);
+                        // Build CmdPut(key, val, gw_pid) — tag=0, 3 fields
+                        let msg: Vec<u8> = [
+                            0u32.to_le_bytes().to_vec(), 3u32.to_le_bytes().to_vec(),
+                            key.to_le_bytes().to_vec(), val.to_le_bytes().to_vec(),
+                            (gw_pid as i64).to_le_bytes().to_vec(),
+                        ].concat();
+                        let payload = serde_json::json!({"message": msg}).to_string();
+                        let _ = nc.request_timeout(
+                            &format!("japl.runtime.send.{}", service_pid),
+                            &payload, std::time::Duration::from_secs(5)
+                        );
+                        // Wait for reply
+                        match nc.request_timeout(
+                            &format!("japl.runtime.receive.{}", gw_pid),
+                            "{}", std::time::Duration::from_secs(5)
+                        ) {
+                            Ok(resp) => {
+                                let body = String::from_utf8_lossy(&resp.data);
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                                    if let Some(arr) = v["message"].as_array() {
+                                        let bytes: Vec<u8> = arr.iter()
+                                            .filter_map(|b| b.as_u64().map(|n| n as u8))
+                                            .collect();
+                                        if bytes.len() >= 8 {
+                                            let tag = u32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0;4]));
+                                            if tag == 0 { format!(r#"{{"status":"ok","key":{},"val":{}}}"#, key, val) }
+                                            else { format!(r#"{{"status":"error","tag":{}}}"#, tag) }
+                                        } else { r#"{"status":"error","reason":"short reply"}"#.to_string() }
+                                    } else { r#"{"status":"error","reason":"no message"}"#.to_string() }
+                                } else { r#"{"status":"error","reason":"invalid json"}"#.to_string() }
+                            }
+                            Err(_) => r#"{"status":"error","reason":"timeout"}"#.to_string(),
+                        }
+                    }
+                    ("GET", ["kv", key_str]) => {
+                        let key: i64 = key_str.parse().unwrap_or(0);
+                        // Build CmdGet(key, gw_pid) — tag=1, 2 fields
+                        let msg: Vec<u8> = [
+                            1u32.to_le_bytes().to_vec(), 2u32.to_le_bytes().to_vec(),
+                            key.to_le_bytes().to_vec(), (gw_pid as i64).to_le_bytes().to_vec(),
+                        ].concat();
+                        let payload = serde_json::json!({"message": msg}).to_string();
+                        let _ = nc.request_timeout(
+                            &format!("japl.runtime.send.{}", service_pid),
+                            &payload, std::time::Duration::from_secs(5)
+                        );
+                        match nc.request_timeout(
+                            &format!("japl.runtime.receive.{}", gw_pid),
+                            "{}", std::time::Duration::from_secs(5)
+                        ) {
+                            Ok(resp) => {
+                                let body = String::from_utf8_lossy(&resp.data);
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                                    if let Some(arr) = v["message"].as_array() {
+                                        let bytes: Vec<u8> = arr.iter()
+                                            .filter_map(|b| b.as_u64().map(|n| n as u8))
+                                            .collect();
+                                        if bytes.len() >= 8 {
+                                            let tag = u32::from_le_bytes(bytes[0..4].try_into().unwrap_or([0;4]));
+                                            match tag {
+                                                1 => { // ReplyValue
+                                                    let val = i64::from_le_bytes(bytes[8..16].try_into().unwrap_or([0;8]));
+                                                    format!(r#"{{"key":{},"value":{}}}"#, key, val)
+                                                }
+                                                2 => format!(r#"{{"key":{},"error":"not_found"}}"#, key),
+                                                _ => format!(r#"{{"error":"unknown_tag","tag":{}}}"#, tag),
+                                            }
+                                        } else { format!(r#"{{"error":"short_reply"}}"#) }
+                                    } else { format!(r#"{{"error":"no_message"}}"#) }
+                                } else { format!(r#"{{"error":"bad_json"}}"#) }
+                            }
+                            Err(_) => format!(r#"{{"key":{},"error":"timeout"}}"#, key),
+                        }
+                    }
+                    ("DELETE", ["kv", key_str]) => {
+                        let key: i64 = key_str.parse().unwrap_or(0);
+                        // Build CmdDel(key, gw_pid) — tag=2, 2 fields
+                        let msg: Vec<u8> = [
+                            2u32.to_le_bytes().to_vec(), 2u32.to_le_bytes().to_vec(),
+                            key.to_le_bytes().to_vec(), (gw_pid as i64).to_le_bytes().to_vec(),
+                        ].concat();
+                        let payload = serde_json::json!({"message": msg}).to_string();
+                        let _ = nc.request_timeout(
+                            &format!("japl.runtime.send.{}", service_pid),
+                            &payload, std::time::Duration::from_secs(5)
+                        );
+                        match nc.request_timeout(
+                            &format!("japl.runtime.receive.{}", gw_pid),
+                            "{}", std::time::Duration::from_secs(5)
+                        ) {
+                            Ok(_) => format!(r#"{{"status":"ok","key":{},"deleted":true}}"#, key),
+                            Err(_) => format!(r#"{{"key":{},"error":"timeout"}}"#, key),
+                        }
+                    }
+                    _ => r#"{"error":"unknown route","routes":["GET /health","PUT /kv/{key}/{val}","GET /kv/{key}","DELETE /kv/{key}"]}"#.to_string(),
+                };
+
+                let resp = tiny_http::Response::from_string(&response)
+                    .with_header(tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap());
+                let _ = request.respond(resp);
+            }
+        })?;
+
+    Ok(())
+}
+
 /// Run a WASM module with NATS-backed process functions.
-pub fn run_distributed(wasm_path: &str, nats_url: &str) -> Result<(), anyhow::Error> {
+pub fn run_distributed(wasm_path: &str, nats_url: &str, http_port: Option<u16>) -> Result<(), anyhow::Error> {
     eprintln!("[distributed] Connecting to NATS at {}", nats_url);
     let nc = nats::connect(nats_url)?;
 
@@ -281,6 +421,12 @@ pub fn run_distributed(wasm_path: &str, nats_url: &str) -> Result<(), anyhow::Er
     let engine = Engine::default();
     let module = Module::from_file(&engine, wasm_path)?;
 
+    // Start HTTP gateway if requested (before JAPL app starts, so the gateway
+    // knows the service coordinator PID — it's the main_pid)
+    if let Some(port) = http_port {
+        start_http_gateway(port, nats_url, main_pid)?;
+    }
+
     let shared = Arc::new(SharedState { engine: engine.clone(), module, nc });
     let linker = build_linker(&engine, &shared)?;
 
@@ -292,6 +438,14 @@ pub fn run_distributed(wasm_path: &str, nats_url: &str) -> Result<(), anyhow::Er
 
     let start = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
     start.call(&mut store, ())?;
+
+    // If HTTP gateway is running, keep the process alive
+    if http_port.is_some() {
+        eprintln!("[distributed] Service running with HTTP gateway. Press Ctrl+C to stop.");
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
+    }
 
     // Wait for spawned threads to finish
     std::thread::sleep(std::time::Duration::from_millis(500));

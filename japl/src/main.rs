@@ -36,6 +36,9 @@ enum Commands {
         /// NATS server URL for distributed mode
         #[arg(long, default_value = "nats://localhost:4222")]
         nats_url: String,
+        /// Expose an HTTP gateway on this port (distributed mode only)
+        #[arg(long)]
+        http_port: Option<u16>,
         /// Distribution node name (enables clustering)
         #[arg(long)]
         node_name: Option<String>,
@@ -115,7 +118,7 @@ fn main() {
                 }
             }
         }
-        Commands::Run { file, distributed, nats_url, node_name, listen_port, peer, cookie } => {
+        Commands::Run { file, distributed, nats_url, http_port, node_name, listen_port, peer, cookie } => {
             // Compile to temp directory, then run
             let tmp_dir = std::env::temp_dir().join("japl_build");
             let tmp_str = tmp_dir.display().to_string();
@@ -124,7 +127,10 @@ fn main() {
                     if distributed {
                         // Distributed mode: process operations go through NATS provider
                         eprintln!("[run] Distributed mode: connecting to NATS at {}", nats_url);
-                        if let Err(e) = runtime::run_distributed(&wasm_path, &nats_url) {
+                        if let Some(port) = http_port {
+                            eprintln!("[run] HTTP gateway on port {}", port);
+                        }
+                        if let Err(e) = runtime::run_distributed(&wasm_path, &nats_url, http_port) {
                             eprintln!("Distributed runtime error: {}", e);
                             std::process::exit(1);
                         }
