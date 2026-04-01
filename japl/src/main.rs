@@ -27,7 +27,7 @@ enum Commands {
         #[arg(long)]
         stdlib_path: Option<String>,
     },
-    /// Compile and run a .japl file
+    /// Compile and run a .japl file locally (dev mode)
     Run {
         file: String,
         /// Distribution node name (enables clustering)
@@ -43,7 +43,7 @@ enum Commands {
         #[arg(long)]
         cookie: Option<String>,
     },
-    /// Compile and serve a .japl file over HTTP
+    /// Compile and serve a .japl file over HTTP locally (dev mode)
     Serve {
         file: String,
         #[arg(long, default_value = "8080")]
@@ -60,7 +60,7 @@ enum Commands {
     Fmt {
         file: String,
     },
-    /// Deploy a JAPL HTTP app via wasmCloud/wadm (or locally with --local)
+    /// Deploy a JAPL app to wasmCloud (requires NATS + wasmCloud host)
     Deploy {
         file: String,
         #[arg(long, default_value = "8080")]
@@ -68,7 +68,7 @@ enum Commands {
         /// Target: "local" (default) or "component" (Component Model canonical ABI)
         #[arg(long, default_value = "local")]
         target: String,
-        /// Skip wasmCloud and serve locally instead
+        /// Skip wasmCloud and serve locally instead (no infrastructure needed)
         #[arg(long)]
         local: bool,
         /// Print the generated WADM manifest without deploying
