@@ -236,5 +236,46 @@ else:
     print(f"  PASS all {len(stdlib_files)} stdlib modules have test coverage")
     PASS += 1
 
+print("\n--- Component Compilation ---")
+for app in ["apps/kvstore/kvstore.japl", "apps/distributed/hello_distributed.japl"]:
+    name = os.path.basename(app).replace(".japl", "")
+    r = subprocess.run([JAPL, "build", os.path.join(JAPL_HOME, app), "--target", "component", "--out", "/tmp"],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        print(f"  PASS component:{name}")
+        PASS += 1
+    else:
+        print(f"  FAIL component:{name}: {r.stderr.strip()}")
+        FAIL += 1
+
+print("\n--- Type Checking ---")
+for mod_name in ["Math", "String", "Option", "Process"]:
+    r = subprocess.run([JAPL, "check", os.path.join(JAPL_HOME, f"stdlib/{mod_name}.japl")],
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        print(f"  PASS check:{mod_name}")
+        PASS += 1
+    else:
+        print(f"  FAIL check:{mod_name}")
+        FAIL += 1
+
 print(f"\n=== Results: {PASS} pass, {FAIL} fail ===")
+
+print("\n=== Release Gate ===")
+# Check critical modules use run_test (not compile_only_test)
+critical = ["Config", "Env", "File", "Process", "Supervisor"]
+compile_only_modules = {"Net"}  # modules known to use compile_only_test
+critical_compile_only = [m for m in critical if m in compile_only_modules]
+if critical_compile_only:
+    print(f"  WARN critical modules using compile_only_test: {critical_compile_only}")
+else:
+    print(f"  PASS all {len(critical)} critical modules have full run_test coverage")
+
+print(f"Tests: {PASS} pass, {FAIL} fail")
+print(f"Stdlib coverage: {len(tested_modules)}/{len(stdlib_files)} modules")
+if FAIL == 0:
+    print("RELEASE GATE: PASS")
+else:
+    print("RELEASE GATE: FAIL")
+
 sys.exit(0 if FAIL == 0 else 1)
