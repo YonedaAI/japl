@@ -1,3 +1,8 @@
+// STATUS: Experimental / Development Infrastructure
+// The primary distributed path is wasmCloud (japl deploy).
+// This custom TCP layer is retained for development, testing,
+// and as a reference implementation.
+
 // =========================================================================
 // JAPL Distribution Layer
 // =========================================================================
