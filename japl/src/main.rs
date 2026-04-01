@@ -269,27 +269,35 @@ fn ensure_wasmcloud() -> Result<(), String> {
 
     eprintln!("[deploy] Starting wasmCloud host...");
     // Try `wash up --detached` first (wash <= 0.28), then `wash start` (newer versions)
-    let child = Command::new("wash")
+    let up_result = Command::new("wash")
         .args(["up", "--detached"])
-        .output()
-        .or_else(|_| Command::new("wash").args(["start"]).output());
+        .output();
 
-    match child {
+    match up_result {
+        Ok(output) if output.status.success() => {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            eprintln!("[deploy] wasmCloud host started (wash up)");
+            Ok(())
+        }
         Ok(output) => {
-            if output.status.success() {
-                // Give host time to initialize
-                std::thread::sleep(std::time::Duration::from_secs(2));
-                eprintln!("[deploy] wasmCloud host started");
-                Ok(())
-            } else {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                // wash up may fail if already running, that's fine
-                if stderr.contains("already") || stderr.contains("running") {
-                    eprintln!("[deploy] wasmCloud host already running");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("already") || stderr.contains("running") {
+                eprintln!("[deploy] wasmCloud host already running");
+                return Ok(());
+            }
+            // wash up failed — try wash start (newer wash versions)
+            eprintln!("[deploy] wash up failed, trying wash start...");
+            match Command::new("wash").args(["start"]).output() {
+                Ok(start_out) if start_out.status.success() => {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    eprintln!("[deploy] wasmCloud host started (wash start)");
                     Ok(())
-                } else {
-                    Err(format!("wash up failed: {}", stderr))
                 }
+                Ok(start_out) => {
+                    let start_err = String::from_utf8_lossy(&start_out.stderr);
+                    Err(format!("both wash up and wash start failed: {}", start_err))
+                }
+                Err(e) => Err(format!("wash start failed: {}", e)),
             }
         }
         Err(e) => {
