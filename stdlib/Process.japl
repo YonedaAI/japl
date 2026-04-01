@@ -8,6 +8,9 @@ type ProcMsg = | Ping(Int)
 // =========================================================================
 // Process module — JAPL stdlib
 //
+// NOTE: In deployed mode (japl deploy), process operations go through
+// the JAPL provider over NATS.
+//
 // Typed Process Contract:
 //   - `spawn(f)` returns a Pid, typed as Pid in the checker but represented
 //     as Int at runtime. All pid values are non-negative integers assigned
@@ -52,12 +55,6 @@ pub fn self_id() -> Int {
   self_pid()
 }
 
-// Use the builtin send(pid, msg) directly for typed messages.
-// This wrapper exists for Int-only payloads (e.g. raw signals).
-pub fn send_int(pid: Int, msg: Int) -> Unit {
-  send(pid, msg)
-}
-
 pub fn sleep(ms: Int) -> Unit {
   time_sleep(ms)
 }
@@ -76,18 +73,6 @@ pub fn alive_count() -> Int {
 // Returns 1 if the process with the given pid is alive, 0 otherwise.
 pub fn is_alive(pid: Int) -> Int {
   is_process_alive(pid)
-}
-
-// Typed spawn: same as spawn but documents the intent that the returned
-// Int is a Pid. When Pid<T> lands, this will become spawn_typed<T>.
-pub fn spawn_typed(f: fn() -> Unit) -> Int {
-  spawn(f)
-}
-
-// Send with explicit pid type — wrapper that makes the pid/msg contract
-// visible in signatures. Currently Int-only; will become generic.
-pub fn send_to(pid: Int, msg: Int) -> Unit {
-  send(pid, msg)
 }
 
 // Echo worker for demo

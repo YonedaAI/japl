@@ -1,6 +1,9 @@
 // Registry: a simple name->pid registry using linked list
 // Names are mapped to integer keys via a simple hash
 // Duplicate registrations overwrite the previous binding.
+//
+// NOTE: This registry is in-process only. It is not shared across
+// processes or nodes.
 
 type RegEntry = | Entry(Int, Int, RegEntry) | RegEmpty
 

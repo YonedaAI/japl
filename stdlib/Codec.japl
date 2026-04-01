@@ -1,6 +1,9 @@
 // =========================================================================
 // Codec module — JAPL stdlib
 //
+// Codec is essential for cross-process and cross-node messaging where
+// raw memory sharing is not available.
+//
 // Message Encoding Model:
 //   - At the runtime level, messages between processes are passed as raw
 //     tagged values (the runtime's internal Value representation). There is

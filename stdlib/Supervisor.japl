@@ -3,6 +3,11 @@ foreign "japl" fn time_sleep(ms: Int)
 // =========================================================================
 // Supervisor module — JAPL stdlib
 //
+// CURRENT STATUS: This module provides child-spawning and bookkeeping
+// utilities. It does NOT provide automatic restart, crash detection,
+// or process linking. Those features require runtime primitives
+// (monitor/link) that are not yet exposed to JAPL user code.
+//
 // Supervision Contract (current capabilities and limitations):
 //
 //   - `start_child(f)` spawns a process and returns its pid. This is a
@@ -56,11 +61,10 @@ pub fn start_child(child_fn: fn() -> Unit) -> Int {
   spawn(child_fn)
 }
 
-// Supervise a child function: spawns a monitor process that starts the child.
-// NOTE: True restart-on-crash requires runtime monitor/link primitives
-// (not yet exposed to JAPL). This spawns the child under a supervisor pid
-// but cannot yet detect child exit for automatic restart.
-pub fn supervise(child_fn: fn() -> Unit) -> Int {
+// Spawn a child process. Does NOT monitor or restart on crash.
+// True supervision requires runtime monitor/link primitives
+// which are not yet exposed to JAPL user code.
+pub fn spawn_supervised(child_fn: fn() -> Unit) -> Int {
   let child = spawn(child_fn)
   child
 }
