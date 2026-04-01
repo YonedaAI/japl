@@ -175,7 +175,7 @@ a NATS-backed process table instead of the local wasmtime scheduler.
 
 **Experimental:** self-pid (context model may change), mailbox-size (cross-provider undefined), is-alive (single-provider only), logging (output destination unstable).
 
-## Future: Typed Protocols
+## Planned: Typed Protocols
 
 - `Pid<T>` would encode the expected message type at the type level.
 - `send(pid: Pid<T>, msg: T)` would be enforced at compile time.

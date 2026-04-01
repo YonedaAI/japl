@@ -232,6 +232,17 @@ papers/               Research papers (7 JAPL papers)
 
 ---
 
+## Known Limitations
+
+- **Supervision**: Supervisor can spawn children but cannot automatically restart crashed processes (requires runtime monitor/link primitives)
+- **Distribution**: Custom TCP layer is experimental; wasmCloud provider is a NATS sidecar, not a native wasmCloud capability
+- **Tool execution**: Tool.japl provides types and simulated execution, not real tool dispatch
+- **LLM structured output**: Validates JSON prefix only, no schema enforcement
+- **String FFI**: Some stdlib modules (Net) can't pass Strings through FFI cleanly
+- **Process messages**: String fields in ADT messages may be empty when received cross-process
+
+---
+
 ## Research Papers
 
 Seven papers developing the theoretical and practical foundations of the language.
