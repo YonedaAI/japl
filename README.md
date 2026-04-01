@@ -92,6 +92,16 @@ japl init my-project
 
 ---
 
+## Release Verification
+
+To verify a release build, run:
+
+    scripts/release-check.sh
+
+This builds the compiler in release mode, runs the full verification suite with `--release` (where wasmCloud SKIPs become FAILs), and builds the provider. See [docs/release-process.md](docs/release-process.md) for the full release process and checklist.
+
+---
+
 ## Features
 
 ### Working
