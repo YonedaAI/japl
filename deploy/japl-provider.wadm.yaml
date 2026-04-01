@@ -1,10 +1,25 @@
+# JAPL App + Provider WADM Manifest (REFERENCE ONLY)
+#
+# NOTE: The japl-provider is currently a standalone NATS sidecar process,
+# NOT a native wasmCloud capability provider. This manifest is a reference
+# for the intended future architecture where the provider uses the
+# wasmcloud-provider-sdk and can be deployed as a real wasmCloud capability.
+#
+# Current deployment:
+#   1. Start NATS:          nats-server -js
+#   2. Start provider:      cd japl-provider && cargo run
+#   3. Deploy component:    wash app deploy deploy/japl-provider.wadm.yaml
+#
+# The component-to-provider link below will NOT work until japl-provider
+# is converted to use wasmcloud-provider-sdk.
+
 apiVersion: core.oam.dev/v1beta1
 kind: Application
 metadata:
   name: japl-app
   annotations:
     version: v0.1.0
-    description: "JAPL app with process runtime provider"
+    description: "JAPL app with process runtime provider (reference manifest)"
 spec:
   components:
     - name: app
@@ -15,17 +30,10 @@ spec:
         - type: spreadscaler
           properties:
             instances: 1
-        - type: link
-          properties:
-            target: japl-provider
-            namespace: japl
-            package: runtime
-            interfaces: [processes]
-    - name: japl-provider
-      type: capability
-      properties:
-        image: file:///tmp/japl_provider
-      traits:
-        - type: spreadscaler
-          properties:
-            instances: 1
+        # Future: link to japl-provider once it implements wasmcloud-provider-sdk
+        # - type: link
+        #   properties:
+        #     target: japl-provider
+        #     namespace: japl
+        #     package: runtime
+        #     interfaces: [processes]

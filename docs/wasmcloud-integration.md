@@ -1,5 +1,10 @@
 # wasmCloud Integration Guide
 
+> **Status**: The JAPL provider is a standalone NATS sidecar, not yet a native
+> wasmCloud capability provider. The component → provider link described below
+> is the intended architecture. Converting the provider to use
+> `wasmcloud-provider-sdk` is required to make it a true wasmCloud capability.
+
 ## Architecture Overview
 
 ```

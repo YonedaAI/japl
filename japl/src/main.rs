@@ -306,6 +306,12 @@ fn generate_wadm_manifest(app_name: &str, wasm_path: &str) -> String {
     let abs_wasm = std::path::Path::new(wasm_path)
         .canonicalize()
         .unwrap_or_else(|_| std::path::PathBuf::from(wasm_path));
+    // NOTE: The japl-provider is a standalone NATS sidecar, not a native
+    // wasmCloud capability provider. The manifest below declares the component
+    // only. The provider must be started separately:
+    //   cd japl-provider && cargo run
+    // Future work: convert japl-provider to use wasmcloud-provider-sdk so it
+    // can be deployed as a real wasmCloud capability.
     format!(
         r#"apiVersion: core.oam.dev/v1beta1
 kind: Application
