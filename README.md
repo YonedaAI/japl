@@ -123,6 +123,7 @@ This builds the compiler in release mode, runs the full verification suite with 
 - Type checker (`japl check`, `--strict` for Pid warnings)
 - Process spawn/send/receive (real OS threads via embedded wasmtime)
 - HTTP serving (`japl serve` via tiny_http)
+- Distributed runtime (`japl run --distributed`) — WASM + NATS provider, proven with kvstore/msgqueue apps, HTTP gateway (14/14 tests)
 - Real env var reading, file I/O
 - Standard library: 30 modules, 2400+ LOC (`Math`, `String`, `Option`, `Result`, `List`, `Map`, `Set`, `Json`, `Http`, `Net`, `Bytes`, `Codec`, `Retry`, `Log`, `Config`, `File`, `Env`, `Time`, `Crypto`, `Process`, `Supervisor`, `Registry`, `LLM`, `Tool`, `Budget`, `Replay`, `Provenance`, `Core`, `IO`, `Test`)
 - Verification suite: 68+ tests, 28 negative checker tests, 2 strict mode tests
@@ -131,7 +132,7 @@ This builds the compiler in release mode, runs the full verification suite with 
 ### Partial
 
 - Supervision trees (`OneForOne`, `AllForOne`, `RestForOne`) — polling-based, no automatic restart (requires monitor/link primitives)
-- wasmCloud deployment (`japl deploy`) — component build works, full deploy requires NATS + japl-provider sidecar
+- wasmCloud deployment (`japl deploy`) — component build works, but wash 2.0.1 has a config parsing issue (`build.command is required`) that blocks `wash dev`/`wash build` integration
 - AI-native abstractions: LLM as tracked effect, `llm_structured` validates JSON prefix only (no schema enforcement)
 - Tool contracts (`ToolSpec`, `ToolResult`), budget tracking, replay logs, provenance — simulated execution, no real dispatch backend
 - Distributed typed message passing (local works; TCP cross-machine experimental via `japl run --node-name`)
@@ -247,6 +248,7 @@ papers/               Research papers (7 JAPL papers)
 
 - **Supervision**: Polling-based only. Supervisor can spawn children but cannot automatically restart crashed processes (requires runtime monitor/link primitives not yet implemented)
 - **Distribution**: Custom TCP layer is experimental; wasmCloud provider runs as a NATS sidecar, not a native wasmCloud capability provider
+- **wash 2.0.1 blocker**: `wash dev` and `wash build` fail with `build.command is required in wash config` regardless of wasmcloud.toml contents; direct `wasm-tools` component builds work fine
 - **Tool execution**: Tool.japl provides types and simulated execution, not real tool dispatch
 - **LLM structured output**: Validates JSON prefix only, no schema enforcement
 - **String FFI**: Some stdlib modules (Net) cannot pass Strings through FFI cleanly (compile-only tested)

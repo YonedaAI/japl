@@ -333,6 +333,14 @@ print(f"  Tests: {PASS} pass, {FAIL} fail")
 # Stdlib coverage
 print(f"  Stdlib: {len(tested_modules)}/{len(stdlib_files)} modules tested")
 
+# Proof levels (split by what each level actually proves)
+print("\n  Proof Levels:")
+print(f"    LOCAL RUNTIME:      {PASS} tests pass (japl run)")
+print(f"    PROVIDER MECHANICS: spawn/send/receive over NATS (deploy_proof.py)")
+print(f"    DISTRIBUTED APP:    kvstore + msgqueue via --distributed (proven)")
+print(f"    EXTERNAL ACCESS:    HTTP gateway + Python client (14 tests)")
+print(f"    WASMCLOUD DEPLOY:   BLOCKED (wash 2.0.1 config parsing issue)")
+
 # Feature status (tiered)
 print("\n  Feature Status:")
 print("    PROVEN:       Local runtime, stdlib (30 modules), process messaging")
@@ -342,7 +350,8 @@ print("    PROVEN:       Pid type safety (arithmetic rejected)")
 print("    LIMITED:      Supervision (polling, no auto-restart)")
 print("    LIMITED:      Tool execution (simulated)")
 print("    LIMITED:      LLM structured output (prefix validation)")
-print("    EXPERIMENTAL: wasmCloud native provider (sidecar shipped)")
+print("    BLOCKED:      wasmCloud deploy (wash 2.0.1 config parsing issue)")
+print("    DEFERRED:     Native wasmCloud provider (requires provider-sdk + wRPC)")
 
 # Critical modules check
 print(f"\n  Critical modules (run_test): {'PASS' if all_critical_covered else 'FAIL'}")
