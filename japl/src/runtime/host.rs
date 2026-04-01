@@ -661,6 +661,17 @@ pub fn add_japl_host_functions(linker: &mut Linker<ProcessState>) -> anyhow::Res
         }
     })?;
 
+    // japl.env_get_str(key_japl_str: i32) -> i32 (returns japl string ptr, 0 if not found)
+    // Takes a JAPL string key, looks up the env var, returns a JAPL string value.
+    // Returns an empty JAPL string if the variable is not set.
+    linker.func_wrap("japl", "env_get_str", |mut caller: Caller<'_, ProcessState>, key_ptr: i32| -> i32 {
+        let key = read_japl_string(&mut caller, key_ptr);
+        match std::env::var(&key) {
+            Ok(val) => write_japl_string(&mut caller, &val),
+            Err(_) => write_japl_string(&mut caller, ""),
+        }
+    })?;
+
     // japl.env_args_count() -> i32
     linker.func_wrap("japl", "env_args_count", || -> i32 {
         std::env::args().count() as i32
