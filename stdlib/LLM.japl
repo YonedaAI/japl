@@ -26,6 +26,7 @@ pub fn summarize(text: String) -> String {
   result
 }
 
+// BASIC VALIDATION: prefix-only check — does not parse JSON
 pub fn is_valid_json_response(response: String) -> Int {
   if str_starts_with(response, "{") == 1 {
     1
@@ -73,6 +74,7 @@ pub fn has_field(response: String, field: String) -> Int {
   str_contains(response, quoted)
 }
 
+// BASIC VALIDATION: checks outer braces and substring match — not a real JSON parser
 pub fn validate_response(response: String, expected_field: String) -> Int {
   let is_obj = is_json_object(response)
   if is_obj == 1 {

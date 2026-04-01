@@ -61,7 +61,7 @@ pub fn start_child(child_fn: fn() -> Unit) -> Int {
   spawn(child_fn)
 }
 
-// Spawn a child process. Does NOT monitor or restart on crash.
+// LIMITED: spawns only, no crash detection or restart
 // True supervision requires runtime monitor/link primitives
 // which are not yet exposed to JAPL user code.
 pub fn spawn_supervised(child_fn: fn() -> Unit) -> Int {

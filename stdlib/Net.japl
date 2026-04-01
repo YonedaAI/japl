@@ -1,3 +1,4 @@
+// STATUS: compile-only — string-level TCP not yet implemented
 // Net module: TCP networking primitives.
 //
 // FFI STATUS: Partially functional (raw pointer level only).

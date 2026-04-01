@@ -36,6 +36,7 @@ pub fn tool_result_value(r: ToolResult) -> String {
   match r { ToolOk(v) => v, ToolErr(e) => e }
 }
 
+// SIMULATED: builds a result string instead of invoking the tool
 pub fn execute_tool(spec: ToolSpec, args: String) -> ToolResult {
   let name = tool_name(spec)
   let result = name <> "(" <> args <> ") => ok"
@@ -81,6 +82,7 @@ pub fn registry_size(r: ToolRegistry) -> Int {
   }
 }
 
+// SIMULATED: validates registry lookup then builds a result string — does not invoke the tool
 pub fn execute_validated(registry: ToolRegistry, tname: String, args: String) -> ToolResult {
   let found = registry_find(registry, tname)
   match found {
