@@ -1,24 +1,18 @@
 // File module: filesystem read/write operations.
 //
 // FFI STATUS:
-//   - read() works via file_read_str, a special-case String-returning FFI
-//     function added to the runtime. This is the only String-returning file
-//     FFI currently available.
-//   - write() and exists() are stubs returning 0. They accept String paths
-//     but cannot delegate to the ptr/len FFI variants because JAPL has no
-//     way to extract (ptr, len) from a String value.
+//   - read() works via file_read_str (String-returning FFI).
+//   - write() works via file_write_str (takes two JAPL strings, returns 0 on success).
+//   - exists() works via file_exists_str (takes a JAPL string, returns 1 if exists).
 //   - read_file/write_file are raw ptr/len wrappers — usable only if the
 //     caller manages linear memory manually (e.g., via Bytes.alloc).
-//
-// WHAT NEEDS TO CHANGE:
-//   Add `file_write_str(path: String, content: String) -> Int` and
-//   `file_exists_str(path: String) -> Int` host functions to
-//   japl/src/runtime/host.rs, mirroring the file_read_str pattern.
 
 foreign "japl" fn file_read(path_ptr: Int, path_len: Int) -> Int
 foreign "japl" fn file_write(path_ptr: Int, path_len: Int, data_ptr: Int, data_len: Int) -> Int
 foreign "japl" fn file_exists(path_ptr: Int, path_len: Int) -> Int
 foreign "japl" fn file_read_str(path: String) -> String
+foreign "japl" fn file_write_str(path: String, content: String) -> Int
+foreign "japl" fn file_exists_str(path: String) -> Int
 
 pub fn read_file(path_ptr: Int, path_len: Int) -> Int {
   file_read(path_ptr, path_len)
@@ -32,19 +26,28 @@ pub fn read(path: String) -> String {
   file_read_str(path)
 }
 
-// Stub — requires file_write_str FFI (see header comment).
 pub fn write(path: String, content: String) -> Int {
-  0
+  file_write_str(path, content)
 }
 
-// Stub — requires file_exists_str FFI (see header comment).
 pub fn exists(path: String) -> Int {
-  0
+  file_exists_str(path)
 }
 
 fn main() {
-  // NOTE: File functions require filesystem FFI which needs the JAPL runtime.
-  // Cannot be unit-tested without runtime file I/O support.
-  // This module is validated via compile-only test.
-  println("File module loaded")
+  // Test write
+  let result = write("/tmp/japl_test_file.txt", "hello from japl")
+  println("write_result=" <> show(result))
+
+  // Test exists
+  let ex = exists("/tmp/japl_test_file.txt")
+  println("exists_after_write=" <> show(ex))
+
+  // Test read
+  let content = read("/tmp/japl_test_file.txt")
+  println("read_content=" <> content)
+
+  // Test exists for missing file
+  let missing = exists("/tmp/japl_nonexistent_9999.txt")
+  println("exists_missing=" <> show(missing))
 }
