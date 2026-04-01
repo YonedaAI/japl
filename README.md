@@ -8,7 +8,7 @@ A typed actor language with immutable values, supervision, and explicit resource
 
 ## What JAPL Is
 
-JAPL compiles to WebAssembly and runs on a custom Rust runtime with real OS-thread processes, typed message passing, and supervision trees.
+JAPL compiles to WebAssembly and runs on a unified Rust runtime with real OS-thread processes, typed message passing, supervision trees, HTTP serving, and wasmCloud deployment.
 
 ```japl
 type KVCommand =
@@ -56,19 +56,31 @@ This is a real program. It compiles to WASM and runs on the JAPL runtime with ac
 
 **Prerequisites:** Rust toolchain (`rustup`), wat2wasm (`brew install wabt`), wasmtime (`brew install wasmtime`)
 
-Build the runtime: `cd japl-runtime && cargo build --release`
-
 ```bash
+# Build the compiler + runtime
+cd japl && cargo build --release
+
 # Hello world
 echo 'fn main() { println("Hello from JAPL!") }' > hello.japl
 japl run hello.japl
 
-# Build to WASM
-japl build hello.japl
-wasmtime build/hello.wasm
+# With processes
+japl run apps/kvstore/kvstore.japl
 
-# With processes (requires japl-runtime)
-japl run --runtime apps/kvstore/kvstore.japl
+# HTTP serving
+japl serve apps/http-kv/kv_server.japl --port 8080
+
+# Deploy to wasmCloud
+japl deploy apps/distributed/hello_distributed.japl
+
+# Type check
+japl check myfile.japl
+
+# Format
+japl fmt myfile.japl
+
+# Initialize a new package
+japl init my-project
 ```
 
 ---
@@ -81,7 +93,7 @@ japl run --runtime apps/kvstore/kvstore.japl
 - First-class functions, closures, higher-order functions
 - Pipe operator (`|>`)
 - Records (creation, field access, update)
-- Type inference (bidirectional)
+- Type inference (bidirectional) with `Type::Pid` (Int backward compat)
 - Effect tracking (`Pure`, `IO`, `LLM`, `Process`, `Fail`)
 - Exhaustive pattern matching (`--strict` mode)
 - Tail call optimization
@@ -91,23 +103,28 @@ japl run --runtime apps/kvstore/kvstore.japl
 - Checked integer arithmetic (no silent overflow)
 - Byte type (`u8`)
 - Code formatter (`japl fmt`)
-- Process spawn/send/receive (real OS threads via WASM)
+- Type checker (`japl check`, `--strict` for Pid warnings)
+- Process spawn/send/receive (real OS threads via embedded wasmtime)
 - Supervision trees (`OneForOne`, `AllForOne`, `RestForOne`)
-- TCP distribution between runtime instances
-
+- HTTP serving (`japl serve` via tiny_http)
+- wasmCloud deployment (`japl deploy` with NATS-based process provider)
+- Real env var reading, file I/O
 - AI-native abstractions: LLM as tracked effect, `llm_structured` for typed I/O
 - Tool contracts (`ToolSpec`, `ToolResult`), budget tracking, replay logs, provenance
-- Standard library: `Math`, `String`, `Option`, `Result`, `List`, `Map`, `Set`, `Json`, `Http`, `Net`, `Bytes`, `Codec`, `Retry`, `Log`, `Config`, `File`, `Env`, `Time`, `Crypto`, `Process`, `Supervisor`, `Registry`, `LLM`, `Tool`, `Budget`, `Replay`, `Provenance`
+- Standard library: 30 modules, 2400+ LOC (`Math`, `String`, `Option`, `Result`, `List`, `Map`, `Set`, `Json`, `Http`, `Net`, `Bytes`, `Codec`, `Retry`, `Log`, `Config`, `File`, `Env`, `Time`, `Crypto`, `Process`, `Supervisor`, `Registry`, `LLM`, `Tool`, `Budget`, `Replay`, `Provenance`, `Core`, `IO`, `Test`)
+- Verification suite: 68+ tests, 28 negative checker tests, 2 strict mode tests
+- Benchmark suite and stdlib API doc generator
 
-### Prototype
+### Partial
 
-- Distributed typed message passing (local works, cross-machine in testing)
+- Distributed typed message passing (local works; TCP cross-machine experimental via `japl run --node-name`)
+- Package manager foundation (`japl init`, `japl deps`)
 
 ### Planned
 
-- Package manager
 - LSP / editor support
 - REPL
+- Full package registry
 
 ---
 
@@ -115,25 +132,19 @@ japl run --runtime apps/kvstore/kvstore.japl
 
 ```
 .japl source
+    |  JAPL Compiler (Rust)
+    v  Lexer -> Parser -> Checker -> Lower -> WAT Codegen
+.wat -> wat2wasm -> .wasm
     |
-    v
-JAPL Compiler (self-hosted, 1557 lines of JAPL)
-  Lexer -> Parser -> WAT Codegen
-    |
-    v
-.wat (WebAssembly Text)
-    |  wat2wasm
-    v
-.wasm (WebAssembly Binary)
-    |
-    v
-+------------------------------------------+
-| wasmtime          (simple programs)      |
-| japl-runtime      (processes, TCP)       |
-+------------------------------------------+
+    +-- japl run      (embedded wasmtime, local OS-thread processes)
+    +-- japl serve    (HTTP via tiny_http)
+    +-- japl deploy   (wasmCloud + JAPL NATS provider)
+    +-- japl build    (compile to .wasm only)
+    +-- japl check    (type check without compiling)
+    +-- japl fmt      (code formatter)
+    +-- japl init     (initialize package)
+    +-- japl deps     (manage dependencies)
 ```
-
-
 
 ---
 
@@ -184,15 +195,32 @@ fn main() {
 ## Project Structure
 
 ```
-compiler/self/      Self-hosted compiler (JAPL source + compiled WASM)
-japl-runtime/       Runtime (Rust + wasmtime, processes, distribution)
-stdlib/             Standard library (.japl files)
-test/               Test programs and verification suite
-apps/               Applications (KV store, message queue, scheduler, genome pipeline, multi-agent demo)
-spec/               Language specification
-plans/              Development plans and reviews
-papers/             Research papers (7 JAPL papers)
-docs/               Project website
+japl/                 Unified compiler + runtime (Rust)
+  src/compiler/       Lexer, parser, checker, AST, IR, WAT codegen, formatter
+  src/runtime/        Scheduler, host functions, process engine, distribution, wire protocol
+  src/serve.rs        HTTP serving mode
+  src/main.rs         CLI entry point (build, run, serve, deploy, check, fmt, init, deps)
+  src/package.rs      Package manifest handling
+stdlib/               Standard library (30 modules, 2400+ LOC)
+apps/                 Demo applications (8 apps)
+  kvstore/            Distributed key-value store
+  msgqueue/           Message queue
+  scheduler/          Task scheduler
+  genome/             Genome analysis pipeline
+  agents/             Multi-agent system
+  distributed/        Distributed hello world
+  http-kv/            HTTP key-value server
+  kvstore-http/       HTTP-fronted KV store
+japl-provider/        NATS-based process provider for wasmCloud
+test/                 Verification suite
+  verify/             Main test runner (verify_all.py)
+  programs/           42 test programs
+  checker-negative/   28 negative type checker tests
+  checker-strict/     Strict mode tests
+  bench/              Benchmark suite
+docs/                 Architecture and integration docs
+spec/                 Language specification
+papers/               Research papers (7 JAPL papers)
 ```
 
 ---
