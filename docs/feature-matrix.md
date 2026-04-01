@@ -25,7 +25,7 @@
 | | Mailbox messaging | ✓ | 10K limit, FIFO |
 | | Graceful shutdown | ✓ | cmd_rx draining |
 | | Distribution CLI | ~ | Flags exist, frame handling TODO |
-| | wasmCloud deploy | ~ | Manifest generation, provider sidecar |
+| | wasmCloud deploy | ~ | Fails closed without wasmCloud; --local for explicit local fallback |
 | **Tooling** | Package manager | ~ | init/deps, no registry |
 | | Benchmarks | ✓ | bench.py |
 | | Doc generation | ✓ | gendocs.py |

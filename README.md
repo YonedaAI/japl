@@ -70,8 +70,15 @@ japl run apps/kvstore/kvstore.japl
 # HTTP serving
 japl serve apps/http-kv/kv_server.japl --port 8080
 
-# Deploy to wasmCloud
+# Deploy to wasmCloud (requires NATS + wasmCloud)
+# Prerequisites: nats-server, wash CLI, japl-provider
 japl deploy apps/distributed/hello_distributed.japl
+
+# Preview deployment manifest
+japl deploy --dry-run apps/distributed/hello_distributed.japl
+
+# Local-only mode (no wasmCloud needed)
+japl deploy --local apps/distributed/hello_distributed.japl
 
 # Type check
 japl check myfile.japl

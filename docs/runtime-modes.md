@@ -19,8 +19,10 @@ JAPL provides three execution modes, each targeting different use cases.
 ## `japl deploy` — Distributed Deployment
 - Compiles to WASM Component Model
 - Generates WADM manifest for wasmCloud
-- Primary distributed execution path (requires NATS + wasmCloud)
-- Falls back to `serve` if wasmCloud unavailable
+- Primary distributed execution path (requires NATS + wasmCloud host + japl-provider)
+- **Fails with an error if wasmCloud infrastructure is not available** (no silent fallback)
+- Use `japl deploy --local` to explicitly opt in to local-only serving without wasmCloud
+- Use `japl deploy --dry-run` to preview the generated deployment manifest
 - Best for: production deployment, distributed systems
 
 ## Feature Support Matrix
