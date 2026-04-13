@@ -1,54 +1,132 @@
 # JAPL Architecture Contract
 
-## Canonical Distributed Execution
+## Core Rule
 
-wasmCloud is the canonical distributed execution engine for JAPL.
+JAPL must own its distributed semantics.
 
-- `japl run`: local development runtime (embedded wasmtime, OS threads)
-- `japl run --distributed`: distributed runtime (WASM + NATS provider)
-- `japl deploy`: wasmCloud deployment (component + WADM manifest)
+That means the language/runtime defines:
 
-## Current State (v1.0)
+- process identity
+- spawn/send/receive
+- mailbox semantics
+- supervision semantics
+- failure behavior
+- distributed observability in JAPL terms
 
-The distributed runtime uses a federated model:
-- WASM execution is local (wasmtime loads the module)
-- Process operations (spawn/send/receive) route through NATS to the JAPL provider
-- Each spawned process runs in its own WASM instance with NATS-backed host functions
-- External access via HTTP gateway (--http-port)
+No deployment substrate gets to define those semantics for JAPL.
 
-This is analogous to Erlang's model: code runs on the local node,
-messaging is distributed via the transport layer (NATS = distribution protocol).
+## Substrate Rule
 
-## wasmCloud Integration
+wasmCloud may be used as a hosting and orchestration substrate.
 
-- `japl deploy` compiles to WASM Component, generates WADM manifest
-- wasmCloud host is started for orchestration
-- The JAPL provider is a NATS sidecar (not yet a native wasmCloud capability)
-- Components export `japl:app/handler@0.1.0` for HTTP handling
-- wash 2.0.1 config parsing blocks `wash dev` integration (tracked blocker)
+It is not the source of truth for JAPL semantics.
+
+If JAPL uses wasmCloud, the correct model is:
+
+> JAPL runtime semantics first, wasmCloud substrate second.
+
+This is the same distinction as:
+
+- BEAM is the semantic runtime for Erlang
+- infrastructure beneath BEAM is not what defines Erlang process semantics
+
+For JAPL, the semantic truth must remain JAPL-owned even if execution is hosted on wasmCloud.
+
+## Current Honest State
+
+As of now:
+
+- `japl run` is the local reference runtime
+- `japl run --distributed` is the working distributed runtime path today
+- `japl deploy` and wasmCloud integration are not yet the canonical proven distributed engine
+
+The repo must not claim otherwise until deployed JAPL apps are actually proven running through wasmCloud end to end.
 
 ## What "Distributed by Default" Means
 
-When JAPL claims distributed semantics, these must be proven via:
-1. `japl run --distributed` with real JAPL apps
-2. Process messaging through NATS provider
-3. External client verification (HTTP or NATS)
+JAPL may claim “distributed by default” only when all of these are true:
 
-Local `japl run` proves local semantics only.
+1. The distributed semantics are defined by JAPL itself
+2. Those semantics work in the canonical distributed execution path
+3. That path is proven by black-box tests using real JAPL apps
+4. The release gate fails if that path is broken
 
-## Distributed Claim Checklist
+If any one of these is false, the claim is not closed.
 
-For any feature claiming distributed behavior:
-- [ ] Does it work with `japl run --distributed`?
-- [ ] Is process messaging through NATS?
-- [ ] Can an external client observe the behavior?
-- [ ] Is it tested in the verification suite?
-- [ ] Would the release gate fail if this broke?
+## Canonical Execution Modes
 
-## Shortcut Rejection
+### Local reference mode
 
-These do NOT prove distributed semantics:
-- `japl run` (local only)
-- Direct NATS CLI probing without a JAPL app
+- `japl run`
+- `japl serve`
+
+These prove:
+
+- local semantics
+- developer workflow
+- local runtime behavior
+
+They do not prove distributed-by-default semantics.
+
+### Distributed runtime mode
+
+- `japl run --distributed`
+
+This currently proves:
+
+- JAPL’s working distributed runtime semantics today
+- NATS-backed distributed process messaging
+- external client access through the HTTP gateway
+
+This is the current canonical proof path for distributed behavior.
+
+### Deployment substrate mode
+
+- `japl deploy`
+- wasmCloud
+
+This may eventually become the canonical distributed engine path.
+
+Until a deployed JAPL app is proven running end to end there, it remains:
+
+- integration work
+- deployment substrate work
+- not the canonical proof of distributed-by-default semantics
+
+## No-Shortcut Rule
+
+No distributed claim may be closed using only:
+
+- local `japl run`
+- local `japl serve`
+- direct NATS/provider probing
 - `--dry-run` manifests
-- Component build alone
+- component build only
+- documentation-only reasoning
+
+Every distributed claim must be backed by the execution mode it is claiming.
+
+## Review Rule
+
+Future reviews must distinguish these proof levels:
+
+- `LOCAL`
+- `DISTRIBUTED_RUNTIME`
+- `DEPLOY_SUBSTRATE`
+- `DEPLOYED_ENGINE`
+- `LIMITED`
+- `EXPERIMENTAL`
+- `BLOCKED`
+
+No result may be labeled `PROVEN` without naming the execution mode in which it is proven.
+
+## Upgrade Rule For wasmCloud
+
+wasmCloud may only be called the canonical distributed engine for JAPL when:
+
+1. real JAPL apps run through `japl deploy`
+2. the runtime/provider contract actually executes JAPL process semantics there
+3. the release gate proves this automatically
+4. docs, tests, and CLI behavior all agree
+
+Until then, wasmCloud is a target substrate, not the semantic engine.
